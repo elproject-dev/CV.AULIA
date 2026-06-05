@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Kasir Pro"
+version = "1.0.0"
+id = "artifacts/kasir"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22227
+
+[services.development]
+run = "pnpm --filter @workspace/kasir run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/kasir", "run", "build" ]
+publicDir = "artifacts/kasir/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22227"
+BASE_PATH = "/"

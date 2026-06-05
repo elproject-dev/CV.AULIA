@@ -1,10 +1,11 @@
-# [Project name]
+# Kasir Pro
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Aplikasi kasir (POS) profesional berbasis web untuk toko retail Indonesia — dioptimalkan untuk tablet dan smartphone.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/kasir run dev` — run the frontend (port 22227)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -14,7 +15,8 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
+- Frontend: React + Vite, TanStack Query, Wouter, Tailwind CSS, Shadcn UI
+- API: Express 5 (artifact: api-server, path: /api)
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
@@ -22,23 +24,47 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for all API contracts)
+- `lib/db/src/schema/` — DB schema (categories, products, customers, transactions)
+- `artifacts/api-server/src/routes/` — Express route handlers
+- `artifacts/kasir/src/` — React frontend
+- `artifacts/kasir/src/pages/` — App pages (kasir, dashboard, products, customers, transactions)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Contract-first: OpenAPI spec → codegen → React Query hooks + Zod schemas
+- Points system: 1 poin per Rp 10.000 pembelian, hanya member yang bisa redeem poin
+- Tax defaults to 0% (dapat diubah di transactions.ts)
+- Supabase for production: ganti DATABASE_URL ke Supabase PostgreSQL connection string saat deploy
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Kasir** (`/`) — Layar POS utama: grid produk + keranjang, pilih pelanggan, metode pembayaran, diskon, poin
+- **Dashboard** (`/dashboard`) — Statistik revenue, grafik harian, produk terlaris, transaksi terbaru
+- **Produk** (`/products`) — CRUD produk dengan foto URL dan kategori
+- **Pelanggan** (`/customers`) — CRUD pelanggan, membership member/non-member, saldo poin
+- **Riwayat Transaksi** (`/transactions`) — Histori transaksi dengan filter tanggal & metode bayar
+- **Detail Transaksi** (`/transactions/:id`) — Struk lengkap dengan rincian item
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Bahasa Indonesia untuk label UI
+- Format harga: Rupiah (Rp X.XXX)
+- Dioptimalkan untuk tablet dan smartphone
+
+## Supabase Production Setup
+
+Untuk menggunakan Supabase sebagai database production:
+1. Buat project di [supabase.com](https://supabase.com)
+2. Buka Settings > Database > Connection string (URI mode)
+3. Salin connection string dan set sebagai `DATABASE_URL` di Secrets/environment production
+4. Jalankan `pnpm --filter @workspace/db run push` untuk push schema ke Supabase
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Selalu jalankan `pnpm --filter @workspace/api-spec run codegen` setelah mengubah openapi.yaml
+- Jalankan `pnpm run typecheck:libs` setelah mengubah file di `lib/*`
+- Harga produk disimpan sebagai `numeric` di DB, diformat ke `parseFloat()` di routes
 
 ## Pointers
 
