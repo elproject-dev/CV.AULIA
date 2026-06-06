@@ -120,7 +120,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="space-y-6">
                 {topProducts?.map((product, i) => (
-                  <div key={product.productId} className="flex items-center">
+                  <div key={product.productId ?? i} className="flex items-center">
                     <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center mr-4">
                       {product.imageUrl ? (
                         <img src={product.imageUrl} className="w-full h-full object-cover rounded" alt={product.productName} />
