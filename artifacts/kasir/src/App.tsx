@@ -1,41 +1,172 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import NotFound from "@/pages/not-found";
+import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
+import { initializeBluetooth } from "@/lib/bluetooth-printer";
+import { getDefaultRoute } from "@/lib/auth";
 
+import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import UpdatePasswordPage from "@/pages/update-password";
 import POSPage from "@/pages/pos";
 import DashboardPage from "@/pages/dashboard";
 import ProductsPage from "@/pages/products";
 import CustomersPage from "@/pages/customers";
 import TransactionsPage from "@/pages/transactions";
 import TransactionDetailPage from "@/pages/transaction-detail";
+import SettingsPage from "@/pages/settings";
+import PointsSettingsPage from "@/pages/points-settings";
+import DiscountSettingsPage from "@/pages/discount-settings";
+import ExpensesPage from "@/pages/expenses";
+import StaffPage from "@/pages/staff";
 
 const queryClient = new QueryClient();
 
-function Router() {
+function AppRoutes() {
+  const { user, isLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isLoading) return;
+    
+    // Check if current route is a public route
+    const isPublicRoute = location === "/login" || location === "/register" || location === "/forgot-password" || location === "/update-password";
+
+    if (!user && !isPublicRoute) {
+      setLocation("/login");
+    }
+    
+    if (user && isPublicRoute && location !== "/update-password") {
+      setLocation(getDefaultRoute(user));
+    }
+  }, [user, isLoading, location, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-slate-500 text-sm">Memuat...</p>
+      </div>
+    );
+  }
+
   return (
     <Switch>
-      <Route path="/" component={POSPage} />
-      <Route path="/dashboard" component={DashboardPage} />
-      <Route path="/products" component={ProductsPage} />
-      <Route path="/customers" component={CustomersPage} />
-      <Route path="/transactions" component={TransactionsPage} />
-      <Route path="/transactions/:id" component={TransactionDetailPage} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/update-password" component={UpdatePasswordPage} />
+      <Route path="/dashboard">
+        <ProtectedRoute>
+          <DashboardPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/">
+        <ProtectedRoute>
+          <POSPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/products">
+        <ProtectedRoute>
+          <ProductsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/customers">
+        <ProtectedRoute>
+          <CustomersPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/transactions">
+        <ProtectedRoute>
+          <TransactionsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/transactions/:id">
+        <ProtectedRoute>
+          <TransactionDetailPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/points-settings">
+        <ProtectedRoute adminOnly>
+          <PointsSettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/discount-settings">
+        <ProtectedRoute adminOnly>
+          <DiscountSettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute>
+          <SettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/expenses">
+        <ProtectedRoute>
+          <ExpensesPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/staff">
+        <ProtectedRoute>
+          <StaffPage />
+        </ProtectedRoute>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function App() {
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      initializeBluetooth().then(result => {
+        if (result.success) {
+          console.log('✓ Bluetooth initialized successfully');
+        } else {
+          console.warn('Bluetooth initialization:', result.message);
+        }
+      }).catch(error => {
+        console.warn('Error initializing Bluetooth:', error);
+      });
+    }
+
+    const savedFontSize = localStorage.getItem('fontSize') || 'medium';
+    const fontSizes: Record<string, string> = {
+      small: '11px',
+      medium: '14px',
+      large: '17px'
+    };
+    document.documentElement.style.fontSize = fontSizes[savedFontSize] || '14px';
+
+    const applyTheme = () => {
+      const darkMode = localStorage.getItem('darkMode') === 'true';
+      document.documentElement.classList.toggle('dark', darkMode);
+    };
+
+    applyTheme();
+
+    window.addEventListener('storage', applyTheme);
+
+    return () => {
+      window.removeEventListener('storage', applyTheme);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <AuthProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <AppRoutes />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

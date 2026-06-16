@@ -1,0 +1,42 @@
+-- Setup Akun Kasir (Sales) di Supabase Auth
+-- Data produk/kategori/transaksi TERPISAH per kasir
+-- Data pelanggan BERSAMA (shared) antar semua kasir
+--
+-- Prasyarat: jalankan migration-multi-tenant-kasir.sql terlebih dahulu
+
+-- ============================================================
+-- Buat akun kasir di Supabase Dashboard:
+--   Authentication → Users → Add user → Create new user
+--
+-- Contoh Kasir 1:
+--   Email   : kasir1@sbagiamu.com
+--   Password: (password kuat)
+--   ✓ Auto Confirm User
+--
+--   User Metadata (WAJIB):
+--   {
+--     "name": "Ahmad Kasir",
+--     "role": "kasir"
+--   }
+--
+-- Contoh Kasir 2:
+--   Email   : kasir2@sbagiamu.com
+--   Password: (password kuat)
+--   User Metadata:
+--   {
+--     "name": "Budi Kasir",
+--     "role": "sales"
+--   }
+-- ============================================================
+--
+-- Role yang dikenali aplikasi untuk mode Sales:
+--   "kasir"  atau  "sales"
+--
+-- Admin (lihat semua data):
+--   Email: sbagiamu.pos@gmail.com
+--   Metadata: { "name": "Admin SBAGIAMU", "role": "admin" }
+--
+-- Setelah login:
+--   • Kasir hanya melihat produk/kategori/transaksi miliknya
+--   • Semua kasir melihat & mengubah data pelanggan yang sama
+--   • Admin melihat semua data dari semua kasir

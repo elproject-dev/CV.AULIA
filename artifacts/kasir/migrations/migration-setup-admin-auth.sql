@@ -1,0 +1,23 @@
+-- Setup Login Admin via Supabase Auth (TANPA tabel staff)
+-- Tidak perlu ALTER TABLE — cukup buat user di dashboard Supabase.
+
+-- ============================================================
+-- Langkah: Supabase Dashboard → Authentication → Users
+--          → Add user → Create new user
+--
+--   Email   : sbagiamu.pos@gmail.com
+--   Password: admin123
+--   ✓ Auto Confirm User (centang)
+--
+--   User Metadata (opsional):
+--   {
+--     "name": "Admin SBAGIAMU",
+--     "role": "admin"
+--   }
+-- ============================================================
+--
+-- Mode Sales/Kasir: lihat migration-setup-kasir-auth.sql
+-- Setelah buat akun, jalankan migration-multi-tenant-kasir.sql
+-- agar data kasir terpisah & pelanggan bersama.
+--
+-- Login aplikasi memakai Supabase Auth + RLS multi-tenant.

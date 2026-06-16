@@ -1,77 +1,33 @@
-@import "tailwindcss";
 @import "tw-animate-css";
-@plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:is(.dark *));
+@font-face {
+  font-family: 'Google Sans Flex';
+  src: url('/GoogleSansFlex_9pt-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
 
-@theme inline {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-card-border: hsl(var(--card-border));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-popover-border: hsl(var(--popover-border));
-
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-primary-border: var(--primary-border);
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-secondary-border: var(--secondary-border);
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-muted-border: var(--muted-border);
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-accent-border: var(--accent-border);
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-destructive-border: var(--destructive-border);
-
-  --color-chart-1: hsl(var(--chart-1));
-  --color-chart-2: hsl(var(--chart-2));
-  --color-chart-3: hsl(var(--chart-3));
-  --color-chart-4: hsl(var(--chart-4));
-  --color-chart-5: hsl(var(--chart-5));
-
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-primary-border: var(--sidebar-primary-border);
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-accent-border: var(--sidebar-accent-border);
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
-
-  --font-sans: var(--app-font-sans);
-  --font-serif: var(--app-font-serif);
-  --font-mono: var(--app-font-mono);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+/* Force font globally */
+html,
+body,
+* {
+  font-family: 'Google Sans Flex', sans-serif !important;
 }
 
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
+  --app-font-sans: 'Google Sans Flex', sans-serif;
+  --app-font-serif: 'Google Sans Flex', serif;
+  --app-font-mono: 'Google Sans Flex', monospace;
+
+  --button-outline: rgba(0, 0, 0, .10);
+  --badge-outline: rgba(0, 0, 0, .05);
   --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --elevate-1: rgba(0, 0, 0, .03);
+  --elevate-2: rgba(0, 0, 0, .08);
 
   --background: 0 0% 98%;
   --foreground: 222 47% 11%;
@@ -90,21 +46,21 @@
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --popover-border: 214.3 31.8% 91.4%;
-  
-  --primary: 230 46% 28%;
-  --primary-foreground: 210 40% 98%;
+
+  --primary: 35 100% 45%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222 47% 11.2%;
   --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 38 92% 50%;
-  --accent-foreground: 222 47% 11.2%;
+  --accent: 35 100% 45%;
+  --accent-foreground: 0 0% 100%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
   --input: 214.3 31.8% 91.4%;
-  --ring: 230 46% 28%;
-  
-  --chart-1: 12 76% 61%;
+  --ring: 35 100% 45%;
+
+  --chart-1: 35 100% 45%;
   --chart-2: 173 58% 39%;
   --chart-3: 197 37% 24%;
   --chart-4: 43 74% 66%;
@@ -114,10 +70,10 @@
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: 0.5rem;
-  
-  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px rgba(0,0,0, 0.05);
-  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 3px 0px rgba(0,0,0, 0.1), 0px 1px 2px -1px rgba(0,0,0, 0.1);
-  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px rgba(0,0,0, 0.1), 0px 2px 4px -2px rgba(0,0,0, 0.1);
+
+  --shadow-sm: 0px 2px 0px 0px hsl(35 100% 45% / 0.00), 0px 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow: 0px 2px 0px 0px hsl(35 100% 45% / 0.00), 0px 1px 3px 0px rgba(0, 0, 0, 0.4), 0px 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0px 2px 0px 0px hsl(35 100% 45% / 0.00), 0px 4px 6px -1px rgba(0, 0, 0, 0.4), 0px 2px 4px -2px rgba(0, 0, 0, 0.3);
 
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
@@ -129,43 +85,580 @@
 }
 
 .dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
-  --sidebar-primary: 210 40% 98%;
-  --sidebar-primary-foreground: 222 47% 11.2%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 224.3 76.3% 48%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
-  
-  --primary: 230 46% 40%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 38 92% 50%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  /* Pure Black Super Dark Theme */
+  --background: 0 0% 0%;
+  --foreground: 0 0% 95%;
+  --border: 0 0% 12%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 95%;
+  --card-border: 0 0% 12%;
+  --sidebar: 0 0% 8%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-border: 0 0% 12%;
+  --sidebar-primary: 168 100% 50%;
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 0 0% 8%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-ring: 168 100% 50%;
+  --popover: 0 0% 12%;
+  --popover-foreground: 0 0% 95%;
+  --popover-border: 0 0% 17%;
+
+  /* Primary - Supabase Cyan */
+  --primary: 168 100% 50%;
+  --primary-foreground: 0 0% 0%;
+  /* Secondary - Pure Black */
+  --secondary: 0 0% 8%;
+  --secondary-foreground: 0 0% 95%;
+  /* Muted - Pure Black */
+  --muted: 0 0% 8%;
+  --muted-foreground: 0 0% 50%;
+  /* Accent - Vibrant accent */
+  --accent: 35 100% 45%;
+  --accent-foreground: 0 0% 0%;
+  /* Destructive - Red */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 95%;
+  /* Input & Ring */
+  --input: 0 0% 17%;
+  --ring: 168 100% 50%;
+
+  /* Chart colors - Vibrant for dark mode */
+  --chart-1: 168 100% 50%;
+  --chart-2: 280 85% 60%;
+  --chart-3: 200 100% 60%;
+  --chart-4: 340 75% 55%;
+  --chart-5: 168 80% 60%;
+
+  /* Elevation effects for dark mode */
+  --elevate-1: rgba(255, 255, 255, .02);
+  --elevate-2: rgba(255, 255, 255, .05);
+}
+
+/* Page transition animation - smooth fade */
+.page-fade-in {
+  animation: pageFadeIn 250ms ease-out forwards;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Page transition animation classes */
+.page-transition-slide-right {
+  animation: slideFromRight 300ms ease-out forwards;
+}
+
+.page-transition-slide-left {
+  animation: slideFromLeft 300ms ease-out forwards;
+}
+
+.page-transition-fade {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+@keyframes ring {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-ring {
+  animation: ring 2.5s infinite;
+}
+
+/* Logo Ringing Animation - Visible pulse effect */
+@keyframes logo-ring {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7);
+  }
+
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 8px hsl(var(--primary) / 0);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0);
+  }
+}
+
+.animate-logo-ring {
+  animation: logo-ring 1.5s ease-out infinite;
+}
+
+/* Simple fade animation */
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Slide from left animation (back navigation) */
+@keyframes slideFromLeft {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Slide from right animation (forward navigation) */
+@keyframes slideFromRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Ensure sidebar stays static - never animate */
+aside,
+.sidebar-static {
+  animation: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+/* ============================================
+   DARK MODE OVERRIDES - ALL COMPONENTS
+   ============================================ */
+
+/* Override slate colors for dark mode */
+/* slate-900 = 15% (dashboard card - lebih terang) */
+/* slate-800 = 8% (halaman lain - lebih gelap) */
+.dark .bg-slate-900,
+.dark .bg-slate-950,
+.dark .dark\:bg-slate-900,
+.dark .dark\:bg-slate-950 {
+  background-color: hsl(0 0% 10%) !important;
+}
+
+.dark .bg-slate-800,
+.dark .dark\:bg-slate-800 {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+.dark .border-slate-700,
+.dark .border-slate-800,
+.dark .border-slate-950,
+.dark .dark\:border-slate-700,
+.dark .dark\:border-slate-800,
+.dark .dark\:border-slate-950 {
+  border-color: hsl(0 0% 15%) !important;
+}
+
+/* All backgrounds to black */
+.dark .bg-white,
+.dark .bg-black {
+  background-color: hsl(0 0% 0%) !important;
+}
+
+.dark .bg-somethingelse,
+.dark .bg-gray-50,
+.dark .bg-gray-100,
+.dark .bg-gray-200,
+.dark .bg-gray-300,
+.dark .bg-gray-800,
+.dark .bg-gray-900,
+.dark .bg-slate-50,
+.dark .bg-slate-100,
+.dark .bg-slate-200,
+.dark .bg-emerald-50,
+.dark .bg-emerald-100,
+.dark .bg-amber-50,
+.dark .bg-amber-100,
+.dark .bg-blue-50,
+.dark .bg-purple-50,
+.dark .dark\:bg-white {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+.dark .bg-emerald-100 {
+  background-color: hsl(160 60% 8%) !important;
+}
+
+.dark .bg-amber-100 {
+  background-color: hsl(50 60% 8%) !important;
+}
+
+.dark .bg-primary\/10 {
+  background-color: rgba(0, 229, 153, 0.1) !important;
+}
+
+/* All text colors - use Tailwind defaults for natural appearance */
+
+/* Chart bar overrides - ensure bars are visible in dark mode */
+/* Force chart bars to be solid bright cyan */
+.dark .flex-1.grid.grid-cols-7>div>div.bg-gradient-to-t,
+.dark .grid.grid-cols-7>div>div.bg-gradient-to-t,
+.dark div[class*="rounded-t-md"][class*="bg-gradient-to-t"],
+.dark .group>div.bg-gradient-to-t {
+  background: #00E599 !important;
+  background-image: none !important;
+  background-color: #00E599 !important;
+}
+
+/* Force all from-primary to-primary bars to be solid cyan */
+.dark [class*="from-primary"][class*="to-primary"],
+.dark .from-primary.to-primary\/60,
+.dark .from-primary\/90 {
+  background-color: #00E599 !important;
+  background-image: none !important;
+}
+
+/* Target bars using hsl() gradient syntax */
+.dark [style*="hsl"] {
+  background-color: #00E599 !important;
+}
+
+/* Override Tailwind gradient utilities directly */
+.dark .from-primary {
+  --tw-gradient-from: #00E599 !important;
+}
+
+.dark .to-primary\/60,
+.dark .to-primary {
+  --tw-gradient-to: #00E599 !important;
+}
+
+.dark .hover\:from-primary\/90:hover {
+  --tw-gradient-from: #00E599 !important;
+}
+
+.dark .hover\:to-primary:hover {
+  --tw-gradient-to: #00E599 !important;
+}
+
+/* Chart tooltip */
+.dark .bg-slate-900 {
+  background-color: hsl(0 0% 10%) !important;
+  border: 1px solid hsl(160 84% 39%) !important;
+}
+
+/* Chart grid lines */
+.dark .border-l,
+.dark .border-b {
+  border-color: #2a2a2a !important;
+}
+
+/* All border colors */
+.dark .border-white,
+.dark .border-gray-200,
+.dark .border-gray-300,
+.dark .border-gray-400,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-400,
+.dark .border-emerald-200 {
+  border-color: hsl(0 0% 15%) !important;
+}
+
+.dark .border-slate-100 {
+  border-color: hsl(0 0% 15%) !important;
+}
+
+/* Gradient backgrounds - keep colored cards in their original colors */
+.dark .bg-gradient-to-br,
+.dark .bg-gradient-to-r,
+.dark .bg-gradient-to-t,
+.dark [class*="bg-gradient-to-"] {
+  background-image: none !important;
+  background-color: hsl(0 0% 8%) !important;
+}
+
+/* EXCEPT - Keep these colored gradient cards bright */
+.dark .from-blue-500,
+.dark .from-blue-600,
+.dark .to-blue-600,
+.dark .from-purple-500,
+.dark .from-purple-600,
+.dark .to-purple-600,
+.dark .from-emerald-500,
+.dark .from-emerald-600,
+.dark .to-emerald-600,
+.dark .from-amber-500,
+.dark .from-orange-600,
+.dark .to-orange-600,
+.dark .from-slate-700,
+.dark .from-slate-800,
+.dark .to-slate-800 {
+  background-image: inherit !important;
+}
+
+.dark .bg-gradient-to-br.from-blue-500.to-blue-600,
+.dark .bg-gradient-to-br.from-purple-500.to-purple-600,
+.dark .bg-gradient-to-br.from-emerald-500.to-emerald-600,
+.dark .bg-gradient-to-br.from-amber-500.to-orange-600,
+.dark .bg-gradient-to-r.from-slate-700.to-slate-800 {
+  background-image: linear-gradient(to right, var(--tw-gradient-from), var(--tw-gradient-to)) !important;
+}
+
+.dark .from-slate-50,
+.dark .from-slate-100,
+.dark .from-slate-200,
+.dark .to-slate-100,
+.dark .to-slate-200,
+.dark .to-slate-300 {
+  --tw-gradient-from: hsl(0 0% 10%) !important;
+  --tw-gradient-to: hsl(0 0% 10%) !important;
+}
+
+/* Hover states */
+.dark .hover\:bg-emerald-50:hover {
+  background-color: hsl(160 60% 10%) !important;
+}
+
+.dark .active\:bg-emerald-100:active {
+  background-color: hsl(160 60% 12%) !important;
+}
+
+.dark .hover\:bg-slate-50:hover {
+  background-color: hsl(0 0% 5%) !important;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: hsl(0 0% 10%) !important;
+}
+
+.dark .active\:bg-slate-50:active {
+  background-color: hsl(0 0% 10%) !important;
+}
+
+.dark .active\:bg-slate-100:active {
+  background-color: hsl(0 0% 10%) !important;
+}
+
+/* Group hover states */
+.dark .group:hover .group-hover\:bg-emerald-100 {
+  background-color: hsl(160 60% 10%) !important;
+}
+
+.dark .group:hover .group-hover\:text-emerald-700 {
+  color: #10b981 !important;
+}
+
+.dark .group:hover .group-hover\:text-emerald-500 {
+  color: #10b981 !important;
+}
+
+.dark .group:hover .group-hover\:text-slate-300 {
+  color: #a3a3a3 !important;
+}
+
+/* Shadow overrides for dark mode */
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .shadow {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .shadow-md {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark .shadow-xl {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Rounded elements */
+.dark .rounded-xl {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+.dark .rounded-lg {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+/* Table dark mode */
+.dark table,
+.dark thead,
+.dark tbody,
+.dark th,
+.dark td,
+.dark tr {
+  background-color: hsl(0 0% 8%) !important;
+  border-color: hsl(0 0% 15%) !important;
+  color: #f2f2f2 !important;
+}
+
+.dark thead tr {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+.dark tbody tr:hover {
+  background-color: hsl(0 0% 5%) !important;
+}
+
+.dark .hover\:bg-muted\/50:hover {
+  background-color: hsl(0 0% 8%) !important;
+}
+
+/* Select& Input dark mode */
+.dark input,
+.dark select,
+.dark textarea,
+.dark button[role="combobox"] {
+  background-color: hsl(0 0% 5%) !important;
+  color: #f2f2f2 !important;
+  border-color: hsl(0 0% 15%) !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: hsl(0 0% 40%) !important;
+}
+
+/* Select dropdown dark mode */
+.dark [data-radix-popper-content-wrapper] {
+  background-color: hsl(0 0% 5%) !important;
+  border-color: hsl(0 0% 15%) !important;
+}
+
+.dark [data-radix-popper-content-wrapper] * {
+  background-color: hsl(0 0% 5%) !important;
+  color: #f2f2f2 !important;
+}
+
+/* Border class selectors */
+.dark [class*="border-slate-200"],
+.dark [class*="border-slate-300"],
+.dark [class*="border-gray-200"],
+.dark [class*="border-gray-300"],
+.dark [class*="border-white"] {
+  border-color: hsl(0 0% 20%) !important;
 }
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
+
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    font-family: var(--app-font-sans), sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
+
+  /* Improve text readability - soften edges */
+  p,
+  span,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  a,
+  button,
+  input,
+  select,
+  textarea {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* Custom Date Input Styling */
+.custom-date-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* Hide scrollbar but keep scrolling functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Override browser autofill background */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: currentColor !important;
+  caret-color: currentColor !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+
+/* Slim Auto-hiding scrollbar */
+.scrollbar-slim::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 20px;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.scrollbar-slim:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.8);
 }

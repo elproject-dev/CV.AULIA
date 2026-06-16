@@ -1,0 +1,756 @@
+import { Sidebar } from "@/components/layout/Sidebar";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Settings, Store, Printer, Bell, Type, Percent, Bluetooth, CheckCircle, XCircle, Loader2, Search, Tag, Plus, Trash2, Palette, Building2, ChevronDown, Info, ExternalLink, User, LogOut } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { connectToPrinter, disconnectPrinter, listBluetoothDevices } from "@/lib/bluetooth-printer";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { ADMIN_EMAIL } from "@/lib/auth";
+import { useListOutlets } from "@workspace/api-client-react";
+import { ProfileContent } from "@/components/layout/ProfileContent";
+
+// Collapsible Card Component - Accordion Style
+function CollapsibleCard({
+  id,
+  title,
+  icon: Icon,
+  description,
+  children,
+  isOpen,
+  onToggle
+}: {
+  id: string;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description?: string;
+  children: React.ReactNode;
+  isOpen: boolean;
+  onToggle: (id: string) => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setContentHeight(contentRef.current.scrollHeight);
+    }
+  }, [isOpen]);
+
+  return (
+    <Card className="overflow-hidden w-full rounded-xl shadow-sm border-slate-200 dark:border-slate-700">
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="w-full text-left"
+      >
+        <div className={`py-5 px-5 cursor-pointer transition-colors flex flex-row items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50`}>
+          <div className="flex items-center gap-4 min-w-0 flex-1">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-200 ${isOpen ? 'bg-primary/20 text-primary dark:bg-primary/30' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'}`}>
+              <Icon className="w-6 h-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-lg text-slate-900 dark:text-white">{title}</h3>
+              {description && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{description}</p>
+              )}
+            </div>
+          </div>
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-300 shrink-0 ${isOpen ? 'bg-primary/10 text-primary' : 'bg-slate-100 text-slate-400'}`}>
+            <ChevronDown className="w-5 h-5" />
+          </div>
+        </div>
+      </button>
+      <div
+        className="transition-all duration-300 ease-in-out overflow-hidden"
+        style={{
+          maxHeight: isOpen ? (contentHeight ? contentHeight + 48 : 'none') : '0px',
+          opacity: isOpen ? 1 : 0
+        }}
+      >
+        <div ref={contentRef} className="px-5 pb-6">
+          <div className="border-t border-slate-100 dark:border-slate-700 pt-5">
+            {children}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export default function SettingsPage() {
+  const { toast } = useToast();
+  const { user, logout } = useAuth();
+  const isAdminSuper = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const { data: outlets } = useListOutlets();
+  const assignedOutletName = outlets?.find(o => o.id.toString() === user?.outletId)?.name || 'Semua Outlet';
+  const isOutletAssigned = Boolean(user?.outletId && user.outletId !== "all");
+
+  // Accordion state - only one card open at a time
+  const [openCard, setOpenCard] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("tab");
+    }
+    return null;
+  });
+  const toggleCard = useCallback((cardId: string) => {
+    setOpenCard(prev => prev === cardId ? null : cardId);
+  }, []);
+
+  // Font Size - Default: small
+  const [fontSize, setFontSize] = useState(() => localStorage.getItem('fontSize') || 'medium');
+
+  // Store Settings
+  const [storeName, setStoreName] = useState(() => localStorage.getItem('storeName') || 'Sbagiamu');
+  const [storeAddress, setStoreAddress] = useState(() => localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk');
+  const [storePhone, setStorePhone] = useState(() => localStorage.getItem('storePhone') || '08123456789');
+  const [autoPrint, setAutoPrint] = useState(() => localStorage.getItem('autoPrint') !== 'false');
+  const [showFooter, setShowFooter] = useState(() => localStorage.getItem('showFooter') !== 'false');
+  const [footerMessage, setFooterMessage] = useState(() => localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda');
+  const [footerMessage2, setFooterMessage2] = useState(() => localStorage.getItem('footerMessage2') || '');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
+  const [lowStockAlert, setLowStockAlert] = useState(() => localStorage.getItem('lowStockAlert') !== 'false');
+  const [salesReport, setSalesReport] = useState(() => localStorage.getItem('salesReport') === 'true');
+
+  // Listen for sync events from Sidebar
+  useEffect(() => {
+    const handleStoreChange = () => {
+      setStoreName(localStorage.getItem('storeName') || 'Sbagiamu');
+      setStoreAddress(localStorage.getItem('storeAddress') || '');
+      setStorePhone(localStorage.getItem('storePhone') || '');
+    };
+    window.addEventListener('storeNameChanged', handleStoreChange);
+    return () => window.removeEventListener('storeNameChanged', handleStoreChange);
+  }, []);
+
+  // Primary Color (HSL) - Default: hsl(200, 100%, 22%) - Blue
+  const [primaryHue, setPrimaryHue] = useState(() => parseInt(localStorage.getItem('primaryHue') || '200'));
+  const [primarySaturation, setPrimarySaturation] = useState(() => parseInt(localStorage.getItem('primarySaturation') || '100'));
+  const [primaryLightness, setPrimaryLightness] = useState(() => parseInt(localStorage.getItem('primaryLightness') || '22'));
+
+  // Printer
+  const [bluetoothPrinterMac, setBluetoothPrinterMac] = useState(() => localStorage.getItem('bluetoothPrinterMac') || '');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connected' | 'disconnected'>('idle');
+  const [isScanning, setIsScanning] = useState(false);
+  const [bluetoothDevices, setBluetoothDevices] = useState<Array<{ name: string; address: string }>>([]);
+  const [showDeviceList, setShowDeviceList] = useState(false);
+
+  // Auto-save: Font Size - apply to root element
+  useEffect(() => {
+    localStorage.setItem('fontSize', fontSize);
+    const fontSizes: Record<string, string> = {
+      small: '11px',
+      medium: '14px',
+      large: '17px'
+    };
+    document.documentElement.style.fontSize = fontSizes[fontSize] || '12px';
+  }, [fontSize]);
+
+  // Auto-save: Store Settings
+  useEffect(() => {
+    localStorage.setItem('storeName', storeName);
+    localStorage.setItem('storeAddress', storeAddress);
+    localStorage.setItem('storePhone', storePhone);
+    localStorage.setItem('autoPrint', autoPrint.toString());
+    localStorage.setItem('showFooter', showFooter.toString());
+    localStorage.setItem('footerMessage', footerMessage);
+    localStorage.setItem('footerMessage2', footerMessage2);
+    localStorage.setItem('darkMode', darkMode.toString());
+    localStorage.setItem('lowStockAlert', lowStockAlert.toString());
+    localStorage.setItem('salesReport', salesReport.toString());
+    localStorage.setItem('bluetoothPrinterMac', bluetoothPrinterMac);
+
+    // Apply dark mode
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [storeName, storeAddress, storePhone, autoPrint, showFooter, footerMessage, footerMessage2, darkMode, lowStockAlert, salesReport, bluetoothPrinterMac]);
+
+  // Auto-save: Primary Color (HSL)
+  useEffect(() => {
+    localStorage.setItem('primaryHue', primaryHue.toString());
+    localStorage.setItem('primarySaturation', primarySaturation.toString());
+    localStorage.setItem('primaryLightness', primaryLightness.toString());
+
+    // Apply custom primary color to CSS variables
+    const root = document.documentElement;
+
+    // Main primary color
+    root.style.setProperty('--primary', `${primaryHue} ${primarySaturation}% ${primaryLightness}%`);
+    root.style.setProperty('--accent', `${primaryHue} ${primarySaturation}% ${primaryLightness}%`);
+    root.style.setProperty('--ring', `${primaryHue} ${primarySaturation}% ${primaryLightness}%`);
+    root.style.setProperty('--sidebar-primary', `${primaryHue} ${primarySaturation}% ${primaryLightness}%`);
+    root.style.setProperty('--sidebar-ring', `${primaryHue} ${primarySaturation}% ${primaryLightness}%`);
+    root.style.setProperty('--chart-1', `${primaryHue} ${primarySaturation}% ${primaryLightness}%`);
+    root.style.setProperty('--chart-5', `${primaryHue} ${Math.min(primarySaturation + 10, 100)}% ${Math.max(primaryLightness - 10, 30)}%`);
+
+    // Sidebar background - darker version of primary
+    root.style.setProperty('--sidebar', `${primaryHue} ${Math.max(primarySaturation - 40, 20)}% ${Math.max(primaryLightness - 70, 5)}%`);
+    root.style.setProperty('--sidebar-accent', `${primaryHue} ${Math.max(primarySaturation - 30, 20)}% ${Math.max(primaryLightness - 60, 10)}%`);
+
+    // For dark mode sidebar
+    root.style.setProperty('--sidebar-border', `${primaryHue} ${Math.max(primarySaturation - 50, 10)}% ${Math.max(primaryLightness - 60, 8)}%`);
+  }, [primaryHue, primarySaturation, primaryLightness]);
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    try {
+      await connectToPrinter(bluetoothPrinterMac);
+      setConnectionStatus('connected');
+      toast({ title: "Sukses", description: "Printer terhubung" });
+      setTimeout(() => {
+        disconnectPrinter();
+      }, 2000);
+    } catch {
+      setConnectionStatus('disconnected');
+      toast({ title: "Error", description: "Gagal terhubung ke printer", variant: "destructive" });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  const handleSelectBluetoothDevice = (address: string, name: string) => {
+    setBluetoothPrinterMac(address);
+    setShowDeviceList(false);
+    toast({ title: "Sukses", description: `Printer dipilih: ${name}` });
+  };
+
+  const handleScanDevices = async () => {
+    setIsScanning(true);
+    try {
+      const response = await listBluetoothDevices();
+      const devices = Array.isArray(response) ? response : response.devices || [];
+      setBluetoothDevices(devices);
+      setShowDeviceList(true);
+      toast({ title: "Sukses", description: `${devices.length} perangkat ditemukan` });
+    } catch {
+      toast({ title: "Error", description: "Gagal memindai perangkat", variant: "destructive" });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+
+
+  return (
+    <Sidebar>
+      <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900">
+        {/* Header */}
+        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+            <Settings className="w-6 h-6 text-primary animate-pulse" />
+            <span>Pengaturan</span>
+          </h1>
+        </div>
+
+        <div className="p-5 sm:p-6 flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto space-y-5">
+            {/* Profile Settings */}
+            <CollapsibleCard id="profile" title="Profil Pengguna" icon={User} description="Informasi profil dan foto Anda" isOpen={openCard === 'profile'} onToggle={toggleCard}>
+              <ProfileContent />
+            </CollapsibleCard>
+
+            {/* Store Settings */}
+            <CollapsibleCard id="store" title="Informasi Toko" icon={Store} description="Konfigurasi informasi dasar toko" isOpen={openCard === 'store'} onToggle={toggleCard}>
+              {isOutletAssigned && (
+                <div className="mb-4 text-sm text-slate-500 dark:text-slate-400 flex items-start gap-2">
+                  <div className="shrink-0 mt-0.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+                  </div>
+                  <p>Informasi toko diatur otomatis oleh Admin berdasarkan data Outlet Anda. Hubungi Admin jika ada perubahan.</p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="storeName" className="text-sm font-medium">Nama Toko</Label>
+                  <Input
+                    id="storeName"
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    placeholder="Masukkan nama toko"
+                    className="h-10"
+                    disabled={isOutletAssigned}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="storePhone" className="text-sm font-medium">Nomor Telepon</Label>
+                  <Input
+                    id="storePhone"
+                    value={storePhone}
+                    onChange={(e) => setStorePhone(e.target.value)}
+                    placeholder="Masukkan nomor telepon"
+                    className="h-10"
+                    disabled={isOutletAssigned}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="storeAddress" className="text-sm font-medium">Alamat Toko</Label>
+                <Input
+                  id="storeAddress"
+                  value={storeAddress}
+                  onChange={(e) => setStoreAddress(e.target.value)}
+                  placeholder="Masukkan alamat toko"
+                  maxLength={32}
+                  className="h-10"
+                  disabled={isOutletAssigned}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Maksimal 32 karakter untuk print 58mm
+                </p>
+              </div>
+            </CollapsibleCard>
+
+
+
+
+
+
+            {/* Printer Settings */}
+            <CollapsibleCard id="printer" title="Pengaturan Printer" icon={Printer} description="Konfigurasi printer Bluetooth" isOpen={openCard === 'printer'} onToggle={toggleCard}>
+              {/* Android Location Permission Notice */}
+              <div className="mb-5 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
+                <div className="flex items-start gap-3">
+                  <div className="text-amber-600 dark:text-amber-400 mt-0.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Izin Lokasi Diperlukan</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                      Untuk menggunakan printer Bluetooth di Android, pastikan izin lokasi telah diaktifkan.
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      Buka <strong>Pengaturan &gt; Aplikasi &gt; SBAGIAMU &gt; Izin &gt; Lokasi</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Auto Print Switch */}
+              <div className="flex items-center justify-between p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                <div>
+                  <Label className="text-sm font-medium">Auto Print Struk</Label>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Cetak otomatis saat transaksi</p>
+                </div>
+                <Switch checked={autoPrint} onCheckedChange={setAutoPrint} />
+              </div>
+
+              {/* Printer Selection */}
+              <div className="mt-5 space-y-3">
+                <Label className="text-sm font-medium">Pilih Printer</Label>
+                <div className="flex gap-3">
+                  <Input
+                    readOnly
+                    value={bluetoothPrinterMac ? bluetoothPrinterMac : 'Belum memilih printer'}
+                    className="flex-1 text-sm h-11"
+                  />
+                  <Button onClick={handleScanDevices} disabled={isScanning} variant="outline" className="h-11 px-4">
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Memindai...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-4 h-4 mr-2" />
+                        Pindai
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {showDeviceList && bluetoothDevices.length > 0 && (
+                <div className="mt-4 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Perangkat Ditemukan ({bluetoothDevices.length})
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {bluetoothDevices.map((device, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">{device.name}</p>
+                          <p className="text-xs text-slate-500 truncate">{device.address}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleSelectBluetoothDevice(device.address, device.name)}
+                          className="shrink-0 h-9 px-3"
+                        >
+                          Pilih
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={isTestingConnection || !bluetoothPrinterMac}
+                variant="outline"
+                className="w-full mt-4 h-11"
+              >
+                {isTestingConnection ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Menguji...
+                  </>
+                ) : (
+                  <>
+                    <Bluetooth className="w-4 h-4 mr-2" />
+                    Tes Koneksi
+                  </>
+                )}
+              </Button>
+
+              {connectionStatus !== 'idle' && (
+                <div className={`mt-4 flex items-center gap-3 text-sm p-4 rounded-xl ${connectionStatus === 'connected'
+                  ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-300'
+                  : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300'
+                  }`}>
+                  {connectionStatus === 'connected' ? (
+                    <>
+                      <CheckCircle className="w-5 h-5 shrink-0" />
+                      <span>Printer terhubung</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-5 h-5 shrink-0" />
+                      <span>Gagal terhubung</span>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
+                <div>
+                  <Label className="text-sm font-medium">Tampilkan Pesan Footer</Label>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Pesan di footer struk</p>
+                </div>
+                <Switch checked={showFooter} onCheckedChange={setShowFooter} />
+              </div>
+
+              {showFooter && (
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="footerMessage" className="text-sm font-medium">Pesan Footer 1</Label>
+                    <Input
+                      id="footerMessage"
+                      value={footerMessage}
+                      onChange={(e) => setFooterMessage(e.target.value)}
+                      placeholder="Masukkan pesan footer"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="footerMessage2" className="text-sm font-medium">Pesan Footer 2</Label>
+                    <Input
+                      id="footerMessage2"
+                      value={footerMessage2}
+                      onChange={(e) => setFooterMessage2(e.target.value)}
+                      placeholder="Masukkan pesan footer ke-2 (default kosong)"
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+              )}
+            </CollapsibleCard>
+
+            {/* Appearance Settings */}
+            <CollapsibleCard id="appearance" title="Tampilan" icon={Type} description="Konfigurasi tampilan aplikasi" isOpen={openCard === 'appearance'} onToggle={toggleCard}>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="fontSize" className="text-sm font-medium">Ukuran Font</Label>
+                  <Select value={fontSize} onValueChange={setFontSize}>
+                    <SelectTrigger id="fontSize" className="h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Kecil</SelectItem>
+                      <SelectItem value="medium">Sedang</SelectItem>
+                      <SelectItem value="large">Besar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                  <div>
+                    <Label className="text-sm font-medium">Dark Mode</Label>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Gunakan tema gelap</p>
+                  </div>
+                  <Switch checked={darkMode} onCheckedChange={setDarkMode} />
+                </div>
+              </div>
+
+              {/* Primary Color Customization */}
+              <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-700 space-y-5">
+                <div className="flex items-center gap-3">
+                  <Palette className="w-5 h-5 text-slate-500" />
+                  <Label className="text-sm font-medium">Warna Utama (HSL)</Label>
+                </div>
+
+                {/* Color Preview */}
+                <div className="flex items-center gap-4 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                  <div
+                    className="w-14 h-14 rounded-xl border-2 dark:border-slate-600 shadow-md"
+                    style={{ backgroundColor: `hsl(${primaryHue}, ${primarySaturation}%, ${primaryLightness}%)` }}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">hsl({primaryHue}, {primarySaturation}%, {primaryLightness}%)</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Warna aksen & tombol utama</p>
+                  </div>
+                </div>
+
+                {/* Hue Slider */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm">Hue (Warna)</Label>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">{primaryHue}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="360"
+                    value={primaryHue}
+                    onChange={(e) => setPrimaryHue(parseInt(e.target.value))}
+                    className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right,
+                          hsl(0, ${primarySaturation}%, ${primaryLightness}%),
+                          hsl(60, ${primarySaturation}%, ${primaryLightness}%),
+                          hsl(120, ${primarySaturation}%, ${primaryLightness}%),
+                          hsl(180, ${primarySaturation}%, ${primaryLightness}%),
+                          hsl(240, ${primarySaturation}%, ${primaryLightness}%),
+                          hsl(300, ${primarySaturation}%, ${primaryLightness}%),
+                          hsl(360, ${primarySaturation}%, ${primaryLightness}%))`
+                    }}
+                  />
+                </div>
+
+                {/* Saturation Slider */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm">Saturation (Kekayaan)</Label>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">{primarySaturation}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={primarySaturation}
+                    onChange={(e) => setPrimarySaturation(parseInt(e.target.value))}
+                    className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right,
+                          hsl(${primaryHue}, 0%, ${primaryLightness}%),
+                          hsl(${primaryHue}, 100%, ${primaryLightness}%))`
+                    }}
+                  />
+                </div>
+
+                {/* Lightness Slider */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm">Lightness (Kecerahan)</Label>
+                    <span className="text-sm text-slate-500 dark:text-slate-400">{primaryLightness}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="90"
+                    value={primaryLightness}
+                    onChange={(e) => setPrimaryLightness(parseInt(e.target.value))}
+                    className="w-full h-2 rounded-lg appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right,
+                          hsl(${primaryHue}, ${primarySaturation}%, 10%),
+                          hsl(${primaryHue}, ${primarySaturation}%, 50%),
+                          hsl(${primaryHue}, ${primarySaturation}%, 90%))`
+                    }}
+                  />
+                </div>
+
+                {/* Quick Presets */}
+                <div className="pt-3 space-y-3">
+                  <Label className="text-sm">Preset Cepat</Label>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(200); setPrimarySaturation(100); setPrimaryLightness(22); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform ring-2 ring-primary"
+                      style={{ backgroundColor: 'hsl(200, 100%, 22%)' }}
+                      title="Blue (Default)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(35); setPrimarySaturation(100); setPrimaryLightness(45); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform"
+                      style={{ backgroundColor: 'hsl(35, 100%, 45%)' }}
+                      title="Orange/Amber"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(230); setPrimarySaturation(85); setPrimaryLightness(55); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform"
+                      style={{ backgroundColor: 'hsl(230, 85%, 55%)' }}
+                      title="Blue"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(142); setPrimarySaturation(76); setPrimaryLightness(49); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform"
+                      style={{ backgroundColor: 'hsl(142, 76%, 49%)' }}
+                      title="Green"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(340); setPrimarySaturation(75); setPrimaryLightness(55); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform"
+                      style={{ backgroundColor: 'hsl(340, 75%, 55%)' }}
+                      title="Pink/Magenta"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(280); setPrimarySaturation(85); setPrimaryLightness(60); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform"
+                      style={{ backgroundColor: 'hsl(280, 85%, 60%)' }}
+                      title="Purple"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setPrimaryHue(0); setPrimarySaturation(72); setPrimaryLightness(51); }}
+                      className="w-10 h-10 rounded-full border-2 dark:border-slate-600 shadow-sm hover:scale-110 transition-transform"
+                      style={{ backgroundColor: 'hsl(0, 72%, 51%)' }}
+                      title="Red"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleCard>
+
+            {/* Notification Settings */}
+            <CollapsibleCard id="notifications" title="Notifikasi" icon={Bell} description="Konfigurasi notifikasi sistem" isOpen={openCard === 'notifications'} onToggle={toggleCard}>
+              <div className="flex items-center justify-between p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                <div>
+                  <Label className="text-sm font-medium">Low Stock Alert</Label>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Notifikasi stok menipis</p>
+                </div>
+                <Switch checked={lowStockAlert} onCheckedChange={setLowStockAlert} />
+              </div>
+              <div className="flex items-center justify-between mt-4 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                <div>
+                  <Label className="text-sm font-medium">Sales Report</Label>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Notifikasi laporan penjualan</p>
+                </div>
+                <Switch checked={salesReport} onCheckedChange={setSalesReport} />
+              </div>
+            </CollapsibleCard>
+
+            {/* About System */}
+            <CollapsibleCard id="about" title="Tentang System" icon={Info} description="Informasi aplikasi dan pengembang" isOpen={openCard === 'about'} onToggle={toggleCard}>
+              <div className="space-y-5">
+                {/* App Info */}
+                <div className="flex items-center gap-4 p-5 bg-gradient-to-r from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-xl">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">SBAGIAMU POS</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Point of Sale System</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Versi 1.0.0</p>
+                  </div>
+                  <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center p-2 animate-logo-ring">
+                    <img
+                      src="/logo-login.png"
+                      alt="Logo"
+                      className="w-12 h-12 object-contain"
+                    />
+                  </div>
+                </div>
+
+                {/* Developer Info */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wide">Informasi Pengembang</h4>
+
+                  <div className="space-y-3">
+                    {/* Developer */}
+                    <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                      <div className="w-10 h-10 bg-transparent flex items-center justify-center">
+                        <img src="/hacker.png" alt="Pengembang" className="w-full h-full object-contain" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Pengembang</p>
+                        <p className="font-medium text-slate-900 dark:text-white">EL Project Development</p>
+                      </div>
+                    </div>
+
+                    {/* Contact */}
+                    <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                      <div className="w-10 h-10 bg-transparent flex items-center justify-center">
+                        <img src="/whatsapp.png" alt="Kontak" className="w-full h-full object-contain" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Nomor Telepon</p>
+                        <p className="font-medium text-slate-900 dark:text-white">083867180887</p>
+                      </div>
+                      <a
+                        href="https://wa.me/6283867180887"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 rounded-full flex items-center justify-center transition-colors"
+                        title="Hubungi via WhatsApp"
+                      >
+                        <ExternalLink className="w-5 h-5" />
+                      </a>
+                    </div>
+
+                    {/* Email */}
+                    <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
+                      <div className="w-10 h-10 bg-transparent flex items-center justify-center">
+                        <img src="/email.png" alt="Email" className="w-full h-full object-contain" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Email</p>
+                        <p className="font-medium text-slate-900 dark:text-white truncate">elproject.dev@gmail.com</p>
+                      </div>
+                      <a
+                        href="mailto:elproject.dev@gmail.com"
+                        className="w-10 h-10 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+                        title="Kirim Email"
+                      >
+                        <ExternalLink className="w-5 h-5" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="text-center pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    &copy; {new Date().getFullYear()} EL Project Development. All rights reserved.
+                  </p>
+                </div>
+              </div>
+            </CollapsibleCard>
+          </div>
+        </div>
+      </div>
+    </Sidebar>
+  );
+}

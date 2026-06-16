@@ -1,0 +1,2 @@
+-- DEPRECATED: Login tidak lagi memakai tabel staff.
+-- Gunakan migration-setup-admin-auth.sql (Supabase Auth saja).
