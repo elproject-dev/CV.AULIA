@@ -234,14 +234,17 @@ export const useGetTopProducts = (params?: any) => {
 
       const transactionIds = (transactions || []).map((t: any) => t.id);
 
+      if (transactionIds.length === 0) {
+        setData([]);
+        setIsLoading(false);
+        return;
+      }
+
       // Get transaction items for these transactions
       let itemsQuery = supabase
         .from('transaction_items')
-        .select('product_id, product_name, quantity, subtotal');
-
-      if (transactionIds.length > 0) {
-        itemsQuery = itemsQuery.in('transaction_id', transactionIds);
-      }
+        .select('product_id, product_name, quantity, subtotal')
+        .in('transaction_id', transactionIds);
 
       const { data: items, error } = await itemsQuery;
 

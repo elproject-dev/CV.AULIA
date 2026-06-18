@@ -41,38 +41,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active) return;
         if (sessionUser) {
           // Fetch user details from staff table
-          const { data } = await supabase.from('staff').select('name, role, outlet_id, avatar_url').ilike('email', sessionUser.email).single();
-          if (data) {
-            if (data.name) {
-              sessionUser.name = data.name;
+          const { data } = await supabase.from('staff').select('*').ilike('email', sessionUser.email).single();
+          
+          // Force admin role for root email
+          if (sessionUser.email === 'sbagiamu.pos@gmail.com') {
+             sessionUser.role = 'admin';
+             if (data) {
+                if (data.name) sessionUser.name = data.name;
+                if (data.avatar_url) sessionUser.avatarUrl = data.avatar_url;
+             }
+             saveSession(sessionUser);
+          } else if (data) {
+            // Check if user is inactive
+            if (data.status === 'inactive') {
+               await logoutAuth();
+               setUser(null);
+               return;
             }
-            if (data.role) {
-              sessionUser.role = data.role as any;
+
+            // Sync with staff table
+            if ('owner_id' in data && !data.owner_id) {
+              await supabase.from('staff').update({ owner_id: sessionUser.id }).eq('id', data.id);
             }
-            if (sessionUser.email === 'sbagiamu.pos@gmail.com') {
-              sessionUser.role = 'admin';
-            }
-            if (data.avatar_url) {
-              sessionUser.avatarUrl = data.avatar_url;
-            }
-            saveSession(sessionUser);
-            // Set outletId for both Kasir and Admin if they have an assigned outlet
+            if (data.name) sessionUser.name = data.name;
+            if (data.role) sessionUser.role = data.role as any;
+            if (data.avatar_url) sessionUser.avatarUrl = data.avatar_url;
+            
             if (data.outlet_id) {
               const outletIdStr = data.outlet_id.toString();
               sessionUser.outletId = outletIdStr;
-              saveSession(sessionUser);
               localStorage.setItem('selectedOutletId', outletIdStr);
-              window.dispatchEvent(new Event('outletChanged'));
             }
-          } else if (sessionUser.email === 'sbagiamu.pos@gmail.com') {
-             sessionUser.role = 'admin';
-             saveSession(sessionUser);
+            saveSession(sessionUser);
           } else {
-             // If not found in staff table and not root admin, default to kasir for safety
-             sessionUser.role = 'kasir';
-             saveSession(sessionUser);
+             // USER WAS DELETED FROM STAFF TABLE
+             // Automatically log out if not the root admin and not found in staff table
+             await logoutAuth();
+             setUser(null);
+             return;
           }
-        await initTenantSupport();
+          
+          window.dispatchEvent(new Event('outletChanged'));
+          await initTenantSupport();
         }
         setUser(sessionUser);
       })
@@ -157,36 +167,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authUser = await loginWithSupabase(email, password);
       
       // Fetch user details from staff table
-      const { data } = await supabase.from('staff').select('name, role, outlet_id, avatar_url').ilike('email', authUser.email).single();
-      if (data) {
-        if (data.name) {
-          authUser.name = data.name;
+      const { data } = await supabase.from('staff').select('*').ilike('email', authUser.email).single();
+      
+      // Force admin role for root email
+      if (authUser.email === 'sbagiamu.pos@gmail.com') {
+         authUser.role = 'admin';
+         if (data) {
+           if (data.name) authUser.name = data.name;
+           if (data.avatar_url) authUser.avatarUrl = data.avatar_url;
+         }
+         saveSession(authUser);
+      } else if (data) {
+        // Check if user is inactive
+        if (data.status === 'inactive') {
+          await logoutAuth();
+          throw new Error("Akun Anda telah dinonaktifkan. Silakan hubungi admin.");
         }
-        if (data.role) {
-          authUser.role = data.role as any;
+
+        if ('owner_id' in data && !data.owner_id) {
+          await supabase.from('staff').update({ owner_id: authUser.id }).eq('id', data.id);
         }
-        if (authUser.email === 'sbagiamu.pos@gmail.com') {
-          authUser.role = 'admin';
-        }
-        if (data.avatar_url) {
-          authUser.avatarUrl = data.avatar_url;
-        }
-        saveSession(authUser);
-        // Set outletId for both Kasir and Admin if they have an assigned outlet
+        if (data.name) authUser.name = data.name;
+        if (data.role) authUser.role = data.role as any;
+        if (data.avatar_url) authUser.avatarUrl = data.avatar_url;
+        
         if (data.outlet_id) {
           const outletIdStr = data.outlet_id.toString();
           authUser.outletId = outletIdStr;
-          saveSession(authUser);
           localStorage.setItem('selectedOutletId', outletIdStr);
-          window.dispatchEvent(new Event('outletChanged'));
         }
-      } else if (authUser.email === 'sbagiamu.pos@gmail.com') {
-         authUser.role = 'admin';
-         saveSession(authUser);
+        saveSession(authUser);
       } else {
-         // If not found in staff table and not root admin, default to kasir for safety
-         authUser.role = 'kasir';
-         saveSession(authUser);
+         // USER NOT FOUND IN STAFF TABLE (WAS DELETED)
+         await logoutAuth();
+         throw new Error("Akun Anda tidak ditemukan di sistem staff.");
       }
 
       await initTenantSupport();

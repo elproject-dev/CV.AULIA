@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { CalendarIcon, CalendarRange, SlidersHorizontal, Clock } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -37,9 +37,34 @@ export default function DashboardPage() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Polling aktif untuk Android WebView karena navigator.onLine bisa bernilai true jika terhubung ke WiFi tanpa internet
+    const interval = setInterval(async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setIsOnline(false);
+        return;
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 detik timeout
+
+        // Gunakan mode no-cors agar tidak terblokir CORS, dan tambahkan timestamp agar tidak di-cache oleh browser/ServiceWorker
+        await fetch('https://www.google.com/favicon.ico?t=' + new Date().getTime(), {
+          mode: 'no-cors',
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        setIsOnline(true);
+      } catch (error) {
+        setIsOnline(false);
+      }
+    }, 3000);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
     };
   }, []);
 
@@ -251,7 +276,7 @@ export default function DashboardPage() {
           <div className="shrink-0 flex items-center gap-2 sm:gap-3">
             <Popover open={isDateFilterOpen} onOpenChange={setIsDateFilterOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="shrink-0 w-10 h-10 sm:w-auto sm:h-12 rounded-full p-0 sm:px-4 border-2 flex items-center justify-center sm:gap-2">
+                <Button variant="outline" className="bg-white dark:bg-slate-800 dark:border-slate-700 shrink-0 w-10 h-10 sm:w-auto sm:h-12 rounded-full p-0 sm:px-4 border-2 flex items-center justify-center sm:gap-2 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                   <SlidersHorizontal className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                   <span className="hidden sm:inline font-medium">Filter</span>
                 </Button>
@@ -456,7 +481,7 @@ export default function DashboardPage() {
         {/* Revenue Chart */}
         <Card className="mb-6 shadow-lg border-0 bg-white">
           <CardHeader className="pb-2 px-4 pt-4">
-            <CardTitle className="flex items-center gap-2 text-slate-800 text-base sm:text-lg">
+            <CardTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100 text-base sm:text-lg">
               <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
               <span className="hidden sm:inline">Grafik Pendapatan Harian</span>
               <span className="sm:hidden">Pendapatan</span>
@@ -480,7 +505,7 @@ export default function DashboardPage() {
                         <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={1} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+
                     <XAxis
                       dataKey="date"
                       tickFormatter={(dateStr) => {
@@ -547,16 +572,16 @@ export default function DashboardPage() {
                 </CardTitle>
                 {topProducts && topProducts.length > 0 && (
                   <Badge variant="secondary" className="bg-amber-50 text-amber-600 text-[10px] px-2 font-normal">
-                    Top 20
+                    Top 5
                   </Badge>
                 )}
               </div>
             </CardHeader>
             <CardContent className="pt-0 px-4 pb-4">
               {topProducts && topProducts.length > 0 ? (
-                <div className="space-y-2 mt-2 overflow-y-auto max-h-[430px] pr-2 scrollbar-slim">
+                <div className="space-y-2 mt-2">
                   {(() => {
-                    const topList = topProducts.slice(0, 20);
+                    const topList = topProducts.slice(0, 5);
                     const maxSold = topList[0]?.totalSold || 1;
 
                     return topList.map((product, i) => {
@@ -625,9 +650,9 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="pt-0 px-4 pb-4">
               {recentTransactions && recentTransactions.length > 0 ? (
-                <div className="space-y-2 mt-2 overflow-y-auto max-h-[430px] pr-2 scrollbar-slim">
+                <div className="space-y-2 mt-2">
                   {(() => {
-                    const topList = recentTransactions.slice(0, 20);
+                    const topList = recentTransactions.slice(0, 5);
                     const maxTotal = topList.reduce((max, trx) => Math.max(max, trx.total), 1);
 
                     return topList.map((trx, i) => {
@@ -1181,7 +1206,7 @@ export default function DashboardPage() {
                     <CardHeader className="pb-3 px-4 pt-4">
                       <div className="flex justify-between items-center">
                         <CardTitle className="text-slate-700 dark:text-slate-200 text-sm sm:text-base font-medium flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-slate-400" /> Jam Sibuk Pembelian (Rata-rata)
+                          <Clock className="w-4 h-4 text-slate-400" /> Jam Sibuk Transaksi (Rata-rata)
                         </CardTitle>
                         <Popover open={isHourlyFilterOpen} onOpenChange={setIsHourlyFilterOpen}>
                           <PopoverTrigger asChild>

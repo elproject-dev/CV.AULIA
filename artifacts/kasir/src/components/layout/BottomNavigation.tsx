@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, CircleDollarSign, Tag, Wallet, User, UserCog } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, CircleDollarSign, Tag, Wallet, User, UserCog, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,15 +37,15 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
   const mainLinks = useMemo(() => {
     if (isAdmin) {
       return [
-        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/", label: "Dashboard", icon: LayoutDashboard },
         { href: "/customers", label: "Pelanggan", icon: Users },
         { href: "/products", label: "Produk", icon: Package },
         { href: "/transactions", label: "Riwayat", icon: History },
       ];
     }
     return [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/", label: "Kasir", icon: Calculator },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/pos", label: "Kasir", icon: Calculator },
       { href: "/products", label: "Produk", icon: Package },
       { href: "/transactions", label: "Riwayat", icon: History },
     ];
@@ -66,7 +66,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
       { href: "/staff", label: "Staff", icon: UserCog },
       { href: "/expenses", label: "Pengeluaran", icon: Wallet },
       { href: "/points-settings", label: "Poin", icon: CircleDollarSign },
-      { href: "/discount-settings", label: "Diskon", icon: Tag },
+      { href: "/promo", label: "Promo", icon: Megaphone },
       { href: "/settings", label: "Pengaturan", icon: Settings },
     ];
   }, [isAdmin]);
@@ -104,7 +104,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
               >
                 <div className="relative">
                   <Icon className={cn("w-5 h-5 mb-1", isActive ? "text-primary dark:text-primary-400" : "text-slate-400 dark:text-slate-500")} />
-                  {link.href === "/" && cartCount > 0 && (
+                  {link.href === "/pos" && cartCount > 0 && (
                     <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
                   )}
                 </div>

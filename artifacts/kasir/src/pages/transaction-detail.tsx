@@ -17,6 +17,10 @@ import {
   getBluetoothPrinterMac,
   isBluetoothAvailable
 } from "@/lib/bluetooth-printer";
+import {
+  showPrinterNotConnectedNotification,
+  showPrintSuccessNotification
+} from "@/lib/android-notifications";
 
 const getPointsSettingsForUser = (user: any) => {
   const outletId = user?.outletId || "all";
@@ -72,21 +76,15 @@ export default function TransactionDetailPage() {
     if (!trx) return;
 
     if (!isBluetoothAvailable()) {
-      toast({
-        title: "Error",
-        description: "Plugin Bluetooth tidak tersedia. Pastikan aplikasi sudah ter-build dengan benar dan Cordova plugin sudah diinstall",
-        variant: "destructive"
-      });
+      console.error('Bluetooth plugin not available');
+      void showPrinterNotConnectedNotification('Plugin Bluetooth tidak tersedia di perangkat ini.');
       return;
     }
 
     const printerMac = getBluetoothPrinterMac();
     if (!printerMac) {
-      toast({
-        title: "Error",
-        description: "Alamat MAC printer belum diatur di pengaturan",
-        variant: "destructive"
-      });
+      console.error('Printer MAC not set');
+      void showPrinterNotConnectedNotification('Alamat MAC printer belum diatur di pengaturan.');
       return;
     }
 
@@ -108,6 +106,8 @@ export default function TransactionDetailPage() {
         ? Math.max(0, (trx.customers?.points || 0))
         : 0;
 
+      const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0) - pointsDiscount;
+
       const showFooter = localStorage.getItem('showFooter') !== 'false';
       const printData = {
         ...trx,
@@ -124,21 +124,23 @@ export default function TransactionDetailPage() {
         pointsValue,
         customerName: receiptCustomerName,
         customerType: trx.customer_type || (isMemberTransaction ? "member" : "regular"),
+        total: total,
+        amountPaid: trx.amount_paid || 0,
+        change: trx.change || 0,
+        paymentMethod: trx.payment_method || 'cash',
         storeName: localStorage.getItem('storeName') || 'SBAGIAMU',
         storeAddress: localStorage.getItem('storeAddress') || '',
         storePhone: localStorage.getItem('storePhone') || '',
         footerMessage: showFooter ? (localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
         footerMessage2: showFooter ? (localStorage.getItem('footerMessage2') || '') : '',
+        footerMessage3: showFooter ? (localStorage.getItem('footerMessage3') || '') : '',
       };
 
       console.log('Connecting to printer...', printerMac);
       const connectionResult = await connectToPrinter(printerMac);
       if (!connectionResult.success) {
-        toast({
-          title: "Error Koneksi",
-          description: connectionResult.message,
-          variant: "destructive"
-        });
+        console.error('Connection failed:', connectionResult.message);
+        void showPrinterNotConnectedNotification(connectionResult.message);
         return;
       }
 
@@ -146,28 +148,26 @@ export default function TransactionDetailPage() {
       console.log('Printing receipt...', printData);
       
       const printed = await printReceipt(printData);
-      if (printed) {
-        toast({
-          title: "Sukses",
-          description: "Struk berhasil dicetak",
-        });
+      if (!printed) {
+        console.error('Print failed');
+        void showPrinterNotConnectedNotification('Gagal mencetak struk. Pastikan printer menyala dan terhubung.');
       } else {
-        toast({
-          title: "Error",
-          description: "Gagal mencetak struk. Pastikan printer menyala dan terhubung.",
-          variant: "destructive"
-        });
+        const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0) - pointsDiscount;
+        void showPrintSuccessNotification(total, formatInvoiceNumber(trx.id));
       }
 
       await new Promise(resolve => setTimeout(resolve, 1000));
       await disconnectPrinter();
     } catch (error) {
       console.error('Print error:', error);
-      toast({
-        title: "Error",
-        description: "Terjadi kesalahan saat mencetak",
-        variant: "destructive"
-      });
+      void showPrinterNotConnectedNotification(
+        error instanceof Error ? error.message : 'Terjadi kesalahan saat mencetak struk.'
+      );
+      try {
+        await disconnectPrinter();
+      } catch (disconnectError) {
+        console.error('Error during disconnect:', disconnectError);
+      }
     } finally {
       setIsPrinting(false);
     }

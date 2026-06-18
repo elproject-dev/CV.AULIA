@@ -50,14 +50,15 @@ export function getTenantOwnerId(): string | null {
   return loadSession()?.id ?? null;
 }
 
-/** Cek apakah user adalah admin super (hanya sbagiamu.pos@gmail.com)
+/** Cek apakah user adalah admin super (hanya sbagiamu.pos@gmail.com) atau memiliki role admin
  * Admin super bisa lihat semua data
  * User lain hanya bisa lihat data miliknya sendiri */
 export function isTenantSuperAdmin(): boolean {
   const user = loadSession();
   if (!user) return false;
-  const userEmail = user.email?.toLowerCase() || "";
-  return userEmail === ADMIN_EMAIL.toLowerCase();
+  const userEmail = (user.email || "").toLowerCase();
+  const userRole = (user.role || "").toLowerCase();
+  return userEmail === (ADMIN_EMAIL || "").toLowerCase() || userRole === "admin" || userRole === "developer";
 }
 
 /** Tabel yang datanya dipisahkan per kasir (transactions, transaction_items, expenses) */

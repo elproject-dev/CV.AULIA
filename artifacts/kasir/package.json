@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
+    "cap:android": "node scripts/copy-notification-sound.mjs && npx cap sync android",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate:transactions": "node scripts/apply-transaction-migration.mjs"
@@ -77,8 +78,13 @@
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
     "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/share": "^8.0.1",
     "@supabase/supabase-js": "^2.107.0",
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "cordova-plugin-bluetooth-serial": "^0.4.7",
     "xlsx-js-style": "^1.2.0"
   }

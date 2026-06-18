@@ -3,6 +3,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { formatInvoiceNumber } from './formatters';
+import { isTauri } from './tauri-file';
 
 interface PrinterDevice {
   macAddress: string;
@@ -11,11 +12,9 @@ interface PrinterDevice {
 
 let printerDevice: PrinterDevice | null = null;
 let bluetoothReady = false;
-let bluetoothPermissionGranted = false;
 
-// Helper untuk mendapatkan BluetoothSerial plugin
+// Helper untuk mendapatkan BluetoothSerial plugin (Capacitor)
 function getBluetoothSerial(): any {
-  // Access via window.bluetoothSerial (lowercase 'b') - seperti di project SrawungKopi
   return (window as any)?.bluetoothSerial ?? null;
 }
 
@@ -24,7 +23,7 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ESC/POS Commands untuk thermal printer
+// ESC/POS Commands (tetap sama)
 const ESC = '\x1B';
 const GS = '\x1D';
 
@@ -53,11 +52,16 @@ const ESC_POS = {
   BARCODE_PRINT: `${GS}k`,
 };
 
-// Inisialisasi Bluetooth dan minta permissions
+// Inisialisasi Bluetooth
 export async function initializeBluetooth(): Promise<{ success: boolean; message: string }> {
+  if (isTauri()) {
+    bluetoothReady = true;
+    return { success: true, message: 'Bluetooth siap (Tauri Desktop)' };
+  }
+
   try {
     const BT = getBluetoothSerial();
-    
+
     if (!BT) {
       if (Capacitor.isNativePlatform()) {
         console.warn('BluetoothSerial plugin tidak tersedia di perangkat native');
@@ -66,249 +70,151 @@ export async function initializeBluetooth(): Promise<{ success: boolean; message
         success: false,
         message: Capacitor.isNativePlatform()
           ? 'BluetoothSerial plugin tidak ditemukan. Pastikan plugin cordova-plugin-bluetooth-serial sudah diinstall.'
-          : 'Bluetooth hanya tersedia di aplikasi Android.',
+          : 'Bluetooth hanya tersedia di aplikasi Android atau Desktop.',
       };
     }
 
-    console.log('BluetoothSerial plugin ditemukan');
-
-    // Enable Bluetooth (plugin ini tidak punya requestPermission method)
+    // Enable Bluetooth (Capacitor)
     try {
-      console.log('Enabling Bluetooth...');
-      await new Promise<void>((resolve) => {
-        BT.enable(
-          () => {
-            console.log('Bluetooth enabled successfully');
+      if (typeof BT.enable === 'function') {
+        await new Promise<void>((resolve) => {
+          BT.enable(() => resolve(), (error: any) => {
+            console.warn('Enable Bluetooth warning:', error);
             resolve();
-          },
-          (error: any) => {
-            console.warn('Enable Bluetooth warning (mungkin sudah aktif):', error);
-            resolve(); // Lanjut meski ada error, mungkin sudah aktif
-          }
-        );
-      });
+          });
+        });
+      }
     } catch (enableError) {
       console.warn('Error enabling Bluetooth:', enableError);
-      return {
-        success: false,
-        message: 'Gagal mengaktifkan Bluetooth. Pastikan Bluetooth didukung perangkat.'
-      };
     }
 
     bluetoothReady = true;
-    console.log('Bluetooth initialization successful');
-    return {
-      success: true,
-      message: 'Bluetooth siap digunakan'
-    };
+    return { success: true, message: 'Bluetooth siap digunakan' };
   } catch (error: any) {
     console.error('Bluetooth initialization error:', error);
-    return {
-      success: false,
-      message: error?.message || 'Gagal menginisialisasi Bluetooth'
-    };
+    return { success: false, message: error?.message || 'Gagal menginisialisasi Bluetooth' };
   }
 }
 
-// Hubungkan ke printer Bluetooth
+// Hubungkan ke printer
 export async function connectToPrinter(macAddress: string): Promise<{ success: boolean; message: string }> {
+  if (!macAddress) return { success: false, message: 'MAC Address tidak valid.' };
+
+  if (isTauri()) {
+    printerDevice = { macAddress, connected: true };
+    return { success: true, message: 'Printer siap (Tauri Desktop)' };
+  }
+
   try {
     const BT = getBluetoothSerial();
-    
-    if (!BT) {
-      return {
-        success: false,
-        message: 'BluetoothSerial plugin tidak tersedia.'
-      };
-    }
+    if (!BT) return { success: false, message: 'Bluetooth plugin tidak tersedia.' };
 
-    console.log(`Attempting to connect to printer: ${macAddress}`);
+    if (!bluetoothReady) await initializeBluetooth();
 
-    // Ensure Bluetooth is initialized
-    if (!bluetoothReady) {
-      console.log('Bluetooth not ready, initializing...');
-      const initResult = await initializeBluetooth();
-      if (!initResult.success) {
-        return initResult;
-      }
-    }
-
-    // Cek apakah sudah terhubung ke perangkat yang sama
     if (printerDevice?.connected && printerDevice.macAddress === macAddress) {
-      console.log('Already connected to same printer');
-      return {
-        success: true,
-        message: 'Sudah terhubung ke printer'
-      };
+      return { success: true, message: 'Sudah terhubung ke printer' };
     }
 
-    // Disconnect dari perangkat lama jika ada
-    if (printerDevice?.connected) {
-      console.log('Disconnecting from previous device...');
-      await disconnectPrinter();
-      await delay(500); // Wait sebelum connect yang baru
-    }
+    if (printerDevice?.connected) await disconnectPrinter();
 
-    // List devices untuk verifikasi
+    // List devices (Capacitor)
     try {
-      console.log('Listing paired Bluetooth devices...');
       const devices = await new Promise<any[]>((resolve, reject) => {
-        BT.list(
-          (devices: any[]) => resolve(devices || []),
-          (error: any) => {
-            console.warn('Error listing devices:', error);
-            reject(error);
-          }
-        );
+        BT.list((devices: any[]) => resolve(devices || []), (e: any) => reject(e));
       });
-      
-      console.log('Devices found:', devices);
-      
-      // Cek apakah MAC address ada di list
-      const deviceExists = devices.some((device: any) => {
-        const deviceMac = (device.address || device.id || '').toLowerCase();
-        const searchMac = macAddress.toLowerCase();
-        const matches = deviceMac === searchMac;
-        if (matches) {
-          console.log(`Device found: ${device.name} (${deviceMac})`);
-        }
-        return matches;
-      });
-      
-      if (!deviceExists) {
-        return {
-          success: false,
-          message: `Printer dengan MAC ${macAddress} tidak ditemukan dalam daftar paired devices. Pastikan printer sudah dipairing di Bluetooth settings Android.`
-        };
-      }
-    } catch (listError) {
-      console.warn('Warning: Could not verify device in list, attempting connection anyway:', listError);
-      // Lanjutkan meski list gagal, mungkin permissions issue
-    }
 
-    // Hubungkan ke perangkat dengan MAC address
-    console.log(`Connecting to ${macAddress}...`);
-    await new Promise<void>((resolve, reject) => {
-      BT.connect(
-        macAddress,
-        () => {
-          console.log(`Successfully connected to ${macAddress}`);
-          resolve();
-        },
-        (error: any) => {
-          console.error('Connection failed:', error);
-          reject(new Error(error?.message || String(error) || 'Gagal terhubung ke perangkat'));
-        }
+      const matchedDevice = devices.find((device: any) => 
+        (device.address || device.id || '').toLowerCase() === macAddress.toLowerCase()
       );
+
+      if (!matchedDevice) {
+        return { success: false, message: 'Printer tidak ditemukan dalam daftar paired devices.' };
+      }
+    } catch (e) { console.warn('List failed, trying anyway'); }
+
+    // Connect (Capacitor)
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('TIMEOUT')), 10000);
+      BT.connect(macAddress, () => {
+        clearTimeout(timeout);
+        resolve();
+      }, (e: any) => {
+        clearTimeout(timeout);
+        reject(new Error(String(e)));
+      });
     });
 
-    printerDevice = {
-      macAddress,
-      connected: true,
-    };
-
-    console.log('Printer connection established:', macAddress);
-    return {
-      success: true,
-      message: 'Berhasil terhubung ke printer'
-    };
+    printerDevice = { macAddress, connected: true };
+    return { success: true, message: 'Berhasil terhubung ke printer' };
   } catch (error: any) {
     console.error('Connection error:', error);
     printerDevice = null;
-    
-    const errorMsg = error?.message || String(error) || 'Unknown error';
-    return {
-      success: false,
-      message: `Gagal terhubung ke printer: ${errorMsg}`
-    };
+    return { success: false, message: `Gagal terhubung: ${error?.message || String(error)}` };
   }
 }
 
-// Putuskan koneksi printer
+// Putuskan koneksi
 export async function disconnectPrinter(): Promise<void> {
+  if (isTauri()) {
+    printerDevice = null;
+    return;
+  }
+
   try {
     const BT = getBluetoothSerial();
-    
-    if (!BT) {
-      console.warn('BluetoothSerial not available for disconnect');
-      printerDevice = null;
-      return;
-    }
-
-    if (printerDevice?.connected) {
-      console.log('Disconnecting from printer...');
-      await new Promise<void>((resolve, reject) => {
-        BT.disconnect(
-          () => {
-            console.log('Printer disconnected');
-            resolve();
-          },
-          (error: any) => {
-            console.warn('Disconnect error:', error);
-            reject(error);
-          }
-        );
+    if (BT && printerDevice?.connected) {
+      await new Promise<void>((resolve) => {
+        BT.disconnect(() => resolve(), () => resolve());
       });
     }
-    printerDevice = null;
-  } catch (error) {
-    console.error('Error during disconnect:', error);
-    printerDevice = null;
-  }
+  } catch (e) { console.error('Disconnect error:', e); }
+  printerDevice = null;
 }
 
-// Cetak data mentah ke printer
+// Cetak data mentah
 async function printRaw(data: string): Promise<boolean> {
-  console.log('printRaw called, printer connected:', printerDevice?.connected);
-  
   if (!printerDevice?.connected) {
     console.error('Printer tidak terhubung');
     return false;
   }
 
-  try {
-    const BT = getBluetoothSerial();
-    
-    if (!BT) {
-      console.error('BluetoothSerial tidak tersedia');
+  // Konversi string ke array bytes
+  const bytes = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) {
+    bytes[i] = data.charCodeAt(i);
+  }
+
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('print_bluetooth_data', { 
+        address: printerDevice.macAddress, 
+        data: Array.from(bytes) 
+      });
+      return true;
+    } catch (error) {
+      console.error('Tauri print error:', error);
       return false;
     }
+  }
 
-    // Konversi string ke array bytes
-    const bytes: number[] = [];
-    for (let i = 0; i < data.length; i++) {
-      bytes.push(data.charCodeAt(i));
-    }
+  try {
+    const BT = getBluetoothSerial();
+    if (!BT) return false;
 
-    console.log(`Sending ${bytes.length} bytes to printer...`);
-    console.log('Data length:', data.length);
-    console.log('First 100 chars:', data.substring(0, 100));
-
-    // Kirim data ke printer
     await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        console.error('Write timeout after 10 seconds');
-        reject(new Error('Write timeout'));
-      }, 10000);
-
-      BT.write(
-        bytes,
-        () => {
-          clearTimeout(timeout);
-          console.log('Data sent to printer successfully');
-          resolve();
-        },
-        (error: any) => {
-          clearTimeout(timeout);
-          console.error('Write error:', error);
-          reject(new Error(error?.message || String(error) || 'Write failed'));
-        }
-      );
+      const timeout = setTimeout(() => reject(new Error('TIMEOUT')), 10000);
+      BT.write(Array.from(bytes), () => {
+        clearTimeout(timeout);
+        resolve();
+      }, (e: any) => {
+        clearTimeout(timeout);
+        reject(new Error(String(e)));
+      });
     });
-
     return true;
   } catch (error) {
-    console.error('Error sending data to printer:', error);
+    console.error('Print error:', error);
     return false;
   }
 }
@@ -345,6 +251,7 @@ export function formatReceipt(transaction: any): string {
     pointsValue = 1000,
     footerMessage = 'terima kasih sudah berbelanja',
     footerMessage2 = '',
+    footerMessage3 = '',
     createdAt,
   } = transaction || {};
 
@@ -423,7 +330,7 @@ export function formatReceipt(transaction: any): string {
   }
 
   if (pointsDiscount > 0) {
-    receipt += formatLine(`poin digunakan -${pointsRedeemed}`, formatPrice(pointsDiscount)) + '\n';
+    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsDiscount)) + '\n';
   }
 
   receipt += ESC_POS.BOLD_ON;
@@ -437,11 +344,11 @@ export function formatReceipt(transaction: any): string {
     receipt += formatLine('Kembali', formatPrice(change)) + '\n';
   }
 
-  receipt += formatLine('metode', getPaymentMethodLabel(paymentMethod)) + '\n';
+  receipt += formatLine('Metode Pembayaran', getPaymentMethodLabel(paymentMethod)) + '\n';
 
   // Poin yang didapat (untuk member)
-  if (customerType === 'member') {
-    receipt += formatLine('poin', `+${earnedPoints || 0}`) + '\n';
+  if (customerType === 'member' && earnedPoints > 0) {
+    receipt += formatLine('Poin', `+${earnedPoints}`) + '\n';
   }
 
   receipt += `${SEPARATOR}\n`;
@@ -455,24 +362,15 @@ export function formatReceipt(transaction: any): string {
   if (footerMessage2) {
     receipt += `${footerMessage2}\n`;
   }
+  if (footerMessage3) {
+    receipt += `${footerMessage3}\n`;
+  }
   receipt += ESC_POS.FEED_3_LINES;
 
   // Potong kertas
   receipt += ESC_POS.PARTIAL_CUT;
 
   return receipt;
-}
-
-// Helper untuk padding right
-function padRight(text: string, length: number): string {
-  const strText = String(text || '');
-  return strText.padEnd(length, ' ').substring(0, length);
-}
-
-// Helper untuk padding left
-function padLeft(text: string, length: number): string {
-  const strText = String(text || '');
-  return strText.padStart(length, ' ');
 }
 
 // Helper untuk format harga
@@ -506,6 +404,11 @@ export async function imageToEscPosBitmap(imagePath: string, width: number = 80)
         // Tapi untuk logo, kita gunakan ukuran yang lebih kecil dan pas
         const PRINTER_WIDTH_PIXELS = 256; // 32 chars * 8 pixels per char
         const logoHeight = Math.round((PRINTER_WIDTH_PIXELS / img.width) * img.height);
+
+        if (img.width === 0 || img.height === 0) {
+          reject(new Error('Invalid image dimensions'));
+          return;
+        }
 
         // Create canvas dengan ukuran sesuai printer thermal
         const canvas = document.createElement('canvas');
@@ -648,9 +551,9 @@ export async function printReceipt(transaction: any): Promise<boolean> {
   }
 }
 
-// Cek apakah Bluetooth tersedia (untuk Cordova/Capacitor)
+// Cek apakah Bluetooth tersedia
 export function isBluetoothAvailable(): boolean {
-  return getBluetoothSerial() !== null;
+  return isTauri() || getBluetoothSerial() !== null;
 }
 
 // Cek apakah printer sudah terhubung
@@ -690,6 +593,25 @@ export async function listBluetoothDevices(): Promise<{
   devices: Array<{ name: string; address: string }>;
   message: string;
 }> {
+  if (isTauri()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const devices = await invoke<Array<{ name: string; address: string }>>('list_bluetooth_devices');
+      return {
+        success: true,
+        devices,
+        message: `Ditemukan ${devices.length} perangkat Bluetooth`
+      };
+    } catch (error: any) {
+      console.error('Tauri list devices error:', error);
+      return {
+        success: false,
+        devices: [],
+        message: `Gagal mendaftar perangkat Bluetooth: ${error?.message || String(error)}`
+      };
+    }
+  }
+
   try {
     // Try to get plugin with retry
     const BT = await getBluetoothSerialWithRetry(3);
@@ -820,7 +742,7 @@ export interface ReceiptData {
   storeName?: string;
   storeAddress?: string;
   logoPath?: string; // Path ke logo gambar (PNG)
-  
+
   // Transaction Info
   invoiceNumber: string;
   date: Date | string;
@@ -828,10 +750,10 @@ export interface ReceiptData {
   cashierName?: string;
   cashier_name?: string;
   customerType?: 'member' | 'regular'; // member atau regular
-  
+
   // Items
   items: ReceiptItem[];
-  
+
   // Totals
   subtotal: number;
   tax?: number; // PPN/Pajak
@@ -840,18 +762,19 @@ export interface ReceiptData {
   pointsRedeemed?: number; // jumlah poin yang digunakan
   pointsValue?: number; // nilai rupiah dari poin
   total: number;
-  
+
   // Payment
   amountPaid: number;
   change: number;
   paymentMethod?: string; // Tunai, Transfer, dll
-  
+
   // Points (untuk member)
   earnedPoints?: number; // poin yang didapat
-  
+
   // Footer
   footerMessage?: string;
   footerMessage2?: string;
+  footerMessage3?: string;
 }
 
 /**
@@ -868,7 +791,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
     storeName = 'SBAGIAMU',
     storeAddress = '',
     invoiceNumber,
-    date,
+    date = new Date(),
     customerName,
     cashierName,
     cashier_name,
@@ -887,6 +810,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
     earnedPoints = 0,
     footerMessage = 'terima kasih sudah berbelanja',
     footerMessage2 = '',
+    footerMessage3 = '',
   } = data;
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
@@ -913,7 +837,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
   // ==================== TRANSACTION INFO ====================
   receipt += formatLine('No.ID', invoiceNumber) + '\n';
 
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const dateObj = date ? (typeof date === 'string' ? new Date(date) : date) : new Date();
   const waktuStr = formatWaktuReceipt(dateObj);
   receipt += formatLine('Waktu', waktuStr) + '\n';
 
@@ -936,7 +860,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
   }
 
   if (pointsRedeemed > 0 && pointsValue > 0) {
-    receipt += formatLine(`poin digunakan -${pointsRedeemed}`, formatPrice(pointsValue)) + '\n';
+    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsValue)) + '\n';
   }
 
   receipt += `${SEPARATOR}\n`;
@@ -955,10 +879,10 @@ export function generateReceiptRaw(data: ReceiptData): string {
   // ==================== PAYMENT ====================
   receipt += formatLine('Bayar', formatPrice(amountPaid)) + '\n';
   receipt += formatLine('Kembali', formatPrice(change)) + '\n';
-  receipt += formatLine('metode', paymentMethod) + '\n';
+  receipt += formatLine('Metode', paymentMethod) + '\n';
 
   if (customerType === 'member' && earnedPoints > 0) {
-    receipt += formatLine('poin', `+${earnedPoints}`) + '\n';
+    receipt += formatLine('Poin', `+${earnedPoints}`) + '\n';
   }
 
   receipt += `${SEPARATOR}\n`;
@@ -972,6 +896,9 @@ export function generateReceiptRaw(data: ReceiptData): string {
   }
   if (footerMessage2) {
     receipt += `${centerText(footerMessage2, PAPER_WIDTH)}\n`;
+  }
+  if (footerMessage3) {
+    receipt += `${centerText(footerMessage3, PAPER_WIDTH)}\n`;
   }
   receipt += '\n';
   receipt += `${DECO_SEPARATOR}\n`;

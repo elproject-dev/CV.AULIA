@@ -15,6 +15,9 @@ import {
   formatRupiahValue,
 } from "@/lib/formatters";
 import { useListStaff } from "@workspace/api-client-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { isTauri, tauriSaveFile } from "@/lib/tauri-file";
 
 // Types
 interface TransactionItem {
@@ -334,6 +337,13 @@ export async function exportToExcel(options: ExportOptions): Promise<void> {
       title: "Download Laporan Excel",
       url: filePath.uri,
     });
+  } else if (isTauri()) {
+    // Tauri desktop: Use native save dialog
+    await tauriSaveFile(
+      excelBuffer,
+      filename,
+      [{ name: "Excel Files", extensions: ["xlsx"] }]
+    );
   } else {
     // Web: Use traditional download
     const url = URL.createObjectURL(blob);
@@ -688,6 +698,8 @@ export function DownloadExcelDialog({
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedCashier, setSelectedCashier] = useState<string>("all");
   const [selectedOutlet, setSelectedOutlet] = useState<string>(externalOutletFilter || "all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const { toast } = useToast();
 
   const { data: filterStaffList } = useListStaff({ outletId: selectedOutlet });
@@ -700,6 +712,14 @@ export function DownloadExcelDialog({
       }
     }
   }, [selectedOutlet, filterStaffList]);
+
+  // Reset tanggal setiap kali pop-up dibuka atau ditutup
+  useEffect(() => {
+    if (!open) {
+      setStartDate("");
+      setEndDate("");
+    }
+  }, [open]);
 
   // Get unique cashiers from transactions
   const uniqueCashiers = Array.from(
@@ -853,9 +873,65 @@ export function DownloadExcelDialog({
     );
   };
 
+  const handleExportCustomDate = async () => {
+    if (!startDate || !endDate) {
+      toast({
+        title: "Pilih Tanggal",
+        description: "Silakan pilih tanggal mulai dan tanggal akhir",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const filtered = getFilteredTransactions();
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    if (start > end) {
+      toast({
+        title: "Pilih Tanggal",
+        description: "Tanggal akhir harus lebih besar atau sama dengan tanggal mulai",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const rangeTransactions = filterTransactionsByRange(filtered, start, end);
+
+    if (rangeTransactions.length === 0) {
+      const outletName = selectedOutlet === "all" ? "semua outlet" : outlets.find(o => o.id.toString() === selectedOutlet)?.name || selectedOutlet;
+      const cashierText = selectedCashier === "all" ? "" : ` kasir ${selectedCashier}`;
+      toast({
+        title: "Info",
+        description: `Tidak ada transaksi${cashierText} di ${outletName} pada rentang tanggal tersebut`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await handleDownload(
+      async () => {
+        const { data, rowStripes } = transformTransactions(rangeTransactions, branchName, cashierDefault, outlets);
+        const startStr = formatDateForFileName(start);
+        const endStr = formatDateForFileName(end);
+        await exportToExcel({
+          title: "Laporan Custom",
+          sheetName: "Laporan Custom",
+          columns: DEFAULT_COL_WIDTHS,
+          data,
+          rowStripes,
+          filename: `Laporan_${startStr}_sd_${endStr}.xlsx`,
+        });
+      },
+      `Berhasil download ${rangeTransactions.length} transaksi`
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm mx-auto">
+      <DialogContent className="max-w-sm mx-auto max-h-[90vh] overflow-y-auto scrollbar-slim">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileDown className="w-5 h-5 text-primary" />
@@ -868,7 +944,7 @@ export function DownloadExcelDialog({
 
         {/* Filter Section - Only show for admin */}
         {isAdmin && (
-          <div className="space-y-2">
+          <div className="space-y-2 mt-2">
             {/* Outlet Filter */}
             {outlets.length > 0 && (
               <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
@@ -911,18 +987,73 @@ export function DownloadExcelDialog({
           </div>
         )}
 
-        <div className="space-y-3 py-4">
+        {/* Date Filter - Available to all users */}
+        <div className="space-y-2 mt-3">
+          <Label className="text-xs font-medium text-slate-500">Rentang Tanggal (Opsional)</Label>
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+            <div className="relative w-full h-9">
+              <Input
+                type="text"
+                placeholder="Tanggal Mulai"
+                value={startDate ? startDate.split('-').reverse().join('-') : ""}
+                readOnly
+                className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+              />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                onClick={(e: any) => {
+                  try { e.target.showPicker?.(); } catch (err) { }
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                title="Tanggal Mulai"
+              />
+            </div>
+            <span className="text-slate-400 text-sm hidden sm:block">-</span>
+            <div className="relative w-full h-9">
+              <Input
+                type="text"
+                placeholder="Tanggal Akhir"
+                value={endDate ? endDate.split('-').reverse().join('-') : ""}
+                readOnly
+                className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+              />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                onClick={(e: any) => {
+                  try { e.target.showPicker?.(); } catch (err) { }
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                title="Tanggal Akhir"
+              />
+            </div>
+          </div>
+          {startDate && endDate && (
+            <Button
+              onClick={handleExportCustomDate}
+              disabled={isDownloading}
+              className="w-full h-9 text-xs mt-1"
+            >
+              Download Laporan (Rentang Tanggal)
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-3 py-4 border-t mt-4">
           <button
             onClick={handleExportToday}
             disabled={isDownloading}
             className="w-full flex items-center gap-4 p-4 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors border-2 border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
               <Calendar className="w-6 h-6 text-white" />
             </div>
-            <div className="text-left">
-              <p className="font-medium text-slate-700">Hari Ini</p>
-              <p className="text-xs text-slate-500 font-normal">
+            <div className="text-left flex-1 min-w-0">
+              <p className="font-medium text-slate-700 truncate">Hari Ini</p>
+              <p className="text-xs text-slate-500 font-normal truncate">
                 {selectedOutlet === "all" ? "Semua outlet" : `Outlet: ${outlets.find(o => o.id.toString() === selectedOutlet)?.name || selectedOutlet}`}
                 {selectedCashier !== "all" && ` | Kasir: ${selectedCashier}`}
               </p>
@@ -934,12 +1065,12 @@ export function DownloadExcelDialog({
             disabled={isDownloading}
             className="w-full flex items-center gap-4 p-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition-colors border-2 border-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
               <Calendar className="w-6 h-6 text-white" />
             </div>
-            <div className="text-left">
-              <p className="font-medium text-slate-700">Bulan Ini</p>
-              <p className="text-xs text-slate-500 font-normal">
+            <div className="text-left flex-1 min-w-0">
+              <p className="font-medium text-slate-700 truncate">Bulan Ini</p>
+              <p className="text-xs text-slate-500 font-normal truncate">
                 {selectedOutlet === "all" ? "Semua outlet" : `Outlet: ${outlets.find(o => o.id.toString() === selectedOutlet)?.name || selectedOutlet}`}
                 {selectedCashier !== "all" && ` | Kasir: ${selectedCashier}`}
               </p>
@@ -951,12 +1082,12 @@ export function DownloadExcelDialog({
             disabled={isDownloading}
             className="w-full flex items-center gap-4 p-4 rounded-xl bg-purple-50 hover:bg-purple-100 transition-colors border-2 border-purple-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div className="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center shrink-0">
               <History className="w-6 h-6 text-white" />
             </div>
-            <div className="text-left">
-              <p className="font-medium text-slate-700">Semua Transaksi</p>
-              <p className="text-xs text-slate-500 font-normal">
+            <div className="text-left flex-1 min-w-0">
+              <p className="font-medium text-slate-700 truncate">Semua Transaksi</p>
+              <p className="text-xs text-slate-500 font-normal truncate">
                 {selectedOutlet === "all" ? "Semua outlet" : `Outlet: ${outlets.find(o => o.id.toString() === selectedOutlet)?.name || selectedOutlet}`}
                 {selectedCashier !== "all" && ` | Kasir: ${selectedCashier}`}
               </p>

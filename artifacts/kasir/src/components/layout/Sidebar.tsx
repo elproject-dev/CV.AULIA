@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, CircleDollarSign, Tag, User } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, CircleDollarSign, Tag, User, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,8 +10,8 @@ import { useListOutlets } from "@/mocks/api-client-react";
 import { ProfileDialog } from "./ProfileDialog";
 
 const ALL_LINKS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
-  { href: "/", label: "Kasir", icon: Calculator, adminOnly: false, kasirOnly: true },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
+  { href: "/pos", label: "Kasir", icon: Calculator, adminOnly: false, kasirOnly: true },
   { href: "/products", label: "Produk", icon: Package, adminOnly: false },
   { href: "/customers", label: "Pelanggan", icon: Users, adminOnly: false },
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
@@ -20,6 +20,7 @@ const ALL_LINKS = [
   { href: "/points-settings", label: "Poin", icon: CircleDollarSign, adminOnly: true },
   { href: "/discount-settings", label: "Diskon", icon: Tag, adminOnly: true },
   { href: "#profile", label: "Profil", icon: User, adminOnly: false, kasirOnly: true },
+  { href: "/promo", label: "Promo", icon: Megaphone, adminOnly: true },
   { href: "/settings", label: "Pengaturan", icon: Settings, adminOnly: false },
 ];
 
@@ -192,7 +193,7 @@ export function Sidebar({ children, className }: SidebarProps) {
                 )}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
-                {link.href === "/" && cartCount > 0 && (
+                {link.href === "/pos" && cartCount > 0 && (
                   <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
                 )}
               </Link>

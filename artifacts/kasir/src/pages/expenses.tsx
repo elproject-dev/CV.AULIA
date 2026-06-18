@@ -9,15 +9,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { applyTenantFilter, withTenantOwner, handleTenantError, isTenantSuperAdmin, getTenantOwnerId } from "@/lib/tenant";
 import { loadSession } from "@/lib/auth";
-import { useListOutlets } from "@/mocks/api-client-react";
+import { useListOutlets, useListStaff } from "@/mocks/api-client-react";
 import * as XLSX from "xlsx-js-style";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { Capacitor } from "@capacitor/core";
+import { isTauri, tauriSaveFile } from "@/lib/tauri-file";
 import { useCountUp } from "@/hooks/useCountUp";
 
 interface Expense {
@@ -57,6 +59,7 @@ const DEFAULT_CATEGORIES: ExpenseCategory[] = [
 
 export default function ExpensesPage() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [categories, setCategories] = useState<ExpenseCategory[]>(DEFAULT_CATEGORIES);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -71,6 +74,9 @@ export default function ExpensesPage() {
   // User filter state
   const [users, setUsers] = useState<UserOption[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>("all");
+
+  // Staff data hook
+  const { data: allStaff } = useListStaff();
 
   // Outlet filter state
   const [selectedOutlet, setSelectedOutlet] = useState<string>("all");
@@ -89,11 +95,12 @@ export default function ExpensesPage() {
 
   // Check if current user is admin
   const isAdmin = useMemo(() => {
-    const session = loadSession();
     return isTenantSuperAdmin();
-  }, []);
+  }, [currentUser]);
 
-  const currentUserId = useMemo(() => getTenantOwnerId(), []);
+  const currentUserId = useMemo(() => {
+    return currentUser?.id || getTenantOwnerId();
+  }, [currentUser]);
 
   // Check font size for responsive layout adjustments
   const currentFontSize = typeof window !== 'undefined' ? localStorage.getItem('fontSize') || 'small' : 'small';
@@ -223,64 +230,115 @@ export default function ExpensesPage() {
   // Initial fetch for expenses & users
   useEffect(() => {
     fetchExpenses();
-    fetchUsers();
   }, []);
+
+  // Refresh users list when expenses or staff list changes
+  useEffect(() => {
+    if (expenses.length > 0 || (allStaff && allStaff.length > 0)) {
+      fetchUsers();
+    }
+  }, [expenses, allStaff]);
 
   // Fetch users for filter dropdown (admin only)
   const fetchUsers = async () => {
     try {
-      // Get unique owner_ids from expenses table
-      const { data, error } = await supabase
-        .from("expenses")
-        .select("owner_id")
-        .not("owner_id", "is", null);
+      if (expenses.length === 0) return;
 
-      if (error) throw error;
-
-      // Get unique owner_ids
-      const uniqueOwnerIds = [...new Set(data?.map(d => d.owner_id) || [])];
+      // 1. Get unique owner_ids from expenses table
+      const uniqueOwnerIds = [...new Set(expenses.map(d => d.owner_id).filter(Boolean) as string[])];
 
       if (uniqueOwnerIds.length === 0) {
         setUsers([]);
         return;
       }
 
-      // Instead of querying profiles (which doesn't exist/sync properly),
-      // we can get the cashier names from the transactions table which stores owner_id -> cashier_name
-      const { data: txs, error: txError } = await supabase
+      // 2. Try to get mapping from transactions table (backup source)
+      const { data: txs } = await supabase
         .from("transactions")
         .select("owner_id, cashier_name")
         .not("owner_id", "is", null)
         .in("owner_id", uniqueOwnerIds);
 
       const ownerMap = new Map<string, string>();
-      if (!txError && txs) {
+      
+      // Populate map from staff table (best source)
+      if (allStaff && allStaff.length > 0) {
+        allStaff.forEach(s => {
+          // Priority 1: Direct owner_id column
+          if (s.owner_id) {
+            ownerMap.set(s.owner_id, s.name);
+          }
+          // Priority 2: Extract from avatar_url
+          if (s.avatar_url) {
+            const match = s.avatar_url.match(/\/avatars\/([0-9a-f-]{36})_/i);
+            if (match && match[1]) {
+              ownerMap.set(match[1].toLowerCase(), s.name);
+            }
+          }
+        });
+      }
+
+      // Populate map from transactions (Secondary source)
+      if (txs) {
         txs.forEach(tx => {
           if (tx.cashier_name && !ownerMap.has(tx.owner_id)) {
-            ownerMap.set(tx.owner_id, tx.cashier_name);
+            ownerMap.set(tx.owner_id.toLowerCase(), tx.cashier_name);
           }
         });
       }
 
       const userOptions: UserOption[] = uniqueOwnerIds.map((id, index) => {
+        const lowerId = id.toLowerCase();
+        
         // If it's the current user, we can use their name from session
-        const isCurrentUser = id === currentUserId;
-        const currentSessionName = isCurrentUser ? loadSession()?.name : null;
+        const isCurrentUser = lowerId === currentUserId?.toLowerCase();
+        const currentSessionName = isCurrentUser ? currentUser?.name : null;
+        
+        // Find staff record from allStaff list
+        const staff = allStaff?.find(s => 
+          (s.owner_id && s.owner_id.toLowerCase() === lowerId) || 
+          (s.avatar_url && s.avatar_url.toLowerCase().includes(lowerId))
+        );
+
+        const mappedName = currentSessionName || staff?.name || ownerMap.get(lowerId);
 
         return {
           id,
-          name: currentSessionName || ownerMap.get(id) || `Staff ${index + 1}`,
-          email: "",
+          name: mappedName || `Staff ${index + 1}`,
+          email: staff?.email || "",
         };
       });
 
       setUsers(userOptions);
     } catch (error: any) {
       console.error("Error fetching users:", error?.message || error);
-      // On error, just set empty users list - filter will still work
       setUsers([]);
     }
   };
+
+  const getStaffNameDisplay = useCallback((ownerId?: string) => {
+    if (!ownerId) return "Admin";
+    const lowerId = ownerId.toLowerCase();
+    
+    if (lowerId === currentUserId?.toLowerCase()) {
+      return currentUser?.name || "Anda";
+    }
+    
+    // 1. Look in allStaff first (direct and URL extraction)
+    const staff = allStaff?.find(s => 
+      (s.owner_id && s.owner_id.toLowerCase() === lowerId) || 
+      (s.avatar_url && s.avatar_url.toLowerCase().includes(lowerId))
+    );
+    if (staff) return staff.name;
+
+    // 2. Look in users state
+    const mappedUser = users.find(u => u.id.toLowerCase() === lowerId);
+    if (mappedUser && !mappedUser.name.startsWith("Staff ")) {
+      return mappedUser.name;
+    }
+    
+    return mappedUser?.name || "Staff";
+  }, [currentUserId, currentUser, allStaff, users]);
 
   useEffect(() => {
     const total = expenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -474,13 +532,15 @@ export default function ExpensesPage() {
 
       // Format Data for Excel
       const data = filtered.map((exp, index) => {
-        const staffName = !exp.owner_id ? "Admin" : users.find(u => u.id === exp.owner_id)?.name || "Unknown";
+        const staffName = getStaffNameDisplay(exp.owner_id);
+        const outletName = outlets?.find(o => o.id === exp.outlet_id)?.name || "Semua Outlet";
         return {
           "No": index + 1,
           "Tanggal": formatDate(exp.date),
           "Kategori": getCategoryLabel(exp.category),
           "Deskripsi": exp.description,
           "Staff": staffName,
+          "Outlet": outletName,
           "Jumlah": exp.amount
         };
       });
@@ -494,6 +554,7 @@ export default function ExpensesPage() {
         { wch: 20 }, // Kategori
         { wch: 40 }, // Deskripsi
         { wch: 15 }, // Staff
+        { wch: 20 }, // Outlet
         { wch: 20 }, // Jumlah
       ];
 
@@ -519,7 +580,7 @@ export default function ExpensesPage() {
         right: { style: "thin", color: { rgb: "CCCCCC" } },
       };
 
-      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:F1");
+      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:G1");
       for (let R = range.s.r; R <= range.e.r; ++R) {
         for (let C = range.s.c; C <= range.e.c; ++C) {
           const cellAddress = { c: C, r: R };
@@ -531,7 +592,7 @@ export default function ExpensesPage() {
 
           let horizontalAlign: "left" | "center" | "right" = "left";
           if (C === 0 || C === 1) horizontalAlign = "center"; // No, Tanggal
-          else if (C === 5) horizontalAlign = "right"; // Jumlah
+          else if (C === 6) horizontalAlign = "right"; // Jumlah (last column index G = 6)
 
           if (R === 0) {
             // Header
@@ -548,7 +609,7 @@ export default function ExpensesPage() {
               border: GRID_BORDER
             };
 
-            if (C === 5) { // Jumlah
+            if (C === 6) { // Jumlah
               cell.s.numFmt = "#,##0";
               if (typeof cell.v === 'number' || !isNaN(Number(cell.v))) {
                 if (typeof cell.v !== 'number') {
@@ -588,6 +649,13 @@ export default function ExpensesPage() {
             url: filePath.uri
           });
         };
+      } else if (isTauri()) {
+        // Tauri desktop: Use native save dialog
+        await tauriSaveFile(
+          excelBuffer,
+          fileName,
+          [{ name: "Excel Files", extensions: ["xlsx"] }]
+        );
       } else {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -992,7 +1060,7 @@ export default function ExpensesPage() {
               </div>
             ) : (
               filteredExpenses.map((expense) => {
-                const staffName = !expense.owner_id ? "Admin" : users.find(u => u.id === expense.owner_id)?.name || "Unknown";
+                const staffName = getStaffNameDisplay(expense.owner_id);
                 return (
                   <div key={expense.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2 mb-1">
@@ -1121,7 +1189,7 @@ export default function ExpensesPage() {
                         {expense.description}
                       </TableCell>
                       <TableCell className="text-slate-600 dark:text-slate-400">
-                        {!expense.owner_id ? "Admin" : users.find(u => u.id === expense.owner_id)?.name || "Unknown"}
+                        {getStaffNameDisplay(expense.owner_id)}
                       </TableCell>
                       {isAdmin && (
                         <TableCell className="text-slate-600 dark:text-slate-400">

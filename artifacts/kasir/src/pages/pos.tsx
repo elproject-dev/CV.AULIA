@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { getProductImageUrl as getProductImageUrlFromStorage } from "@/lib/supabase-storage";
 import { connectToPrinter, disconnectPrinter, printReceipt, getAutoPrintSetting, getBluetoothPrinterMac, isBluetoothAvailable } from "@/lib/bluetooth-printer";
+import { showTransactionSuccessNotification, showPrinterNotConnectedNotification, showPrintSuccessNotification } from "@/lib/android-notifications";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -304,16 +305,15 @@ export default function POSPage() {
   const { enablePoints, pointsValue, pointsBaseType, pointsBaseCustom, pointsEarnRate, maxPointsPerTransaction } = getActivePointsSettings();
 
   // Function to handle printing receipt
-  const handlePrintReceipt = async (transaction: any) => {
+  const handlePrintReceipt = async (
+    transaction: any,
+    options?: { showSuccessNotification?: boolean }
+  ) => {
     console.log('Starting print process...', transaction);
 
     if (!isBluetoothAvailable()) {
       console.error('Bluetooth plugin not available');
-      toast({
-        title: "Error",
-        description: "Plugin Bluetooth tidak tersedia. Pastikan aplikasi sudah ter-build dengan benar dan Cordova plugin sudah diinstall",
-        variant: "destructive"
-      });
+      void showPrinterNotConnectedNotification('Plugin Bluetooth tidak tersedia di perangkat ini.');
       return;
     }
 
@@ -322,11 +322,7 @@ export default function POSPage() {
 
     if (!printerMac) {
       console.error('Printer MAC not set');
-      toast({
-        title: "Error",
-        description: "Alamat MAC printer belum diatur di pengaturan",
-        variant: "destructive"
-      });
+      void showPrinterNotConnectedNotification('Alamat MAC printer belum diatur di pengaturan.');
       return;
     }
 
@@ -341,6 +337,7 @@ export default function POSPage() {
         storePhone: localStorage.getItem('storePhone') || '',
         footerMessage: showFooter ? (localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
         footerMessage2: showFooter ? (localStorage.getItem('footerMessage2') || '') : '',
+        footerMessage3: showFooter ? (localStorage.getItem('footerMessage3') || '') : '',
       };
       console.log('Print data prepared:', printData);
 
@@ -351,11 +348,7 @@ export default function POSPage() {
 
       if (!connectionResult.success) {
         console.error('Connection failed:', connectionResult.message);
-        toast({
-          title: "Error Koneksi",
-          description: connectionResult.message,
-          variant: "destructive"
-        });
+        void showPrinterNotConnectedNotification(connectionResult.message);
         return;
       }
 
@@ -367,17 +360,15 @@ export default function POSPage() {
       const printed = await printReceipt(printData);
       console.log('Print result:', printed);
 
-      if (printed) {
-        toast({
-          title: "Sukses",
-          description: "Struk berhasil dicetak",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Gagal mencetak struk. Pastikan printer menyala dan terhubung.",
-          variant: "destructive"
-        });
+      if (!printed) {
+        console.error('Print failed');
+        void showPrinterNotConnectedNotification('Gagal mencetak struk. Pastikan printer menyala dan terhubung.');
+      } else if (options?.showSuccessNotification) {
+        const invoiceId = transaction?.id ?? transaction?.transaction_id;
+        void showPrintSuccessNotification(
+          transaction?.total ?? 0,
+          invoiceId != null ? formatInvoiceNumber(invoiceId) : undefined
+        );
       }
 
       // Wait for print to complete before disconnecting
@@ -389,11 +380,9 @@ export default function POSPage() {
       console.log('Printer disconnected');
     } catch (error) {
       console.error('Print error:', error);
-      toast({
-        title: "Error",
-        description: `Terjadi kesalahan saat mencetak: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive"
-      });
+      void showPrinterNotConnectedNotification(
+        error instanceof Error ? error.message : 'Terjadi kesalahan saat mencetak struk.'
+      );
       // Ensure disconnect on error
       try {
         await disconnectPrinter();
@@ -405,10 +394,15 @@ export default function POSPage() {
     }
   };
 
-  const getProductImageUrl = (product: any): string | null => {
+  const getProductImageUrl = (product: any, size: 'small' | 'thumb' | 'full' = 'full'): string | null => {
     const imageUrl = product.image_url || product.imageUrl;
     if (!imageUrl) return null;
-    return getProductImageUrlFromStorage(imageUrl);
+    
+    let options = undefined;
+    if (size === 'small') options = { width: 200, height: 200 };
+    if (size === 'thumb') options = { width: 100, height: 100 };
+    
+    return getProductImageUrlFromStorage(imageUrl, options);
   };
 
   const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -427,12 +421,25 @@ export default function POSPage() {
 
   const handlePointsRedeemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
-    const cleanValue = rawValue.replace(/[^0-9]/g, '');
+    let cleanValue = rawValue.replace(/[^0-9]/g, '');
+    
+    if (cleanValue !== "") {
+      const numValue = parseInt(cleanValue);
+      if (maxPointsPerTransaction > 0 && numValue > maxPointsPerTransaction) {
+        cleanValue = maxPointsPerTransaction.toString();
+        toast({
+          title: "Batas Penukaran",
+          description: `Maksimal penukaran adalah ${maxPointsPerTransaction} poin per transaksi`,
+          duration: 3000,
+        });
+      }
+    }
+    
     setPointsToRedeem(cleanValue);
   };
 
   const addToCart = (product: any) => {
-    const imageUrl = getProductImageUrl(product);
+    const imageUrl = getProductImageUrl(product, 'thumb');
     
     // Tampilkan notifikasi di luar state updater untuk menghindari warning render phase
     toast({
@@ -487,14 +494,8 @@ export default function POSPage() {
         return null;
       }
 
-      // Detect logged in account's outlet
-      let outletIdToSave: number | null = null;
-      const currentOutletIdStr = localStorage.getItem('selectedOutletId');
-      if (user?.role !== 'admin' && user?.outletId && user.outletId !== "all") {
-        outletIdToSave = parseInt(user.outletId);
-      } else if (currentOutletIdStr && currentOutletIdStr !== "all") {
-        outletIdToSave = parseInt(currentOutletIdStr);
-      }
+      // Gunakan outlet dari staff (settingan tugas)
+      let outletIdToSave: number | null = user?.outletId && user.outletId !== "all" ? parseInt(user.outletId) : null;
 
       const { data, error } = await supabase
         .from('customers')
@@ -604,8 +605,8 @@ export default function POSPage() {
   };
 
   const pointsBaseNominal = getPointsBaseNominal();
-  const earnedPointsRaw = Math.floor((subtotal / pointsBaseNominal) * pointsEarnRate);
-  const earnedPoints = maxPointsPerTransaction > 0 ? Math.min(earnedPointsRaw, maxPointsPerTransaction) : earnedPointsRaw;
+  const earnedPointsRaw = enablePoints ? Math.floor((subtotal / pointsBaseNominal) * pointsEarnRate) : 0;
+  const earnedPoints = enablePoints ? (maxPointsPerTransaction > 0 ? Math.min(earnedPointsRaw, maxPointsPerTransaction) : earnedPointsRaw) : 0;
   const earnedPointsValue = earnedPoints * pointsValue;
 
   const discount = enableDiscount ? parseNumberFromDots(discountStr) : 0;
@@ -633,6 +634,11 @@ export default function POSPage() {
 
     if (pointsRedeemed > (selectedCustomer?.points || 0)) {
       toast({ title: "Error", description: "Poin yang ditukar melebihi saldo tersedia", variant: "destructive" });
+      return;
+    }
+
+    if (maxPointsPerTransaction > 0 && pointsRedeemed > maxPointsPerTransaction) {
+      toast({ title: "Error", description: `Maksimal penukaran poin adalah ${maxPointsPerTransaction} poin per transaksi`, variant: "destructive" });
       return;
     }
 
@@ -766,7 +772,11 @@ export default function POSPage() {
           detail: { transactionId: res?.id, cashierName }
         }));
         queryClient.invalidateQueries({ queryKey: getListCustomersQueryKey() });
-        // toast({ title: "Sukses", description: "Transaksi berhasil disimpan" });
+
+        void showTransactionSuccessNotification(
+          total,
+          res?.id != null ? formatInvoiceNumber(res.id) : undefined
+        );
       },
       onError: (error: any) => {
         toast({ title: "Error", description: error?.message || "Gagal menyimpan transaksi", variant: "destructive" });
@@ -906,23 +916,24 @@ export default function POSPage() {
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-4">
                   {products?.map(product => {
-                    const imageUrl = getProductImageUrl(product);
-                    return (
-                      <div
-                        key={product.id}
-                        className="p-[3px] rounded-xl hover:scale-105 transition-transform duration-200 cursor-pointer"
-                        onClick={() => addToCart(product)}
-                      >
-                        <Card
-                          className="overflow-hidden active:scale-95 flex flex-col h-full"
-                        >
-                          <div className="aspect-square w-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center relative">
-                            {imageUrl ? (
-                              <img
-                                src={imageUrl}
-                                alt={product.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
+                   const imageUrl = getProductImageUrl(product, 'small');
+                   return (
+                     <div
+                       key={product.id}
+                       className="p-[3px] rounded-xl hover:scale-105 transition-transform duration-200 cursor-pointer"
+                       onClick={() => addToCart(product)}
+                     >
+                       <Card
+                         className="overflow-hidden active:scale-95 flex flex-col h-full"
+                       >
+                         <div className="aspect-square w-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center relative">
+                           {imageUrl ? (
+                             <img
+                               src={imageUrl}
+                               alt={product.name}
+                               className="w-full h-full object-cover"
+                               loading="lazy"
+                               onError={(e) => {
                                   e.currentTarget.style.display = 'none';
                                   const parent = e.currentTarget.parentElement;
                                   if (parent) {
@@ -994,6 +1005,7 @@ export default function POSPage() {
                             src={item.imageUrl}
                             alt={item.productName}
                             className="w-full h-full object-cover"
+                            loading="lazy"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
                               const parent = e.currentTarget.parentElement;
@@ -1524,12 +1536,14 @@ export default function POSPage() {
                       <span className="text-slate-500 dark:text-slate-400">Status</span>
                       <span className="font-bold text-slate-900 dark:text-slate-100">Member</span>
                     </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-500 dark:text-slate-400">Poin didapat</span>
-                      <span className="font-bold text-amber-600 dark:text-amber-400">
-                        {(lastTransaction?.earnedPoints || 0).toLocaleString('id-ID')} poin
-                      </span>
-                    </div>
+                    {(lastTransaction?.earnedPoints || 0) > 0 && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 dark:text-slate-400">Poin didapat</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400">
+                          {(lastTransaction?.earnedPoints || 0).toLocaleString('id-ID')} poin
+                        </span>
+                      </div>
+                    )}
                     {(lastTransaction?.pointsRedeemed || 0) > 0 && (
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 dark:text-slate-400">Poin ditukar</span>
@@ -1538,12 +1552,14 @@ export default function POSPage() {
                         </span>
                       </div>
                     )}
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-500 dark:text-slate-400">Saldo poin</span>
-                      <span className="font-bold text-amber-600 dark:text-amber-400">
-                        {(lastTransaction?.finalCustomerPoints || 0).toLocaleString('id-ID')} poin
-                      </span>
-                    </div>
+                    {((lastTransaction?.finalCustomerPoints || 0) > 0 || (lastTransaction?.earnedPoints || 0) > 0 || (lastTransaction?.pointsRedeemed || 0) > 0) && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 dark:text-slate-400">Saldo poin</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400">
+                          {(lastTransaction?.finalCustomerPoints || 0).toLocaleString('id-ID')} poin
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1551,7 +1567,7 @@ export default function POSPage() {
 
             <DialogFooter className="sm:justify-center gap-2">
               <Button
-                onClick={() => handlePrintReceipt(lastTransaction)}
+                onClick={() => handlePrintReceipt(lastTransaction, { showSuccessNotification: true })}
                 disabled={isPrinting}
                 variant="outline"
                 className="w-full"

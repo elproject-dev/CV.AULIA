@@ -70,9 +70,7 @@ export default function CustomersPage() {
   const handleSubmit = () => {
     const payload: any = { name: formData.name, phone: formData.phone || null, membership_type: formData.membershipType };
 
-    if (!isAdmin && user?.outletId && user.outletId !== "all") {
-      payload.outlet_id = parseInt(user.outletId);
-    } else if (formData.outlet_id && formData.outlet_id !== "all") {
+    if (isAdmin && formData.outlet_id && formData.outlet_id !== "all") {
       payload.outlet_id = parseInt(formData.outlet_id);
     } else {
       payload.outlet_id = null;
@@ -168,9 +166,9 @@ export default function CustomersPage() {
     }
   };
 
-  const activeOutletId = (!isAdmin && user?.outletId && user.outletId !== "all") 
-    ? parseInt(user.outletId) 
-    : (outletFilter && outletFilter !== "all" ? parseInt(outletFilter) : null);
+  const activeOutletId = isAdmin 
+    ? (outletFilter && outletFilter !== "all" ? parseInt(outletFilter) : null)
+    : null;
 
   const filteredCustomers = customers?.filter((customer: any) => {
     // Filter by outlet (Hide if customer belongs to a DIFFERENT specific outlet)
@@ -271,7 +269,10 @@ export default function CustomersPage() {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <Store className="w-3.5 h-3.5 text-slate-400" />
-                            {outlets?.find((o: any) => o.id === customer.outlet_id)?.name || "Semua Outlet"}
+                            {outlets?.find((o: any) => o.id === customer.outlet_id)?.name || 
+                             (!isAdmin && user?.outletId && user.outletId !== "all" 
+                              ? (outlets?.find((o: any) => o.id === parseInt(user.outletId))?.name || "Semua Outlet")
+                              : "Semua Outlet")}
                           </div>
                         </div>
                       </div>

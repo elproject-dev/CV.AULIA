@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useListCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, getListProductsQueryKey, getListCategoriesQueryKey, useListOutlets } from "@workspace/api-client-react";
 import { formatRupiah } from "@/lib/formatters";
@@ -6,11 +6,12 @@ import { uploadProductImage, deleteProductImage, deleteProductImageByName, getPr
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle, Filter, ArrowUpDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,12 +59,29 @@ export default function ProductsPage() {
 
   const { data: outlets } = useListOutlets();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [sortOrder, setSortOrder] = useState<string>("newest");
 
   const { data: products, isLoading } = useListProducts({
     search: search.length > 2 ? search : undefined,
     outletId: selectedOutlet,
     categoryId: selectedCategory === "all" ? undefined : selectedCategory
   });
+
+  const sortedProducts = useMemo(() => {
+    if (!products) return [];
+    const sorted = [...products];
+    
+    if (sortOrder === "nameAsc") {
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortOrder === "nameDesc") {
+      sorted.sort((a, b) => b.name.localeCompare(a.name));
+    } else {
+      sorted.sort((a, b) => b.id - a.id);
+    }
+    
+    return sorted;
+  }, [products, sortOrder]);
+
   const { data: categories } = useListCategories({ outletId: selectedOutlet });
 
   const createProduct = useCreateProduct();
@@ -222,27 +240,7 @@ export default function ProductsPage() {
     setIsUploading(true);
 
     try {
-      // --- Duplicate Product Check ---
-      const trimmedInputName = formData.name.trim();
-      const { data: existingProducts, error: checkError } = await supabase
-        .from('products')
-        .select('id, name')
-        .ilike('name', trimmedInputName);
-
-      if (!checkError && existingProducts && existingProducts.length > 0) {
-        const isTrueDuplicate = existingProducts.some((p: any) => {
-          if (isUpdate && p.id === editingProduct.id) return false;
-          return p.name.toLowerCase() === trimmedInputName.toLowerCase();
-        });
-
-        if (isTrueDuplicate) {
-          toast({ title: "Error", description: `Produk "${trimmedInputName}" sudah ada! Silakan gunakan nama lain.`, variant: "destructive" });
-          setIsUploading(false);
-          return;
-        }
-      }
-      // -------------------------------
-
+      // --- Duplicate Product Check Removed ---
       let finalImageUrl = formData.imageUrl;
 
       if (imageFile) {
@@ -475,7 +473,7 @@ export default function ProductsPage() {
 
         <div className="p-4 sm:p-6 flex-1 overflow-auto">
           {/* Filters */}
-          <div className="mb-4 flex flex-col sm:flex-row gap-3">
+          <div className="mb-4 flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
               <Input
@@ -485,52 +483,84 @@ export default function ProductsPage() {
                 className="pl-9"
               />
             </div>
-            {/* Category Filter */}
-            <div className="w-full sm:w-[200px]">
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger>
-                  <Tag className="w-4 h-4 mr-2 text-slate-500" />
-                  <SelectValue placeholder="Semua Kategori" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Kategori</SelectItem>
-                  {categories?.map((cat: any) => (
-                    <SelectItem key={cat.id} value={cat.id.toString()}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {/* Outlet Filter for Admin Only (if not assigned to specific outlet) */}
-            {isAdmin && (!user?.outletId || user.outletId === "all") && (
-              <div className="w-full sm:w-[200px]">
-                <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                  <SelectTrigger>
-                    <Store className="w-4 h-4 mr-2 text-slate-500" />
-                    <SelectValue placeholder="Semua Outlet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Outlet</SelectItem>
-                    {outlets?.map((outlet: any) => (
-                      <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                        {outlet.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  <span className="hidden sm:inline">Filter & Urutkan</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-4" align="end">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                      <ArrowUpDown className="w-3 h-3" /> Urutkan Berdasarkan
+                    </label>
+                    <Select value={sortOrder} onValueChange={setSortOrder}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Urutkan" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="newest">Terbaru</SelectItem>
+                        <SelectItem value="nameAsc">Nama (A-Z)</SelectItem>
+                        <SelectItem value="nameDesc">Nama (Z-A)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                      <Tag className="w-3 h-3" /> Kategori
+                    </label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Semua Kategori" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Semua Kategori</SelectItem>
+                        {categories?.map((cat: any) => (
+                          <SelectItem key={cat.id} value={cat.id.toString()}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {isAdmin && (!user?.outletId || user.outletId === "all") && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                        <Store className="w-3 h-3" /> Outlet
+                      </label>
+                      <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Semua Outlet" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua Outlet</SelectItem>
+                          {outlets?.map((outlet: any) => (
+                            <SelectItem key={outlet.id} value={outlet.id.toString()}>
+                              {outlet.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Mobile Card List */}
           <div className="flex flex-col gap-3 md:hidden">
             {isLoading ? (
               <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
-            ) : products?.length === 0 ? (
+            ) : sortedProducts?.length === 0 ? (
               <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data</div>
             ) : (
-              products?.map((product: any) => {
+              sortedProducts?.map((product: any) => {
                 const categoryName = getCategoryName(product);
                 const productImage = getProductImage(product);
 
@@ -606,10 +636,10 @@ export default function ProductsPage() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow><TableCell colSpan={isAdmin ? 7 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
-                  ) : products?.length === 0 ? (
+                  ) : sortedProducts?.length === 0 ? (
                     <TableRow><TableCell colSpan={isAdmin ? 7 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                   ) : (
-                    products?.map((product: any) => {
+                    sortedProducts?.map((product: any) => {
                       const categoryName = getCategoryName(product);
                       const productImage = getProductImage(product);
 

@@ -7,13 +7,15 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings, Store, Printer, Bell, Type, Percent, Bluetooth, CheckCircle, XCircle, Loader2, Search, Tag, Plus, Trash2, Palette, Building2, ChevronDown, Info, ExternalLink, User, LogOut } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { connectToPrinter, disconnectPrinter, listBluetoothDevices } from "@/lib/bluetooth-printer";
+import { connectToPrinter, disconnectPrinter, listBluetoothDevices, isBluetoothAvailable } from "@/lib/bluetooth-printer";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { ADMIN_EMAIL } from "@/lib/auth";
 import { useListOutlets } from "@workspace/api-client-react";
 import { ProfileContent } from "@/components/layout/ProfileContent";
+import { canOpenAndroidAppSettings, openAndroidAppSettings } from "@/lib/android-app-settings";
+import { open as openShell } from "@tauri-apps/plugin-shell";
 
 // Collapsible Card Component - Accordion Style
 function CollapsibleCard({
@@ -114,9 +116,14 @@ export default function SettingsPage() {
   const [showFooter, setShowFooter] = useState(() => localStorage.getItem('showFooter') !== 'false');
   const [footerMessage, setFooterMessage] = useState(() => localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda');
   const [footerMessage2, setFooterMessage2] = useState(() => localStorage.getItem('footerMessage2') || '');
+  const [footerMessage3, setFooterMessage3] = useState(() => localStorage.getItem('footerMessage3') || '');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
-  const [lowStockAlert, setLowStockAlert] = useState(() => localStorage.getItem('lowStockAlert') !== 'false');
-  const [salesReport, setSalesReport] = useState(() => localStorage.getItem('salesReport') === 'true');
+  const [notifyTransactionSuccess, setNotifyTransactionSuccess] = useState(
+    () => localStorage.getItem('notifyTransactionSuccess') !== 'false'
+  );
+  const [notifyPrint, setNotifyPrint] = useState(
+    () => localStorage.getItem('notifyPrint') !== 'false'
+  );
 
   // Listen for sync events from Sidebar
   useEffect(() => {
@@ -138,6 +145,7 @@ export default function SettingsPage() {
   const [bluetoothPrinterMac, setBluetoothPrinterMac] = useState(() => localStorage.getItem('bluetoothPrinterMac') || '');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'connected' | 'disconnected'>('idle');
+  const [connectionMessage, setConnectionMessage] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [bluetoothDevices, setBluetoothDevices] = useState<Array<{ name: string; address: string }>>([]);
   const [showDeviceList, setShowDeviceList] = useState(false);
@@ -162,9 +170,10 @@ export default function SettingsPage() {
     localStorage.setItem('showFooter', showFooter.toString());
     localStorage.setItem('footerMessage', footerMessage);
     localStorage.setItem('footerMessage2', footerMessage2);
+    localStorage.setItem('footerMessage3', footerMessage3);
     localStorage.setItem('darkMode', darkMode.toString());
-    localStorage.setItem('lowStockAlert', lowStockAlert.toString());
-    localStorage.setItem('salesReport', salesReport.toString());
+    localStorage.setItem('notifyTransactionSuccess', notifyTransactionSuccess.toString());
+    localStorage.setItem('notifyPrint', notifyPrint.toString());
     localStorage.setItem('bluetoothPrinterMac', bluetoothPrinterMac);
 
     // Apply dark mode
@@ -173,7 +182,7 @@ export default function SettingsPage() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [storeName, storeAddress, storePhone, autoPrint, showFooter, footerMessage, footerMessage2, darkMode, lowStockAlert, salesReport, bluetoothPrinterMac]);
+  }, [storeName, storeAddress, storePhone, autoPrint, showFooter, footerMessage, footerMessage2, footerMessage3, darkMode, notifyTransactionSuccess, notifyPrint, bluetoothPrinterMac]);
 
   // Auto-save: Primary Color (HSL)
   useEffect(() => {
@@ -202,17 +211,62 @@ export default function SettingsPage() {
   }, [primaryHue, primarySaturation, primaryLightness]);
 
   const handleTestConnection = async () => {
-    setIsTestingConnection(true);
-    try {
-      await connectToPrinter(bluetoothPrinterMac);
-      setConnectionStatus('connected');
-      toast({ title: "Sukses", description: "Printer terhubung" });
-      setTimeout(() => {
-        disconnectPrinter();
-      }, 2000);
-    } catch {
+    if (!bluetoothPrinterMac?.trim()) {
       setConnectionStatus('disconnected');
-      toast({ title: "Error", description: "Gagal terhubung ke printer", variant: "destructive" });
+      setConnectionMessage('Belum ada printer yang dipilih. Pindai dan pilih printer terlebih dahulu.');
+      toast({
+        title: "Printer belum dipilih",
+        description: "Pindai perangkat Bluetooth lalu pilih printer sebelum tes koneksi.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isBluetoothAvailable()) {
+      setConnectionStatus('disconnected');
+      setConnectionMessage('Bluetooth tidak tersedia di perangkat ini.');
+      toast({
+        title: "Bluetooth tidak tersedia",
+        description: "Fitur ini hanya tersedia di aplikasi Android atau Desktop.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTestingConnection(true);
+    setConnectionStatus('idle');
+    setConnectionMessage('');
+
+    try {
+      const result = await connectToPrinter(bluetoothPrinterMac);
+
+      if (result.success) {
+        setConnectionStatus('connected');
+        setConnectionMessage(result.message || 'Printer terhubung dengan baik.');
+        toast({ title: "Sukses", description: result.message || "Printer terhubung" });
+        setTimeout(() => {
+          disconnectPrinter();
+        }, 2000);
+      } else {
+        setConnectionStatus('disconnected');
+        setConnectionMessage(result.message);
+        toast({
+          title: "Gagal tes koneksi",
+          description: result.message,
+          variant: "destructive",
+        });
+        await disconnectPrinter();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Terjadi kesalahan saat menguji koneksi printer.';
+      setConnectionStatus('disconnected');
+      setConnectionMessage(message);
+      toast({
+        title: "Gagal tes koneksi",
+        description: message,
+        variant: "destructive",
+      });
+      await disconnectPrinter();
     } finally {
       setIsTestingConnection(false);
     }
@@ -236,6 +290,24 @@ export default function SettingsPage() {
       toast({ title: "Error", description: "Gagal memindai perangkat", variant: "destructive" });
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  const handleOpenAppPermissions = async () => {
+    try {
+      const opened = await openAndroidAppSettings();
+      if (!opened) {
+        toast({
+          title: "Hanya tersedia di Android",
+          description: "Buka Pengaturan > Aplikasi > SBAGIAMU > Izin secara manual.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Gagal membuka pengaturan",
+        description: error instanceof Error ? error.message : "Coba buka manual dari pengaturan perangkat.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -329,13 +401,21 @@ export default function SettingsPage() {
                   <div className="flex-1">
                     <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Izin Lokasi Diperlukan</p>
                     <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                      Untuk menggunakan printer Bluetooth di Android, pastikan izin lokasi telah diaktifkan.
-                    </p>
-                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                      Buka <strong>Pengaturan &gt; Aplikasi &gt; SBAGIAMU &gt; Izin &gt; Lokasi</strong>
+                      Untuk menggunakan printer Bluetooth di Android, pastikan izin lokasi dan Bluetooth telah diaktifkan.
                     </p>
                   </div>
                 </div>
+                {canOpenAndroidAppSettings() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full mt-3 border-amber-300 dark:border-amber-700 bg-white/80 dark:bg-slate-900/50"
+                    onClick={handleOpenAppPermissions}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Buka Pengaturan Izin Aplikasi
+                  </Button>
+                )}
               </div>
 
               {/* Auto Print Switch */}
@@ -430,12 +510,12 @@ export default function SettingsPage() {
                   {connectionStatus === 'connected' ? (
                     <>
                       <CheckCircle className="w-5 h-5 shrink-0" />
-                      <span>Printer terhubung</span>
+                      <span>{connectionMessage || 'Printer terhubung'}</span>
                     </>
                   ) : (
                     <>
                       <XCircle className="w-5 h-5 shrink-0" />
-                      <span>Gagal terhubung</span>
+                      <span>{connectionMessage || 'Gagal terhubung'}</span>
                     </>
                   )}
                 </div>
@@ -468,6 +548,16 @@ export default function SettingsPage() {
                       value={footerMessage2}
                       onChange={(e) => setFooterMessage2(e.target.value)}
                       placeholder="Masukkan pesan footer ke-2 (default kosong)"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="footerMessage3" className="text-sm font-medium">Pesan Footer 3</Label>
+                    <Input
+                      id="footerMessage3"
+                      value={footerMessage3}
+                      onChange={(e) => setFooterMessage3(e.target.value)}
+                      placeholder="Masukkan pesan footer ke-3 (default kosong)"
                       className="h-10"
                     />
                   </div>
@@ -648,20 +738,20 @@ export default function SettingsPage() {
             </CollapsibleCard>
 
             {/* Notification Settings */}
-            <CollapsibleCard id="notifications" title="Notifikasi" icon={Bell} description="Konfigurasi notifikasi sistem" isOpen={openCard === 'notifications'} onToggle={toggleCard}>
+            <CollapsibleCard id="notifications" title="Notifikasi" icon={Bell} description="Notifikasi untuk Android" isOpen={openCard === 'notifications'} onToggle={toggleCard}>
               <div className="flex items-center justify-between p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
                 <div>
-                  <Label className="text-sm font-medium">Low Stock Alert</Label>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Notifikasi stok menipis</p>
+                  <Label className="text-sm font-medium">Notifikasi Transaksi Sukses</Label>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Tampilkan notifikasi Transaksi</p>
                 </div>
-                <Switch checked={lowStockAlert} onCheckedChange={setLowStockAlert} />
+                <Switch checked={notifyTransactionSuccess} onCheckedChange={setNotifyTransactionSuccess} />
               </div>
               <div className="flex items-center justify-between mt-4 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
                 <div>
-                  <Label className="text-sm font-medium">Sales Report</Label>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Notifikasi laporan penjualan</p>
+                  <Label className="text-sm font-medium">Notifikasi Print</Label>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Notifikasi saat cetak dari popup berhasil atau printer bermasalah</p>
                 </div>
-                <Switch checked={salesReport} onCheckedChange={setSalesReport} />
+                <Switch checked={notifyPrint} onCheckedChange={setNotifyPrint} />
               </div>
             </CollapsibleCard>
 
@@ -669,7 +759,7 @@ export default function SettingsPage() {
             <CollapsibleCard id="about" title="Tentang System" icon={Info} description="Informasi aplikasi dan pengembang" isOpen={openCard === 'about'} onToggle={toggleCard}>
               <div className="space-y-5">
                 {/* App Info */}
-                <div className="flex items-center gap-4 p-5 bg-gradient-to-r from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-xl">
+                <div className="flex items-center gap-4 p-5 bg-gradient-to-r from-primary/10 to-primary/5 dark:bg-none dark:bg-black rounded-xl">
                   <div className="flex-1">
                     <h3 className="font-bold text-lg text-slate-900 dark:text-white">SBAGIAMU POS</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400">Point of Sale System</p>
@@ -713,6 +803,18 @@ export default function SettingsPage() {
                         href="https://wa.me/6283867180887"
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={async (e) => {
+                          const isTauri = !!(window as any).__TAURI_INTERNALS__;
+                          if (isTauri) {
+                            e.preventDefault();
+                            try {
+                              await openShell("https://wa.me/6283867180887");
+                            } catch (err) {
+                              console.error("Failed to open WhatsApp:", err);
+                              window.open("https://wa.me/6283867180887", "_blank");
+                            }
+                          }
+                        }}
                         className="w-10 h-10 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 rounded-full flex items-center justify-center transition-colors"
                         title="Hubungi via WhatsApp"
                       >
@@ -731,6 +833,18 @@ export default function SettingsPage() {
                       </div>
                       <a
                         href="mailto:elproject.dev@gmail.com"
+                        onClick={async (e) => {
+                          const isTauri = !!(window as any).__TAURI_INTERNALS__;
+                          if (isTauri) {
+                            e.preventDefault();
+                            try {
+                              await openShell("mailto:elproject.dev@gmail.com");
+                            } catch (err) {
+                              console.error("Failed to open email:", err);
+                              window.open("mailto:elproject.dev@gmail.com");
+                            }
+                          }
+                        }}
                         className="w-10 h-10 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
                         title="Kirim Email"
                       >

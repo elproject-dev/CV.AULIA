@@ -87,40 +87,40 @@ body,
 .dark {
   /* Pure Black Super Dark Theme */
   --background: 0 0% 0%;
-  --foreground: 0 0% 95%;
-  --border: 0 0% 12%;
-  --card: 0 0% 8%;
-  --card-foreground: 0 0% 95%;
-  --card-border: 0 0% 12%;
-  --sidebar: 0 0% 8%;
-  --sidebar-foreground: 0 0% 95%;
-  --sidebar-border: 0 0% 12%;
+  --foreground: 0 0% 100%;
+  --border: 0 0% 15%;
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 100%;
+  --card-border: 0 0% 15%;
+  --sidebar: 0 0% 10%;
+  --sidebar-foreground: 0 0% 100%;
+  --sidebar-border: 0 0% 15%;
   --sidebar-primary: 168 100% 50%;
   --sidebar-primary-foreground: 0 0% 0%;
-  --sidebar-accent: 0 0% 8%;
-  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-accent: 0 0% 15%;
+  --sidebar-accent-foreground: 0 0% 100%;
   --sidebar-ring: 168 100% 50%;
-  --popover: 0 0% 12%;
-  --popover-foreground: 0 0% 95%;
-  --popover-border: 0 0% 17%;
+  --popover: 0 0% 10%;
+  --popover-foreground: 0 0% 100%;
+  --popover-border: 0 0% 15%;
 
   /* Primary - Supabase Cyan */
   --primary: 168 100% 50%;
   --primary-foreground: 0 0% 0%;
   /* Secondary - Pure Black */
-  --secondary: 0 0% 8%;
-  --secondary-foreground: 0 0% 95%;
+  --secondary: 0 0% 15%;
+  --secondary-foreground: 0 0% 100%;
   /* Muted - Pure Black */
-  --muted: 0 0% 8%;
-  --muted-foreground: 0 0% 50%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 70%;
   /* Accent - Vibrant accent */
   --accent: 35 100% 45%;
-  --accent-foreground: 0 0% 0%;
+  --accent-foreground: 0 0% 100%;
   /* Destructive - Red */
   --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 95%;
+  --destructive-foreground: 0 0% 100%;
   /* Input & Ring */
-  --input: 0 0% 17%;
+  --input: 0 0% 20%;
   --ring: 168 100% 50%;
 
   /* Chart colors - Vibrant for dark mode */
@@ -257,18 +257,22 @@ aside,
    ============================================ */
 
 /* Override slate colors for dark mode */
-/* slate-900 = 15% (dashboard card - lebih terang) */
-/* slate-800 = 8% (halaman lain - lebih gelap) */
-.dark .bg-slate-900,
+/* slate-950 and slate-50 usually layout backgrounds - set to 0% */
+.dark .bg-slate-50,
 .dark .bg-slate-950,
-.dark .dark\:bg-slate-900,
-.dark .dark\:bg-slate-950 {
-  background-color: hsl(0 0% 10%) !important;
+.dark .dark\:bg-slate-950,
+.dark .bg-black {
+  background-color: hsl(0 0% 0%) !important;
 }
 
+/* cards and elements - set to 10% */
+.dark .bg-slate-900,
+.dark .dark\:bg-slate-900,
 .dark .bg-slate-800,
-.dark .dark\:bg-slate-800 {
-  background-color: hsl(0 0% 8%) !important;
+.dark .dark\:bg-slate-800,
+.dark .bg-white,
+.dark .dark\:bg-white {
+  background-color: hsl(0 0% 10%) !important;
 }
 
 .dark .border-slate-700,
@@ -280,12 +284,6 @@ aside,
   border-color: hsl(0 0% 15%) !important;
 }
 
-/* All backgrounds to black */
-.dark .bg-white,
-.dark .bg-black {
-  background-color: hsl(0 0% 0%) !important;
-}
-
 .dark .bg-somethingelse,
 .dark .bg-gray-50,
 .dark .bg-gray-100,
@@ -293,7 +291,6 @@ aside,
 .dark .bg-gray-300,
 .dark .bg-gray-800,
 .dark .bg-gray-900,
-.dark .bg-slate-50,
 .dark .bg-slate-100,
 .dark .bg-slate-200,
 .dark .bg-emerald-50,
@@ -301,21 +298,58 @@ aside,
 .dark .bg-amber-50,
 .dark .bg-amber-100,
 .dark .bg-blue-50,
-.dark .bg-purple-50,
-.dark .dark\:bg-white {
-  background-color: hsl(0 0% 8%) !important;
+.dark .bg-purple-50 {
+  background-color: hsl(0 0% 10%) !important;
 }
 
 .dark .bg-slate-100 {
-  background-color: hsl(0 0% 8%) !important;
+  background-color: hsl(0 0% 10%) !important;
 }
 
 .dark .bg-emerald-100 {
-  background-color: hsl(160 60% 8%) !important;
+  background-color: hsl(160 60% 10%) !important;
 }
 
 .dark .bg-amber-100 {
-  background-color: hsl(50 60% 8%) !important;
+  background-color: hsl(50 60% 10%) !important;
+}
+
+/* Button specific overrides - make buttons 15% so they stand out */
+.dark button.bg-white,
+.dark button.bg-slate-50,
+.dark button.bg-slate-100,
+.dark button.bg-slate-200,
+.dark button.bg-slate-800,
+.dark button.bg-slate-900,
+.dark button[class*="bg-white"],
+.dark button.border {
+  background-color: hsl(0 0% 15%) !important;
+  border-color: hsl(0 0% 25%) !important;
+}
+
+/* Except primary/destructive buttons shouldn't be overridden by the border rule */
+.dark button.bg-primary {
+  background-color: hsl(var(--primary)) !important;
+}
+
+.dark button.bg-destructive {
+  background-color: hsl(var(--destructive)) !important;
+  color: #ffffff !important;
+}
+
+/* Fix ghost delete buttons */
+.dark button.text-red-500,
+.dark button[class*="text-red-500"] {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  color: hsl(0 84% 65%) !important;
+  /* Lighter red for better visibility */
+}
+
+.dark button.text-red-500:hover,
+.dark button[class*="text-red-500"]:hover {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: hsl(0 84% 70%) !important;
 }
 
 .dark .bg-primary\/10 {
@@ -336,7 +370,7 @@ aside,
 }
 
 /* Force all from-primary to-primary bars to be solid cyan */
-.dark [class*="from-primary"][class*="to-primary"],
+.dark [class*="bg-gradient-to-t"][class*="from-primary"][class*="to-primary"],
 .dark .from-primary.to-primary\/60,
 .dark .from-primary\/90 {
   background-color: #00E599 !important;
@@ -394,41 +428,32 @@ aside,
   border-color: hsl(0 0% 15%) !important;
 }
 
-/* Gradient backgrounds - keep colored cards in their original colors */
-.dark .bg-gradient-to-br,
-.dark .bg-gradient-to-r,
-.dark .bg-gradient-to-t,
-.dark [class*="bg-gradient-to-"] {
-  background-image: none !important;
-  background-color: hsl(0 0% 8%) !important;
+/* Force slate text to be pure white in dark mode (removes the "semi-blue" tint) */
+.dark .text-slate-300,
+.dark .text-slate-400,
+.dark .text-slate-500,
+.dark .text-slate-600,
+.dark .text-slate-700,
+.dark .text-slate-800,
+.dark .text-muted-foreground,
+.dark [class*="text-slate-"] {
+  color: #ffffff !important;
 }
 
-/* EXCEPT - Keep these colored gradient cards bright */
-.dark .from-blue-500,
-.dark .from-blue-600,
-.dark .to-blue-600,
-.dark .from-purple-500,
-.dark .from-purple-600,
-.dark .to-purple-600,
-.dark .from-emerald-500,
-.dark .from-emerald-600,
-.dark .to-emerald-600,
-.dark .from-amber-500,
-.dark .from-orange-600,
-.dark .to-orange-600,
-.dark .from-slate-700,
-.dark .from-slate-800,
-.dark .to-slate-800 {
-  background-image: inherit !important;
+/* Also ensure SVG icons inside slate text elements are white */
+.dark .text-slate-300 svg,
+.dark .text-slate-400 svg,
+.dark .text-slate-500 svg,
+.dark .text-slate-600 svg,
+.dark .text-slate-700 svg,
+.dark .text-slate-800 svg,
+.dark .text-muted-foreground svg,
+.dark [class*="text-slate-"] svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
-.dark .bg-gradient-to-br.from-blue-500.to-blue-600,
-.dark .bg-gradient-to-br.from-purple-500.to-purple-600,
-.dark .bg-gradient-to-br.from-emerald-500.to-emerald-600,
-.dark .bg-gradient-to-br.from-amber-500.to-orange-600,
-.dark .bg-gradient-to-r.from-slate-700.to-slate-800 {
-  background-image: linear-gradient(to right, var(--tw-gradient-from), var(--tw-gradient-to)) !important;
-}
+/* Gradient backgrounds - only override the light slate/grey gradients to black */
 
 .dark .from-slate-50,
 .dark .from-slate-100,
@@ -436,8 +461,8 @@ aside,
 .dark .to-slate-100,
 .dark .to-slate-200,
 .dark .to-slate-300 {
-  --tw-gradient-from: hsl(0 0% 10%) !important;
-  --tw-gradient-to: hsl(0 0% 10%) !important;
+  --tw-gradient-from: hsl(0 0% 0%) !important;
+  --tw-gradient-to: hsl(0 0% 0%) !important;
 }
 
 /* Hover states */
@@ -505,11 +530,11 @@ aside,
 
 /* Rounded elements */
 .dark .rounded-xl {
-  background-color: hsl(0 0% 8%) !important;
+  background-color: hsl(0 0% 10%) !important;
 }
 
 .dark .rounded-lg {
-  background-color: hsl(0 0% 8%) !important;
+  background-color: hsl(0 0% 10%) !important;
 }
 
 /* Table dark mode */
@@ -519,21 +544,21 @@ aside,
 .dark th,
 .dark td,
 .dark tr {
-  background-color: hsl(0 0% 8%) !important;
+  background-color: hsl(0 0% 10%) !important;
   border-color: hsl(0 0% 15%) !important;
-  color: #f2f2f2 !important;
+  color: #ffffff !important;
 }
 
 .dark thead tr {
-  background-color: hsl(0 0% 8%) !important;
+  background-color: hsl(0 0% 10%) !important;
 }
 
 .dark tbody tr:hover {
-  background-color: hsl(0 0% 5%) !important;
+  background-color: hsl(0 0% 15%) !important;
 }
 
 .dark .hover\:bg-muted\/50:hover {
-  background-color: hsl(0 0% 8%) !important;
+  background-color: hsl(0 0% 15%) !important;
 }
 
 /* Select& Input dark mode */
@@ -541,25 +566,26 @@ aside,
 .dark select,
 .dark textarea,
 .dark button[role="combobox"] {
-  background-color: hsl(0 0% 5%) !important;
-  color: #f2f2f2 !important;
-  border-color: hsl(0 0% 15%) !important;
+  background-color: hsl(0 0% 15%) !important;
+  color: #ffffff !important;
+  border-color: hsl(0 0% 25%) !important;
 }
 
 .dark input::placeholder,
 .dark textarea::placeholder {
-  color: hsl(0 0% 40%) !important;
+  color: hsl(0 0% 50%) !important;
 }
 
 /* Select dropdown dark mode */
-.dark [data-radix-popper-content-wrapper] {
-  background-color: hsl(0 0% 5%) !important;
-  border-color: hsl(0 0% 15%) !important;
+.dark [data-radix-popper-content-wrapper],
+.dark .radix-select-content {
+  background-color: hsl(0 0% 15%) !important;
+  border-color: hsl(0 0% 25%) !important;
 }
 
 .dark [data-radix-popper-content-wrapper] * {
-  background-color: hsl(0 0% 5%) !important;
-  color: #f2f2f2 !important;
+  background-color: hsl(0 0% 15%) !important;
+  color: #ffffff !important;
 }
 
 /* Border class selectors */

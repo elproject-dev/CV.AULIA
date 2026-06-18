@@ -8,7 +8,8 @@ import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { initializeBluetooth } from "@/lib/bluetooth-printer";
-import { getDefaultRoute } from "@/lib/auth";
+import { initializeAndroidNotifications } from "@/lib/android-notifications";
+import { getDefaultRoute, isAdminMode } from "@/lib/auth";
 
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -25,6 +26,7 @@ import PointsSettingsPage from "@/pages/points-settings";
 import DiscountSettingsPage from "@/pages/discount-settings";
 import ExpensesPage from "@/pages/expenses";
 import StaffPage from "@/pages/staff";
+import PromoPage from "@/pages/promo";
 
 const queryClient = new QueryClient();
 
@@ -61,12 +63,12 @@ function AppRoutes() {
       <Route path="/register" component={RegisterPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/update-password" component={UpdatePasswordPage} />
-      <Route path="/dashboard">
+      <Route path="/">
         <ProtectedRoute>
           <DashboardPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/">
+      <Route path="/pos">
         <ProtectedRoute>
           <POSPage />
         </ProtectedRoute>
@@ -116,6 +118,11 @@ function AppRoutes() {
           <StaffPage />
         </ProtectedRoute>
       </Route>
+      <Route path="/promo">
+        <ProtectedRoute>
+          <PromoPage />
+        </ProtectedRoute>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -124,6 +131,10 @@ function AppRoutes() {
 function App() {
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
+      initializeAndroidNotifications().catch(error => {
+        console.warn('Error initializing notifications:', error);
+      });
+
       initializeBluetooth().then(result => {
         if (result.success) {
           console.log('✓ Bluetooth initialized successfully');

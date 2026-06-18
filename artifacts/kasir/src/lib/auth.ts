@@ -40,7 +40,7 @@ export function canAccessRoute(user: AuthUser | null, path: string): boolean {
   if (isAdminMode(user)) return true;
 
   // Kasir can only access POS, transactions, products, dashboard, customers, expenses, and settings
-  const kasirAllowed = ["/", "/transactions", "/products", "/dashboard", "/customers", "/expenses", "/settings"];
+  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings"];
   return kasirAllowed.some(
     (route) => path === route || (route !== "/" && path.startsWith(`${route}/`))
   );
@@ -48,7 +48,7 @@ export function canAccessRoute(user: AuthUser | null, path: string): boolean {
 
 // Get default route based on login mode
 export function getDefaultRoute(user: AuthUser): string {
-  return "/dashboard";
+  return "/";
 }
 
 export function loadSession(): AuthUser | null {
@@ -176,7 +176,8 @@ export async function registerWithSupabase(
     email: normalizedEmail,
     phone,
     role: 'kasir',
-    status: 'active'
+    status: 'active',
+    owner_id: authData.user.id
   }]);
 
   if (dbError) {

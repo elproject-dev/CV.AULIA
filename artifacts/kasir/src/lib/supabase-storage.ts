@@ -143,7 +143,8 @@ export const uploadProductImage = async (
     }
 
     const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const fileName = `image.${fileExt}`;
+    const timestamp = new Date().getTime();
+    const fileName = `image_${timestamp}.${fileExt}`;
     const filePath = `${folderName}/${fileName}`;
 
     // Hapus gambar lama
@@ -153,7 +154,7 @@ export const uploadProductImage = async (
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, file, {
-        cacheControl: '3600',
+        cacheControl: '31536000', // 1 tahun
         upsert: true,
         contentType: getMimeType(file.name, file.type)
       });
@@ -200,9 +201,9 @@ export const deleteProductImage = async (filePath: string): Promise<DeleteRespon
 };
 
 /**
- * Get public URL dari file path
+ * Get public URL dari file path dengan opsi transformasi
  */
-export const getProductImageUrl = (filePath: string): string => {
+export const getProductImageUrl = (filePath: string, options?: { width?: number; height?: number; quality?: number }): string => {
   if (!filePath) {
     return '';
   }
@@ -213,7 +214,13 @@ export const getProductImageUrl = (filePath: string): string => {
 
   const { data } = supabase.storage
     .from(BUCKET_NAME)
-    .getPublicUrl(filePath);
+    .getPublicUrl(filePath, options ? {
+      transform: {
+        width: options.width,
+        height: options.height,
+        quality: options.quality || 80,
+      }
+    } : undefined);
 
   if (!data?.publicUrl) {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
