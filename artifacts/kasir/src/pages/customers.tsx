@@ -271,7 +271,7 @@ export default function CustomersPage() {
                             <Store className="w-3.5 h-3.5 text-slate-400" />
                             {outlets?.find((o: any) => o.id === customer.outlet_id)?.name || 
                              (!isAdmin && user?.outletId && user.outletId !== "all" 
-                              ? (outlets?.find((o: any) => o.id === parseInt(user.outletId))?.name || "Semua Outlet")
+                              ? (outlets?.find((o: any) => o.id === parseInt(user.outletId || "0"))?.name || "Semua Outlet")
                               : "Semua Outlet")}
                           </div>
                         </div>

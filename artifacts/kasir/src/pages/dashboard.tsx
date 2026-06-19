@@ -1295,13 +1295,22 @@ export default function DashboardPage() {
                                 hide={true}
                               />
                               <Tooltip
-                                contentStyle={{
-                                  borderRadius: '8px',
-                                  border: '1px solid #f3f4f6',
-                                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)'
+                                content={({ active, payload, label }: any) => {
+                                  if (active && payload && payload.length) {
+                                    const data = payload[0].payload;
+                                    return (
+                                      <div className="bg-white dark:bg-slate-900 text-slate-800 dark:text-white p-3 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 min-w-[120px] z-50">
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-1 font-medium">
+                                          Jam {label}
+                                        </p>
+                                        <p className="font-bold text-sm text-primary tracking-wide">
+                                          {data.transactions} Transaksi
+                                        </p>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
                                 }}
-                                formatter={(value: number) => [`${value} Transaksi`, 'Total Transaksi']}
-                                labelFormatter={(label: string) => `Jam ${label}`}
                                 cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
                               />
                               <Bar

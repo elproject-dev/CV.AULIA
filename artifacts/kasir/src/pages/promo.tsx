@@ -252,7 +252,7 @@ export default function PromoPage() {
     try {
       await supabase.from("promo_sent_logs").insert([{
         customer_id: customer.id,
-        template_id: selectedTemplate?.id > 0 ? selectedTemplate.id : null,
+        template_id: (selectedTemplate?.id ?? 0) > 0 ? selectedTemplate?.id : null,
         owner_id: user?.id
       }]);
     } catch (error) {

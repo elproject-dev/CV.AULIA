@@ -146,11 +146,6 @@ export function Sidebar({ children, className }: SidebarProps) {
 
   const userInitial = user?.name?.charAt(0)?.toUpperCase() || "U";
 
-  const handleLogout = async () => {
-    await logout();
-    window.location.href = "/login";
-  };
-
   return (
     <div className={cn("flex h-screen w-full bg-background overflow-hidden", className)}>
       {/* Desktop/Landscape Tablet Sidebar - Icons only */}
@@ -210,15 +205,6 @@ export function Sidebar({ children, className }: SidebarProps) {
               </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="w-full justify-center text-sidebar-foreground/80 hover:text-primary hover:bg-primary/20"
-            title="Keluar"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
         </div>
       </aside>
 

@@ -257,14 +257,11 @@ export function formatReceipt(transaction: any): string {
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
   let receipt = '';
-  // Width for Font B is 42 characters
-  const PAPER_WIDTH = 42;
-  const SEPARATOR = '-'.repeat(PAPER_WIDTH);
-  const DECO_SEPARATOR = '='.repeat(PAPER_WIDTH);
+  const SEPARATOR = '-'.repeat(32);
+  const DECO_SEPARATOR = '='.repeat(32);
 
   // Inisialisasi printer
   receipt += ESC_POS.INIT;
-  receipt += ESC_POS.FONT_B; // Gunakan Font B secara global
   receipt += ESC_POS.ALIGN_CENTER;
 
   // DISABLED: Header - Nama Toko (sudah ditampilkan di logo)
@@ -292,95 +289,73 @@ export function formatReceipt(transaction: any): string {
 
   const waktuStr = `${day} ${month} ${year} ,${hour}:${minute}`;
 
-  receipt += formatLine('No.ID', id ? formatInvoiceNumber(id) : '-', PAPER_WIDTH) + '\n';
-  receipt += formatLine('Waktu', waktuStr, PAPER_WIDTH) + '\n';
+  receipt += formatLine('No.ID', id ? formatInvoiceNumber(id) : '-') + '\n';
+  receipt += formatLine('Waktu', waktuStr) + '\n';
 
   if (customerType === 'member' && customerName) {
-    receipt += formatLine('Pelanggan', `Member - ${customerName}`, PAPER_WIDTH) + '\n';
+    receipt += formatLine('Pelanggan', `Member - ${customerName}`) + '\n';
   } else {
-    receipt += formatLine('Pelanggan', 'Umum', PAPER_WIDTH) + '\n';
+    receipt += formatLine('Pelanggan', 'Umum') + '\n';
   }
-  receipt += formatLine('Kasir', displayCashierName, PAPER_WIDTH) + '\n';
+  receipt += formatLine('Kasir', displayCashierName) + '\n';
   receipt += `${SEPARATOR}\n`;
 
-  // Daftar item: Qty Nama_Produk Harga Total (Posisi harga satuan fix/sejajar)
+  // Daftar item (nama produk di baris pertama, qty x harga di baris kedua)
   items?.forEach((item: any) => {
     const name = item.productName || '-';
     const qty = item.quantity || 0;
     const price = item.price || 0;
     const itemTotal = qty * price;
 
-    const qtyStr = `${qty}`;
-    const priceStr = formatPrice(price);
-    const totalStr = formatPrice(itemTotal);
-
-    // Fixed widths agar kolom harga satuan sejajar
-    const QTY_WIDTH = 3;
-    const NAME_WIDTH = 19;
-    const PRICE_WIDTH = 9;
-
-    const qtyPadded = qtyStr.padEnd(QTY_WIDTH, ' ');
-    
-    let displayName = name;
-    if (displayName.length > NAME_WIDTH) {
-      displayName = displayName.substring(0, NAME_WIDTH - 3) + '...';
-    }
-    const namePadded = displayName.padEnd(NAME_WIDTH, ' ');
-    
-    const pricePadded = priceStr.padStart(PRICE_WIDTH, ' ');
-
-    const leftSide = `${qtyPadded}${namePadded} ${pricePadded}`;
-    receipt += formatLine(leftSide, totalStr, PAPER_WIDTH) + '\n';
+    const truncatedName = name.substring(0, 32);
+    receipt += `${truncatedName}\n`;
+    receipt += formatLine(`${qty}x${formatPrice(price)}`, formatPrice(itemTotal)) + '\n';
   });
+
+  receipt += `\n`;
 
   receipt += `${SEPARATOR}\n`;
 
   // Subtotal dan Total
-  receipt += formatLine('Subtotal', formatPrice(subtotal), PAPER_WIDTH) + '\n';
+  receipt += formatLine('Subtotal', formatPrice(subtotal)) + '\n';
 
   // PPN (Pajak 11%)
   if (tax > 0) {
-    receipt += formatLine(`Pajak (${ppnPercentage || 11}%)`, formatPrice(tax), PAPER_WIDTH) + '\n';
+    receipt += formatLine(`Pajak (${ppnPercentage || 11}%)`, formatPrice(tax)) + '\n';
   }
 
   // Diskon dan poin yang digunakan (di bawah subtotal)
   if (discount > 0) {
-    receipt += formatLine('Diskon', formatPrice(discount), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Diskon', formatPrice(discount)) + '\n';
   }
 
   if (pointsDiscount > 0) {
-    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsDiscount), PAPER_WIDTH) + '\n';
+    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsDiscount)) + '\n';
   }
 
   receipt += ESC_POS.BOLD_ON;
-  receipt += formatLine('TOTAL', formatPrice(total), PAPER_WIDTH) + '\n';
+  receipt += formatLine('TOTAL', formatPrice(total)) + '\n';
   receipt += ESC_POS.BOLD_OFF;
   receipt += `\n`;
 
   // Info pembayaran
   if (paymentMethod === 'cash') {
-    receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
-    receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Bayar', formatPrice(amountPaid)) + '\n';
+    receipt += formatLine('Kembali', formatPrice(change)) + '\n';
   }
 
-  receipt += formatLine('Metode Pembayaran', getPaymentMethodLabel(paymentMethod), PAPER_WIDTH) + '\n';
+  receipt += formatLine('Metode Pembayaran', getPaymentMethodLabel(paymentMethod)) + '\n';
 
-  // Poin yang didapat dan total poin (untuk member)
-  if (customerType === 'member') {
-    if (earnedPoints > 0) {
-      receipt += formatLine('Poin', `+${earnedPoints}`, PAPER_WIDTH) + '\n';
-    }
-    // Asumsikan finalCustomerPoints ada dan di-passing dari komponen checkout
-    if (finalCustomerPoints !== undefined && finalCustomerPoints !== null) {
-      receipt += formatLine('Total Poin', `${finalCustomerPoints}`, PAPER_WIDTH) + '\n';
-    }
+  // Poin yang didapat (untuk member)
+  if (customerType === 'member' && earnedPoints > 0) {
+    receipt += formatLine('Poin', `+${earnedPoints}`) + '\n';
   }
 
   receipt += `${SEPARATOR}\n`;
+  receipt += `\n`;
 
-  // Footer (Langsung tanpa newline)
+  // Footer
   receipt += ESC_POS.ALIGN_CENTER;
-  
   if (footerMessage) {
     receipt += `${footerMessage}\n`;
   }
@@ -388,9 +363,8 @@ export function formatReceipt(transaction: any): string {
     receipt += `${footerMessage2}\n`;
   }
   if (footerMessage3) {
-    receipt += `\n${footerMessage3}\n`; // Tambah spasi kosong 1 baris
+    receipt += `${footerMessage3}\n`;
   }
-  
   receipt += ESC_POS.FEED_3_LINES;
 
   // Potong kertas
@@ -796,7 +770,6 @@ export interface ReceiptData {
 
   // Points (untuk member)
   earnedPoints?: number; // poin yang didapat
-  finalCustomerPoints?: number; // total poin pelanggan
 
   // Footer
   footerMessage?: string;
@@ -835,7 +808,6 @@ export function generateReceiptRaw(data: ReceiptData): string {
     change,
     paymentMethod = 'Tunai',
     earnedPoints = 0,
-    finalCustomerPoints,
     footerMessage = 'terima kasih sudah berbelanja',
     footerMessage2 = '',
     footerMessage3 = '',
@@ -843,15 +815,11 @@ export function generateReceiptRaw(data: ReceiptData): string {
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
 
-  const PAPER_WIDTH = 42; // Font B width
-  const SEPARATOR = '-'.repeat(PAPER_WIDTH);
-  const DECO_SEPARATOR = '='.repeat(PAPER_WIDTH);
+  const PAPER_WIDTH = 32;
+  const SEPARATOR = '-'.repeat(32);
+  const DECO_SEPARATOR = '='.repeat(32);
 
   let receipt = '';
-
-  // Inisialisasi printer dan font (raw format ESC/POS injection di awal string tidak terbaca sebagai raw text biasa, jadi kita biarkan jika ini pure raw string. Tapi jika ini dikirim sebagai text ke printer yang support escape code, kita tambahkan ESC/POS)
-  receipt += ESC_POS.INIT;
-  receipt += ESC_POS.FONT_B;
 
   // Tambahkan line kosong di awal agar header tidak terpotong saat print
   receipt += '\n\n';
@@ -867,85 +835,62 @@ export function generateReceiptRaw(data: ReceiptData): string {
   // receipt += `${DECO_SEPARATOR}\n`;
 
   // ==================== TRANSACTION INFO ====================
-  receipt += formatLine('No.ID', invoiceNumber, PAPER_WIDTH) + '\n';
+  receipt += formatLine('No.ID', invoiceNumber) + '\n';
 
   const dateObj = date ? (typeof date === 'string' ? new Date(date) : date) : new Date();
   const waktuStr = formatWaktuReceipt(dateObj);
-  receipt += formatLine('Waktu', waktuStr, PAPER_WIDTH) + '\n';
+  receipt += formatLine('Waktu', waktuStr) + '\n';
 
-  receipt += formatLine('Pelanggan', customerName, PAPER_WIDTH) + '\n';
-  receipt += formatLine('Kasir', displayCashierName, PAPER_WIDTH) + '\n';
+  receipt += formatLine('Pelanggan', customerName) + '\n';
+  receipt += formatLine('Kasir', displayCashierName) + '\n';
   receipt += `${SEPARATOR}\n`;
   // ==================== ITEMS ====================
   items.forEach((item) => {
     const { productName, quantity, price } = item;
     const itemTotal = quantity * price;
 
-    const qtyStr = `${quantity}`;
-    const priceStr = formatPrice(price);
-    const totalStr = formatPrice(itemTotal);
-
-    // Fixed widths agar kolom harga satuan sejajar
-    const QTY_WIDTH = 3;
-    const NAME_WIDTH = 19;
-    const PRICE_WIDTH = 9;
-
-    const qtyPadded = qtyStr.padEnd(QTY_WIDTH, ' ');
-    
-    let displayName = productName || '-';
-    if (displayName.length > NAME_WIDTH) {
-      displayName = displayName.substring(0, NAME_WIDTH - 3) + '...';
-    }
-    const namePadded = displayName.padEnd(NAME_WIDTH, ' ');
-    
-    const pricePadded = priceStr.padStart(PRICE_WIDTH, ' ');
-
-    const leftSide = `${qtyPadded}${namePadded} ${pricePadded}`;
-    receipt += formatLine(leftSide, totalStr, PAPER_WIDTH) + '\n';
+    const truncatedName = productName.substring(0, 32);
+    receipt += truncatedName + '\n';
+    receipt += formatLine(`${quantity}x${formatPrice(price)}`, formatPrice(itemTotal)) + '\n';
   });
 
   // ==================== DISCOUNTS & POINTS ====================
   if (discount > 0) {
-    receipt += formatLine('Diskon', formatPrice(discount), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Diskon', formatPrice(discount)) + '\n';
   }
 
   if (pointsRedeemed > 0 && pointsValue > 0) {
-    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsValue), PAPER_WIDTH) + '\n';
+    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsValue)) + '\n';
   }
 
   receipt += `${SEPARATOR}\n`;
 
   // ==================== TOTALS ====================
-  receipt += formatLine('Subtotal', formatPrice(subtotal), PAPER_WIDTH) + '\n';
+  receipt += formatLine('Subtotal', formatPrice(subtotal)) + '\n';
 
   // PPN (Pajak)
   if (tax > 0) {
-    receipt += formatLine(`Pajak (${ppnPercentage}%)`, formatPrice(tax), PAPER_WIDTH) + '\n';
+    receipt += formatLine(`Pajak (${ppnPercentage}%)`, formatPrice(tax)) + '\n';
   }
 
-  receipt += formatLine('TOTAL', formatPrice(total), PAPER_WIDTH) + '\n';
+  receipt += formatLine('TOTAL', formatPrice(total)) + '\n';
   receipt += `\n`;
 
   // ==================== PAYMENT ====================
-  receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
-  receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
-  receipt += formatLine('Metode', paymentMethod, PAPER_WIDTH) + '\n';
+  receipt += formatLine('Bayar', formatPrice(amountPaid)) + '\n';
+  receipt += formatLine('Kembali', formatPrice(change)) + '\n';
+  receipt += formatLine('Metode', paymentMethod) + '\n';
 
-  if (customerType === 'member') {
-    if (earnedPoints > 0) {
-      receipt += formatLine('Poin', `+${earnedPoints}`, PAPER_WIDTH) + '\n';
-    }
-    if (finalCustomerPoints !== undefined && finalCustomerPoints !== null) {
-      receipt += formatLine('Total Poin', `${finalCustomerPoints}`, PAPER_WIDTH) + '\n';
-    }
+  if (customerType === 'member' && earnedPoints > 0) {
+    receipt += formatLine('Poin', `+${earnedPoints}`) + '\n';
   }
 
   receipt += `${SEPARATOR}\n`;
+  receipt += `\n`;
 
   // ==================== FOOTER ====================
   receipt += `${DECO_SEPARATOR}\n`;
   receipt += '\n';
-
   if (footerMessage) {
     receipt += `${centerText(footerMessage, PAPER_WIDTH)}\n`;
   }
@@ -953,9 +898,8 @@ export function generateReceiptRaw(data: ReceiptData): string {
     receipt += `${centerText(footerMessage2, PAPER_WIDTH)}\n`;
   }
   if (footerMessage3) {
-    receipt += `\n${centerText(footerMessage3, PAPER_WIDTH)}\n`; // Tambah spasi kosong 1 baris
+    receipt += `${centerText(footerMessage3, PAPER_WIDTH)}\n`;
   }
-  
   receipt += '\n';
   receipt += `${DECO_SEPARATOR}\n`;
   receipt += `\n\n`;

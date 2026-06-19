@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2 } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2, Image as ImageIcon, Camera, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { applyTenantFilter, withTenantOwner, handleTenantError, isTenantSuperAdmin, getTenantOwnerId } from "@/lib/tenant";
 import { loadSession } from "@/lib/auth";
 import { useListOutlets, useListStaff } from "@/mocks/api-client-react";
+import { uploadExpenseReceipt, deleteExpenseReceipt } from "@/lib/expense-storage";
 import * as XLSX from "xlsx-js-style";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -26,8 +27,10 @@ interface Expense {
   id: number;
   category: string;
   description: string;
+  supplier?: string;
   amount: number;
   date: string;
+  image_url?: string;
   created_at: string;
   owner_id?: string;
   outlet_id?: number;
@@ -115,9 +118,16 @@ export default function ExpensesPage() {
   const [formData, setFormData] = useState({
     category: "",
     description: "",
+    supplier: "",
     amount: "",
     date: new Date().toISOString().split("T")[0],
+    image_url: "",
   });
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [viewImageUrl, setViewImageUrl] = useState<string | null>(null);
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat("id-ID").format(num);
@@ -414,47 +424,97 @@ export default function ExpensesPage() {
   const filteredExpenses = expenses.filter((expense) => {
     const matchesSearch =
       expense.description.toLowerCase().includes(search.toLowerCase()) ||
-      expense.category.toLowerCase().includes(search.toLowerCase());
+      expense.category.toLowerCase().includes(search.toLowerCase()) ||
+      (expense.supplier && expense.supplier.toLowerCase().includes(search.toLowerCase()));
     const matchesCategory = selectedCategory === "all" || expense.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   const handleOpenDialog = (expense?: Expense) => {
+    setImageFile(null);
+    setImagePreview(null);
     if (expense) {
       setEditingExpense(expense);
       setFormData({
         category: expense.category,
         description: expense.description,
+        supplier: expense.supplier || "",
         amount: expense.amount.toString(),
         date: expense.date,
+        image_url: expense.image_url || "",
       });
+      if (expense.image_url) {
+         setImagePreview(expense.image_url);
+      }
     } else {
       setEditingExpense(null);
       setFormData({
         category: "",
         description: "",
+        supplier: "",
         amount: "",
         date: new Date().toISOString().split("T")[0],
+        image_url: "",
       });
     }
     setIsDialogOpen(true);
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setFormData({ ...formData, image_url: "" });
+  };
+
   const handleSubmit = async () => {
     if (!formData.category || !formData.description || !formData.amount) {
-      toast({ title: "Error", description: "Semua field wajib diisi", variant: "destructive" });
+      toast({ title: "Error", description: "Kategori, deskripsi, dan jumlah wajib diisi", variant: "destructive" });
       return;
     }
 
-    const payload = withTenantOwner({
-      category: formData.category,
-      description: formData.description,
-      amount: parseFloat(formData.amount),
-      date: formData.date,
-      outlet_id: currentOutletId || undefined,
-    }, "expenses");
+    setIsUploading(true);
+    let finalImageUrl = formData.image_url;
 
     try {
+      if (imageFile) {
+        const uploadRes = await uploadExpenseReceipt(imageFile);
+        if (!uploadRes.success || !uploadRes.publicUrl) {
+          throw new Error(uploadRes.error || "Gagal mengunggah foto bukti");
+        }
+        finalImageUrl = uploadRes.publicUrl;
+
+        // If editing and replacing an old image, delete the old one
+        if (editingExpense && editingExpense.image_url && editingExpense.image_url !== finalImageUrl) {
+            await deleteExpenseReceipt(editingExpense.image_url);
+        }
+      } else if (editingExpense && editingExpense.image_url && !finalImageUrl) {
+         // User removed the image
+         await deleteExpenseReceipt(editingExpense.image_url);
+      }
+
+      const payload = withTenantOwner({
+        category: formData.category,
+        description: formData.description,
+        supplier: formData.supplier,
+        amount: parseFloat(formData.amount),
+        date: formData.date,
+        image_url: finalImageUrl || null,
+        outlet_id: currentOutletId || undefined,
+      }, "expenses");
+
       if (editingExpense) {
         const query = applyTenantFilter(
           supabase
@@ -475,10 +535,12 @@ export default function ExpensesPage() {
 
       setIsDialogOpen(false);
       fetchExpenses();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving expense:", error);
       handleTenantError(error);
-      toast({ title: "Error", description: "Gagal menyimpan pengeluaran", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Gagal menyimpan pengeluaran", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -486,6 +548,11 @@ export default function ExpensesPage() {
     if (!confirm("Hapus pengeluaran ini?")) return;
 
     try {
+      const expenseToDelete = expenses.find(e => e.id === id);
+      if (expenseToDelete?.image_url) {
+         await deleteExpenseReceipt(expenseToDelete.image_url);
+      }
+
       const query = applyTenantFilter(
         supabase.from("expenses").delete().eq("id", id)
       );
@@ -539,6 +606,7 @@ export default function ExpensesPage() {
           "Tanggal": formatDate(exp.date),
           "Kategori": getCategoryLabel(exp.category),
           "Deskripsi": exp.description,
+          "Suplier": exp.supplier || "-",
           "Staff": staffName,
           "Outlet": outletName,
           "Jumlah": exp.amount
@@ -553,6 +621,7 @@ export default function ExpensesPage() {
         { wch: 15 }, // Tanggal
         { wch: 20 }, // Kategori
         { wch: 40 }, // Deskripsi
+        { wch: 20 }, // Suplier
         { wch: 15 }, // Staff
         { wch: 20 }, // Outlet
         { wch: 20 }, // Jumlah
@@ -580,7 +649,7 @@ export default function ExpensesPage() {
         right: { style: "thin", color: { rgb: "CCCCCC" } },
       };
 
-      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:G1");
+      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:H1");
       for (let R = range.s.r; R <= range.e.r; ++R) {
         for (let C = range.s.c; C <= range.e.c; ++C) {
           const cellAddress = { c: C, r: R };
@@ -592,7 +661,7 @@ export default function ExpensesPage() {
 
           let horizontalAlign: "left" | "center" | "right" = "left";
           if (C === 0 || C === 1) horizontalAlign = "center"; // No, Tanggal
-          else if (C === 6) horizontalAlign = "right"; // Jumlah (last column index G = 6)
+          else if (C === 7) horizontalAlign = "right"; // Jumlah (last column index H = 7)
 
           if (R === 0) {
             // Header
@@ -609,7 +678,7 @@ export default function ExpensesPage() {
               border: GRID_BORDER
             };
 
-            if (C === 6) { // Jumlah
+            if (C === 7) { // Jumlah
               cell.s.numFmt = "#,##0";
               if (typeof cell.v === 'number' || !isNaN(Number(cell.v))) {
                 if (typeof cell.v !== 'number') {
@@ -1074,12 +1143,28 @@ export default function ExpensesPage() {
 
                     <div className="flex items-start justify-between gap-3">
                       <div className="text-sm text-slate-700 dark:text-slate-300 font-medium break-words flex-1">
-                        {expense.description}
+                        <div>{expense.description}</div>
+                        {expense.supplier && (
+                          <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            <Store className="w-3 h-3" />
+                            Suplier: {expense.supplier}
+                          </div>
+                        )}
                       </div>
-                      <div className="shrink-0">
+                      <div className="shrink-0 flex flex-col items-end gap-2">
                         <span className={`inline-flex px-2 py-1 text-[10px] sm:text-xs font-medium rounded-full ${getCategoryColor(expense.category)}`}>
                           {getCategoryLabel(expense.category)}
                         </span>
+                        {expense.image_url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                            onClick={(e) => { e.stopPropagation(); setViewImageUrl(expense.image_url || null); }}
+                          >
+                            <ImageIcon className="w-3 h-3 mr-1" /> Bukti
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -1135,6 +1220,8 @@ export default function ExpensesPage() {
                   <TableHead className="font-semibold">Tanggal</TableHead>
                   <TableHead className="text-center font-semibold">Kategori</TableHead>
                   <TableHead className="font-semibold">Deskripsi</TableHead>
+                  <TableHead className="font-semibold text-center">Bukti</TableHead>
+                  <TableHead className="font-semibold">Suplier</TableHead>
                   <TableHead className="font-semibold">Staff</TableHead>
                   {isAdmin && <TableHead className="font-semibold">Outlet</TableHead>}
                   <TableHead className="text-right font-semibold">Jumlah</TableHead>
@@ -1144,7 +1231,7 @@ export default function ExpensesPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={isAdmin ? 8 : 6} className="text-center py-16 text-slate-500">
+                    <TableCell colSpan={isAdmin ? 10 : 8} className="text-center py-16 text-slate-500">
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-10 h-10 border-4 border-slate-200 border-t-primary rounded-full animate-spin" />
                         <p>Memuat data...</p>
@@ -1153,7 +1240,7 @@ export default function ExpensesPage() {
                   </TableRow>
                 ) : filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isAdmin ? 8 : 6} className="text-center py-16 text-slate-500">
+                    <TableCell colSpan={isAdmin ? 10 : 8} className="text-center py-16 text-slate-500">
                       <div className="flex flex-col items-center gap-3">
                         <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center">
                           <Wallet className="w-8 h-8 text-slate-400" />
@@ -1187,6 +1274,26 @@ export default function ExpensesPage() {
                       </TableCell>
                       <TableCell className="text-slate-900 dark:text-white font-medium max-w-[200px] truncate">
                         {expense.description}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {expense.image_url ? (
+                          <div 
+                            className="w-10 h-10 mx-auto rounded-md overflow-hidden border border-slate-200 dark:border-slate-700 cursor-pointer hover:opacity-80 hover:ring-2 hover:ring-primary/50 transition-all"
+                            onClick={(e) => { e.stopPropagation(); setViewImageUrl(expense.image_url || null); }}
+                            title="Lihat Bukti"
+                          >
+                            <img 
+                              src={expense.image_url} 
+                              alt="Bukti" 
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-slate-600 dark:text-slate-400">
+                        {expense.supplier || "-"}
                       </TableCell>
                       <TableCell className="text-slate-600 dark:text-slate-400">
                         {getStaffNameDisplay(expense.owner_id)}
@@ -1232,7 +1339,7 @@ export default function ExpensesPage() {
 
       {/* Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <DialogHeader>
             <DialogTitle>
               {editingExpense ? "Edit Pengeluaran" : "Tambah Pengeluaran Baru"}
@@ -1270,6 +1377,17 @@ export default function ExpensesPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="supplier" className="text-sm font-medium">Suplier (Opsional)</Label>
+              <Input
+                id="supplier"
+                value={formData.supplier}
+                onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+                placeholder="Nama suplier atau toko"
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="amount" className="text-sm font-medium">Jumlah (Rp)</Label>
               <Input
                 id="amount"
@@ -1294,13 +1412,69 @@ export default function ExpensesPage() {
                 <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium flex justify-between items-center">
+                <span>Foto Bukti Transaksi</span>
+                <span className="text-xs font-normal text-slate-400">(Opsional)</span>
+              </Label>
+              
+              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 dark:border-slate-700 border-dashed rounded-xl relative overflow-hidden group">
+                <div className="space-y-1 text-center relative z-10">
+                  {imagePreview ? (
+                    <div className="relative group/preview">
+                      <img 
+                        src={imagePreview} 
+                        alt="Preview" 
+                        className="mx-auto h-32 w-auto rounded-lg object-contain bg-slate-100 dark:bg-slate-800" 
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400 group-hover:text-primary group-hover:bg-primary/10 transition-colors">
+                         <Camera className="mx-auto h-6 w-6" aria-hidden="true" />
+                      </div>
+                      <div className="flex text-sm text-slate-600 dark:text-slate-400 justify-center">
+                        <label
+                          htmlFor="receipt-upload"
+                          className="relative cursor-pointer rounded-md font-medium text-primary hover:text-primary/80 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary"
+                        >
+                          <span>Upload file</span>
+                          <input 
+                            id="receipt-upload" 
+                            name="receipt-upload" 
+                            type="file" 
+                            accept="image/jpeg,image/png,image/webp" 
+                            className="sr-only" 
+                            onChange={handleImageChange}
+                          />
+                        </label>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">PNG, JPG up to 5MB</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="h-11">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="h-11" disabled={isUploading}>
               Batal
             </Button>
-            <Button onClick={handleSubmit} className="h-11 px-6">
-              {editingExpense ? "Simpan" : "Tambah"}
+            <Button onClick={handleSubmit} className="h-11 px-6" disabled={isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : editingExpense ? "Simpan" : "Tambah"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1453,6 +1627,31 @@ export default function ExpensesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* View Receipt Image Dialog */}
+      <Dialog open={!!viewImageUrl} onOpenChange={(open) => !open && setViewImageUrl(null)}>
+        <DialogContent className="max-w-2xl bg-transparent border-0 shadow-none p-0">
+          <DialogTitle className="sr-only">Bukti Transaksi</DialogTitle>
+          <div className="relative flex items-center justify-center min-h-[50vh]">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-50 bg-black/50 hover:bg-black/70 text-white rounded-full h-8 w-8"
+              onClick={() => setViewImageUrl(null)}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+            {viewImageUrl && (
+              <img
+                src={viewImageUrl}
+                alt="Bukti Transaksi"
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </Sidebar>
   );
 }
