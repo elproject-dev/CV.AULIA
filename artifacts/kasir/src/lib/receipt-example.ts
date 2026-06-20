@@ -171,7 +171,7 @@ export async function exampleReceiptWithLogo(): Promise<string> {
   const receiptData: ReceiptData = {
     storeName: 'SBAGIAMU',
     storeAddress: 'jl.condong catur no 13 yk',
-    logoPath: '/sbagiamu.png', // Logo dari public folder
+    logoPath: `${import.meta.env.BASE_URL}sbagiamu.png`, // Logo dari public folder
     invoiceNumber: 'INV-SBG-2026-001',
     date: new Date(),
     customerName: 'Pelanggan Setia',

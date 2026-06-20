@@ -552,7 +552,7 @@ export async function printReceipt(transaction: any): Promise<boolean> {
     // Tambahkan logo di awal
     let finalReceipt = '';
     try {
-      const logoData = await imageToEscPosBitmap('/sbagiamu.png', 80);
+      const logoData = await imageToEscPosBitmap(`${import.meta.env.BASE_URL}sbagiamu.png`, 80);
       finalReceipt = logoData;
       console.log('Logo berhasil ditambahkan');
     } catch (logoError) {
