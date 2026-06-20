@@ -37,10 +37,12 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm run build
+        run: |
+          pnpm --filter @workspace/kasir typecheck
+          pnpm --filter @workspace/kasir build
         env:
           GITHUB_PAGES: true
 
