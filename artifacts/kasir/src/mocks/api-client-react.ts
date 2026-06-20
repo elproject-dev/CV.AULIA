@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { applyTenantFilter, applyTenantFilterForTable, withTenantOwner, handleTenantError } from '@/lib/tenant';
 
@@ -70,7 +71,7 @@ export const useGetDashboardStats = (params?: any) => {
     try {
       const now = new Date();
       const todayKey = getLocalDateKey(now);
-      
+
       const isCustomDate = !!params?.startDate || !!params?.endDate;
       let periodStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       let periodEndIso = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
@@ -435,16 +436,16 @@ export const useGetRevenueChart = (params?: any) => {
       chartStart.setHours(0, 0, 0, 0);
       let chartEnd = new Date();
       chartEnd.setHours(23, 59, 59, 999);
-      
+
       if (params?.startDate || params?.endDate) {
         chartStart = params?.startDate ? new Date(params.startDate + "T00:00:00") : new Date(params.endDate + "T00:00:00");
         chartEnd = params?.endDate ? new Date(params.endDate + "T00:00:00") : new Date(params.startDate + "T00:00:00");
-        
+
         // If only end date, set start to 6 days prior to show a week
         if (!params?.startDate && params?.endDate) {
           chartStart.setDate(chartStart.getDate() - 6);
         }
-        
+
         chartStart.setHours(0, 0, 0, 0);
         chartEnd.setHours(23, 59, 59, 999);
       }
@@ -558,7 +559,7 @@ export const useAdvancedAnalytics = (params?: any) => {
 
       // Fetch Customers to calculate Member vs Reguler and Top Customers overall
       const { data: allCustomers } = await applyTenantFilterForTable(supabase.from('customers').select('id, name, phone, membership_type, points, total_spent, outlet_id'), 'customers');
-      
+
       let memberCount = 0;
       let regulerCount = 0;
       (allCustomers || []).forEach((c: any) => {
@@ -569,16 +570,16 @@ export const useAdvancedAnalytics = (params?: any) => {
           regulerCount++;
         }
       });
-      
+
       const totalCustomers = memberCount + regulerCount;
       const memberPercentage = totalCustomers > 0 ? Math.round((memberCount / totalCustomers) * 100) : 0;
       const regulerPercentage = totalCustomers > 0 ? 100 - memberPercentage : 0;
 
-      const topCustomersOutletFilterId = params?.topCustomersOutletFilter && params.topCustomersOutletFilter !== "all" 
-        ? parseInt(params.topCustomersOutletFilter) 
+      const topCustomersOutletFilterId = params?.topCustomersOutletFilter && params.topCustomersOutletFilter !== "all"
+        ? parseInt(params.topCustomersOutletFilter)
         : null;
 
-      const filteredCustomersForTop = topCustomersOutletFilterId !== null 
+      const filteredCustomersForTop = topCustomersOutletFilterId !== null
         ? (allCustomers || []).filter((c: any) => c.outlet_id === topCustomersOutletFilterId)
         : (allCustomers || []);
 
@@ -606,22 +607,22 @@ export const useAdvancedAnalytics = (params?: any) => {
 
       // 1. Outlet Performance
       const outletStats = new Map<number, { id: number, name: string, revenue: number, transactions: number }>();
-      
+
       // 2. Product Analytics (Member)
-      const memberProductStats = new Map<number, { 
-        id: number, 
-        name: string, 
-        revenue: number, 
+      const memberProductStats = new Map<number, {
+        id: number,
+        name: string,
+        revenue: number,
         qty: number,
         outletSales: Map<number, number>, // OutletID -> Qty
         customerSales: Map<number, number> // CustomerID -> Qty
       }>();
 
       // 2.1 Product Analytics (Umum)
-      const generalProductStats = new Map<number, { 
-        id: number, 
-        name: string, 
-        revenue: number, 
+      const generalProductStats = new Map<number, {
+        id: number,
+        name: string,
+        revenue: number,
         qty: number,
         outletSales: Map<number, number> // OutletID -> Qty
       }>();
@@ -647,8 +648,8 @@ export const useAdvancedAnalytics = (params?: any) => {
 
         if (oId) {
           const filterValue = params?.outletPerformanceDayFilter;
-          const outletPerformanceDayFilterId = (filterValue !== undefined && filterValue !== "all") 
-            ? parseInt(filterValue) 
+          const outletPerformanceDayFilterId = (filterValue !== undefined && filterValue !== "all")
+            ? parseInt(filterValue)
             : null;
 
           let shouldIncludeOutletStat = true;
@@ -683,20 +684,20 @@ export const useAdvancedAnalytics = (params?: any) => {
           }
         }
 
-        const hourlyOutletFilterId = params?.hourlyOutletFilter && params.hourlyOutletFilter !== "all" 
-          ? parseInt(params.hourlyOutletFilter) 
+        const hourlyOutletFilterId = params?.hourlyOutletFilter && params.hourlyOutletFilter !== "all"
+          ? parseInt(params.hourlyOutletFilter)
           : null;
 
-        const hourlyDayFilterId = params?.hourlyDayFilter && params.hourlyDayFilter !== "all" 
-          ? parseInt(params.hourlyDayFilter) 
+        const hourlyDayFilterId = params?.hourlyDayFilter && params.hourlyDayFilter !== "all"
+          ? parseInt(params.hourlyDayFilter)
           : null;
 
         if (trx.created_at) {
           const trxDate = new Date(trx.created_at);
           const trxDay = trxDate.getDay(); // 0=Minggu, 1=Senin, ..., 6=Sabtu
-          
+
           if ((!hourlyOutletFilterId || oId === hourlyOutletFilterId) &&
-              (hourlyDayFilterId === null || trxDay === hourlyDayFilterId)) {
+            (hourlyDayFilterId === null || trxDay === hourlyDayFilterId)) {
             const hour = trxDate.getHours();
             const hourData = hourlyMap.get(hour);
             if (hourData) {
@@ -714,56 +715,56 @@ export const useAdvancedAnalytics = (params?: any) => {
           const qty = toNumber(item.quantity);
           if (pId) {
             if (trx.customer_id) {
-              const memberDayFilterId = params?.memberProductDayFilter && params.memberProductDayFilter !== "all" 
+              const memberDayFilterId = params?.memberProductDayFilter && params.memberProductDayFilter !== "all"
                 ? parseInt(params.memberProductDayFilter) : null;
-              
+
               if (memberDayFilterId === null || trxDay === memberDayFilterId) {
                 if (!memberProductStats.has(pId)) {
-                memberProductStats.set(pId, {
-                  id: pId,
-                  name: item.product_name,
-                  revenue: 0,
-                  qty: 0,
-                  outletSales: new Map(),
-                  customerSales: new Map()
-                });
-              }
-              const ps = memberProductStats.get(pId)!;
-              ps.revenue += toNumber(item.subtotal);
-              ps.qty += qty;
-              
-              if (oId) {
-                ps.outletSales.set(oId, (ps.outletSales.get(oId) || 0) + qty);
-              }
-              ps.customerSales.set(trx.customer_id, (ps.customerSales.get(trx.customer_id) || 0) + qty);
+                  memberProductStats.set(pId, {
+                    id: pId,
+                    name: item.product_name,
+                    revenue: 0,
+                    qty: 0,
+                    outletSales: new Map(),
+                    customerSales: new Map()
+                  });
+                }
+                const ps = memberProductStats.get(pId)!;
+                ps.revenue += toNumber(item.subtotal);
+                ps.qty += qty;
+
+                if (oId) {
+                  ps.outletSales.set(oId, (ps.outletSales.get(oId) || 0) + qty);
+                }
+                ps.customerSales.set(trx.customer_id, (ps.customerSales.get(trx.customer_id) || 0) + qty);
               }
             } else {
               // Produk Pelanggan Umum
-              const generalDayFilterId = params?.generalProductDayFilter && params.generalProductDayFilter !== "all" 
+              const generalDayFilterId = params?.generalProductDayFilter && params.generalProductDayFilter !== "all"
                 ? parseInt(params.generalProductDayFilter) : null;
 
               if (generalDayFilterId === null || trxDay === generalDayFilterId) {
                 if (!generalProductStats.has(pId)) {
-                generalProductStats.set(pId, {
-                  id: pId,
-                  name: item.product_name,
-                  revenue: 0,
-                  qty: 0,
-                  outletSales: new Map()
-                });
-              }
-              const ps = generalProductStats.get(pId)!;
-              ps.revenue += toNumber(item.subtotal);
-              ps.qty += qty;
-              
-              if (oId) {
-                ps.outletSales.set(oId, (ps.outletSales.get(oId) || 0) + qty);
-              }
+                  generalProductStats.set(pId, {
+                    id: pId,
+                    name: item.product_name,
+                    revenue: 0,
+                    qty: 0,
+                    outletSales: new Map()
+                  });
+                }
+                const ps = generalProductStats.get(pId)!;
+                ps.revenue += toNumber(item.subtotal);
+                ps.qty += qty;
 
-              // Update simple tracking for the general summary card
-              const currentGen = generalProductSales.get(pId) || { name: item.product_name, qty: 0 };
-              currentGen.qty += qty;
-              generalProductSales.set(pId, currentGen);
+                if (oId) {
+                  ps.outletSales.set(oId, (ps.outletSales.get(oId) || 0) + qty);
+                }
+
+                // Update simple tracking for the general summary card
+                const currentGen = generalProductSales.get(pId) || { name: item.product_name, qty: 0 };
+                currentGen.qty += qty;
+                generalProductSales.set(pId, currentGen);
               }
             }
           }
@@ -780,9 +781,9 @@ export const useAdvancedAnalytics = (params?: any) => {
 
       // Format Deep Product Analytics (Member)
       const allCustomersMap = new Map((allCustomers || []).map((c: any) => [c.id, c.name]));
-      
-      const memberOutletFilterId = params?.memberProductOutletFilter && params.memberProductOutletFilter !== "all" 
-        ? parseInt(params.memberProductOutletFilter) 
+
+      const memberOutletFilterId = params?.memberProductOutletFilter && params.memberProductOutletFilter !== "all"
+        ? parseInt(params.memberProductOutletFilter)
         : null;
 
       const memberProductAnalytics = Array.from(memberProductStats.values())
@@ -828,8 +829,8 @@ export const useAdvancedAnalytics = (params?: any) => {
 
 
       // Format Deep Product Analytics (Umum)
-      const generalOutletFilterId = params?.generalProductOutletFilter && params.generalProductOutletFilter !== "all" 
-        ? parseInt(params.generalProductOutletFilter) 
+      const generalOutletFilterId = params?.generalProductOutletFilter && params.generalProductOutletFilter !== "all"
+        ? parseInt(params.generalProductOutletFilter)
         : null;
 
       const generalProductAnalytics = Array.from(generalProductStats.values())
@@ -885,7 +886,7 @@ export const useAdvancedAnalytics = (params?: any) => {
 
       let filteredGeneralRevenue = generalRevenue;
       let filteredGeneralTransactions = generalTransactions;
-      
+
       if (generalOutletFilterId) {
         const outletData = generalOutletSales.get(generalOutletFilterId) || { revenue: 0, transactions: 0 };
         filteredGeneralRevenue = outletData.revenue;
@@ -913,7 +914,7 @@ export const useAdvancedAnalytics = (params?: any) => {
         const totalTrx = os ? os.transactions : 0;
         const genRev = gos ? gos.revenue : 0;
         const genTrx = gos ? gos.transactions : 0;
-        
+
         filteredMemberRevenue = totalRev - genRev;
         filteredMemberTransactions = totalTrx - genTrx;
       }
@@ -1013,7 +1014,7 @@ export const useListTransactions = (params?: any) => {
       let query = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('*, transaction_items(*), customers(name, membership_type, points)')
+          .select('*, transaction_items(*), customers(name, membership_type, points), outlets(name, store_name, address, phone)')
           .order('created_at', { ascending: false })
       );
 
@@ -1101,7 +1102,7 @@ export const useGetTransaction = (id: number) => {
         const { data: transaction, error } = await applyTenantFilter(
           supabase
             .from('transactions')
-            .select('*, transaction_items(*), customers(name, membership_type, points)')
+            .select('*, transaction_items(*), customers(name, membership_type, points), outlets(name, store_name, address, phone)')
             .eq('id', id)
         ).single();
 
@@ -1164,7 +1165,7 @@ export const useListProducts = (params?: any) => {
     setIsLoading(true);
     try {
       // Produk adalah data bersama - tidak pakai filter tenant
-      let query: any = supabase.from('products').select('*, categories(name)') as any;
+      let query: any = supabase.from('products').select('*, categories(name), product_uoms(*)') as any;
 
       if (params?.search) {
         query = query.ilike('name', `%${params.search}%`);
@@ -1187,13 +1188,14 @@ export const useListProducts = (params?: any) => {
 
       const { data: products, error } = await query;
       if (error) {
-                throw error;
+        throw error;
       }
 
       const formattedProducts = (products as any[])?.map((p: any) => ({
         ...p,
         categoryName: p.categories?.name || null,
-        isActive: p.is_active
+        isActive: p.is_active,
+        uoms: (p.product_uoms || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0))
       })) || [];
 
       setData(formattedProducts);
@@ -1410,7 +1412,7 @@ export const useListCategories = (params?: { outletId?: string }) => {
           table: 'categories'
         },
         () => {
-                    fetchCategories();
+          fetchCategories();
         }
       )
       .subscribe();
@@ -1433,7 +1435,7 @@ export const useCreateCategory = () => {
         // Kategori adalah data bersama - tidak pakai owner_id
         const { data, error } = await supabase
           .from('categories')
-          .insert({ 
+          .insert({
             name: params.data.name,
             allowed_outlets: params.data.allowedOutlets || ["all"]
           })
@@ -1447,9 +1449,9 @@ export const useCreateCategory = () => {
       } finally {
         setIsPending(false);
       }
-    }, 
-    isPending, 
-    error: null 
+    },
+    isPending,
+    error: null
   };
 };
 
@@ -1462,7 +1464,7 @@ export const useUpdateCategory = () => {
       try {
         const { data, error } = await supabase
           .from('categories')
-          .update({ 
+          .update({
             name: params.data.name,
             allowed_outlets: params.data.allowedOutlets
           })
@@ -1477,9 +1479,9 @@ export const useUpdateCategory = () => {
       } finally {
         setIsPending(false);
       }
-    }, 
-    isPending, 
-    error: null 
+    },
+    isPending,
+    error: null
   };
 };
 
@@ -1503,9 +1505,9 @@ export const useDeleteCategory = () => {
       } finally {
         setIsPending(false);
       }
-    }, 
-    isPending, 
-    error: null 
+    },
+    isPending,
+    error: null
   };
 };
 
@@ -1559,7 +1561,7 @@ export const useListCustomers = () => {
               table: 'customers'
             },
             (payload: any) => {
-                            const newCustomer = payload.new;
+              const newCustomer = payload.new;
               setData(prevData => {
                 const exists = prevData.some(c => c.id === newCustomer.id);
                 if (exists) return prevData;
@@ -1577,7 +1579,7 @@ export const useListCustomers = () => {
               table: 'customers'
             },
             (payload: any) => {
-                            const updatedCustomer = payload.new;
+              const updatedCustomer = payload.new;
               setData(prevData =>
                 prevData.map(c => c.id === updatedCustomer.id ? updatedCustomer : c)
               );
@@ -1591,7 +1593,7 @@ export const useListCustomers = () => {
               table: 'customers'
             },
             (payload: any) => {
-                            const deletedId = payload.old.id;
+              const deletedId = payload.old.id;
               setData(prevData => prevData.filter(c => c.id !== deletedId));
             }
           )
@@ -1612,7 +1614,7 @@ export const useListCustomers = () => {
         if (retryCount < maxRetries) {
           retryCount++;
           setTimeout(() => {
-                        setupSubscription();
+            setupSubscription();
           }, 2000);
         }
       }
@@ -1755,6 +1757,7 @@ export const useCreateTransaction = () => {
           points_earned: params.data.earnedPoints || 0,
           status: params.data.status || 'completed',
           outlet_id: selectedOutletId ? parseInt(selectedOutletId) : null,
+          loading_session_id: params.data.loadingSessionId || null,
         };
         const extendedPayload = {
           ...basePayload,
@@ -1803,6 +1806,18 @@ export const useCreateTransaction = () => {
             .insert(items);
 
           if (itemsError) throw itemsError;
+
+          // FMCG: Update loading_items quantity_sold
+          if (params.data.loadingSessionId) {
+            for (const item of params.data.items) {
+              if (item.loadingItemId) {
+                const { data: currentLoadingItem } = await supabase.from('loading_items').select('quantity_sold').eq('id', item.loadingItemId).single();
+                if (currentLoadingItem) {
+                  await supabase.from('loading_items').update({ quantity_sold: (currentLoadingItem.quantity_sold || 0) + item.quantity }).eq('id', item.loadingItemId);
+                }
+              }
+            }
+          }
         }
 
         if (options?.onSuccess) options.onSuccess(data);
@@ -1837,7 +1852,18 @@ export const useListOutlets = () => {
         const storeName = localStorage.getItem('storeName') || 'Toko Utama';
         const storeAddress = localStorage.getItem('storeAddress') || '';
         const storePhone = localStorage.getItem('storePhone') || '';
-        setData([{ id: 1, name: storeName, address: storeAddress, phone: storePhone }]);
+        const footerMessage = localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda';
+        const footerMessage2 = localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee';
+        const footerMessage3 = localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital';
+        setData([{
+          id: 1,
+          name: storeName,
+          address: storeAddress,
+          phone: storePhone,
+          footer_message: footerMessage,
+          footer_message2: footerMessage2,
+          footer_message3: footerMessage3
+        }]);
         setError(null);
         return;
       }
@@ -1848,7 +1874,18 @@ export const useListOutlets = () => {
       const storeName = localStorage.getItem('storeName') || 'Toko Utama';
       const storeAddress = localStorage.getItem('storeAddress') || '';
       const storePhone = localStorage.getItem('storePhone') || '';
-      setData([{ id: 1, name: storeName, address: storeAddress, phone: storePhone }]);
+      const footerMessage = localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda';
+      const footerMessage2 = localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee';
+      const footerMessage3 = localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital';
+      setData([{
+        id: 1,
+        name: storeName,
+        address: storeAddress,
+        phone: storePhone,
+        footer_message: footerMessage,
+        footer_message2: footerMessage2,
+        footer_message3: footerMessage3
+      }]);
       setError(null);
     } finally {
       setIsLoading(false);
@@ -2063,7 +2100,7 @@ export const useListPointsSettings = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
+
       const formatted = (settings || []).map((s: any) => ({
         id: s.id,
         outletId: s.outlet_id,
@@ -2077,7 +2114,7 @@ export const useListPointsSettings = () => {
         pointsEarnRate: s.points_earn_rate?.toString() || '1',
         maxPointsPerTransaction: s.max_points_per_transaction?.toString() || '1000'
       }));
-      
+
       setData(formatted);
     } catch (err) {
       setError(err);
@@ -2123,21 +2160,21 @@ export const useSavePointsSettings = () => {
         }
 
         let query = supabase.from('point_settings').select('id');
-        
+
         if (payload.outlet_id) {
           query = query.eq('outlet_id', payload.outlet_id);
         } else {
           query = query.is('outlet_id', null);
         }
-        
+
         if (payload.staff_email) {
           query = query.eq('staff_email', payload.staff_email);
         } else {
           query = query.is('staff_email', null);
         }
-        
+
         const { data: existing, error: findError } = await query.maybeSingle();
-        
+
         if (findError) throw findError;
 
         let resultError;
@@ -2209,7 +2246,7 @@ export const useListDiscountSettings = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
+
       const formatted = (settings || []).map((s: any) => ({
         id: s.id,
         outletId: s.outlet_id ? s.outlet_id.toString() : 'all',
@@ -2222,7 +2259,7 @@ export const useListDiscountSettings = () => {
         ppnPercentage: s.ppn_percentage?.toString() || '11',
         allowedPromos: Array.isArray(s.allowed_promos) ? s.allowed_promos : []
       }));
-      
+
       setData(formatted);
     } catch (err) {
       setError(err);
@@ -2267,21 +2304,21 @@ export const useSaveDiscountSettings = () => {
         }
 
         let query = supabase.from('discount_settings').select('id');
-        
+
         if (payload.outlet_id) {
           query = query.eq('outlet_id', payload.outlet_id);
         } else {
           query = query.is('outlet_id', null);
         }
-        
+
         if (payload.staff_email) {
           query = query.eq('staff_email', payload.staff_email);
         } else {
           query = query.is('staff_email', null);
         }
-        
+
         const { data: existing, error: findError } = await query.maybeSingle();
-        
+
         if (findError) throw findError;
 
         let resultError;
@@ -2411,5 +2448,519 @@ export const useDeleteDiscountCategory = () => {
     },
     isPending,
     error: null
+  };
+};
+
+// ============== PRODUCT UOM (Multi Unit of Measure) ==============
+
+export const getListProductUomsQueryKey = (productId?: number) => ['product_uoms', productId];
+
+export const useListProductUoms = (productId?: number) => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchData = async () => {
+    if (!productId) {
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { data: result, error: fetchError } = await supabase
+        .from('product_uoms')
+        .select('*')
+        .eq('product_id', productId)
+        .order('sort_order', { ascending: true });
+
+      if (fetchError) throw fetchError;
+      setData(result || []);
+    } catch (err) {
+      setError(err);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [productId]);
+
+  return { data, isLoading, error, refetch: fetchData };
+};
+
+export const useCreateProductUom = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async (params: { data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { data, error } = await supabase
+          .from('product_uoms')
+          .insert(params.data)
+          .select()
+          .single();
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess(data);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useUpdateProductUom = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async (params: { id: number; data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { data, error } = await supabase
+          .from('product_uoms')
+          .update(params.data)
+          .eq('id', params.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess(data);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useDeleteProductUom = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async (params: { id: number }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase
+          .from('product_uoms')
+          .delete()
+          .eq('id', params.id);
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useBulkSaveProductUoms = () => {
+  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+
+  return {
+    mutate: async (params: { productId: number; uoms: any[] }, options?: any) => {
+      setIsPending(true);
+      try {
+        // 1. Delete all existing UOMs for this product
+        await supabase
+          .from('product_uoms')
+          .delete()
+          .eq('product_id', params.productId);
+
+        // 2. Insert all new UOMs (if any)
+        if (params.uoms.length > 0) {
+          const uomsToInsert = params.uoms.map((uom, index) => ({
+            product_id: params.productId,
+            unit_name: uom.unit_name,
+            conversion_factor: uom.conversion_factor,
+            price: uom.price || null,
+            barcode: uom.barcode || null,
+            sort_order: index,
+            is_default: uom.is_default || false,
+          }));
+
+          const { error } = await supabase
+            .from('product_uoms')
+            .insert(uomsToInsert);
+
+          if (error) throw error;
+        }
+
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListProductUomsQueryKey(params.productId) });
+
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+// ============== FMCG DISTRIBUTION WORKFLOW ==============
+
+export const getListLoadingSessionsQueryKey = () => ['loading_sessions'];
+export const getListLoadingItemsQueryKey = (sessionId?: string) => ['loading_items', sessionId];
+export const getListStockMovementsQueryKey = (productId?: number) => ['stock_movements', productId];
+
+export const useListLoadingSessions = (params?: { salesId?: number, status?: string }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      let query = applyTenantFilter(
+        supabase
+          .from('loading_sessions')
+          .select('*, staff(*)')
+          .order('created_at', { ascending: false })
+      );
+
+      if (params?.salesId) {
+        query = query.eq('sales_id', params.salesId);
+      }
+      if (params?.status) {
+        query = query.eq('status', params.status);
+      }
+
+      const { data: result, error: fetchError } = await query;
+      if (fetchError) throw fetchError;
+      setData(result || []);
+    } catch (err) {
+      handleTenantError(err);
+      setError(err);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [params?.salesId, params?.status]);
+
+  return { data, isLoading, error, refetch: fetchData };
+};
+
+export const useCreateLoadingSession = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async ({ data }: { data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase
+          .from('loading_sessions')
+          .insert([data]);
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useUpdateLoadingSession = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async ({ id, data }: { id: string, data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase
+          .from('loading_sessions')
+          .update(data)
+          .eq('id', id);
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useListLoadingItems = (sessionId?: string) => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchData = async () => {
+    if (!sessionId) {
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { data: result, error: fetchError } = await supabase
+        .from('loading_items')
+        .select('*, products(*)')
+        .eq('loading_session_id', sessionId);
+
+      if (fetchError) throw fetchError;
+      setData(result || []);
+    } catch (err) {
+      setError(err);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [sessionId]);
+
+  return { data, isLoading, error, refetch: fetchData };
+};
+
+export const useCreateLoadingItem = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async ({ data }: { data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase
+          .from('loading_items')
+          .insert([data]);
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useUpdateLoadingItem = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async ({ id, data }: { id: number, data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase
+          .from('loading_items')
+          .update(data)
+          .eq('id', id);
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useDeleteLoadingItem = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async ({ id }: { id: number }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase
+          .from('loading_items')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useListStockMovements = (productId?: number) => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      let query = supabase
+        .from('stock_movements')
+        .select('*, products(name)')
+        .order('created_at', { ascending: false });
+
+      if (productId) {
+        query = query.eq('product_id', productId);
+      }
+
+      const { data: result, error: fetchError } = await query;
+      if (fetchError) throw fetchError;
+      setData(result || []);
+    } catch (err) {
+      setError(err);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [productId]);
+
+  return { data, isLoading, error, refetch: fetchData };
+};
+
+export const useCreateStockMovement = () => {
+  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+
+  return {
+    mutate: async (params: { data: any }, options?: any) => {
+      setIsPending(true);
+      try {
+        const { data, error } = await supabase.from('stock_movements').insert(params.data).select().single();
+        if (error) throw error;
+
+        // update product stock based on movement
+        const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', params.data.product_id).single();
+        if (product) {
+          const newStock = (product.stock_quantity || 0) + params.data.quantity;
+          await supabase.from('products').update({ stock_quantity: newStock }).eq('id', params.data.product_id);
+        }
+
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        if (options?.onSuccess) options.onSuccess(data);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    mutateAsync: async (params: { data: any }) => {
+      setIsPending(true);
+      try {
+        const { data, error } = await supabase.from('stock_movements').insert(params.data).select().single();
+        if (error) throw error;
+
+        // update product stock based on movement
+        const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', params.data.product_id).single();
+        if (product) {
+          const newStock = (product.stock_quantity || 0) + params.data.quantity;
+          await supabase.from('products').update({ stock_quantity: newStock }).eq('id', params.data.product_id);
+        }
+
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        return data;
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending
+  };
+};
+
+export const useCloseLoadingSession = () => {
+  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+
+  return {
+    mutate: async (params: { sessionId: string; items: any[], notes?: string }, options?: any) => {
+      setIsPending(true);
+      try {
+        // 1. Update session status
+        const { error: sessionError } = await supabase
+          .from('loading_sessions')
+          .update({ status: 'closed', notes: params.notes })
+          .eq('id', params.sessionId);
+        if (sessionError) throw sessionError;
+
+        // 2. Process each item return
+        for (const item of params.items) {
+          // Update loading_items.quantity_returned
+          const { error: itemError } = await supabase
+            .from('loading_items')
+            .update({ quantity_returned: item.actual_return })
+            .eq('id', item.loading_item_id);
+          
+          if (itemError) console.error('Error updating loading item', itemError);
+
+          // Only create movement and update stock if actual_return > 0
+          if (item.actual_return > 0) {
+            // Create stock movement
+            await supabase.from('stock_movements').insert({
+              product_id: item.product_id,
+              quantity: item.actual_return,
+              type: 'return_from_sales',
+              reference_id: params.sessionId,
+              note: 'Sisa stok dikembalikan dari Sales'
+            });
+
+            // Update product stock in Gudang
+            const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
+            if (product) {
+              const newStock = (product.stock_quantity || 0) + item.actual_return;
+              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
+            }
+          }
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['loading_sessions'] });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        
+        if (options?.onSuccess) options.onSuccess(true);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending
   };
 };

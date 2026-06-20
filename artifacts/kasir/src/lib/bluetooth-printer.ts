@@ -250,8 +250,8 @@ export function formatReceipt(transaction: any): string {
     finalCustomerPoints = 0,
     pointsValue = 1000,
     footerMessage = 'terima kasih sudah berbelanja',
-    footerMessage2 = '',
-    footerMessage3 = '',
+    footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
+    footerMessage3 = 'Powered by Tembus Digital',
     createdAt,
   } = transaction || {};
 
@@ -284,7 +284,7 @@ export function formatReceipt(transaction: any): string {
   // Info transaksi (No.ID, Tanggal, Pelanggan)
   const dateObj = createdAt ? new Date(createdAt) : new Date();
   const day = String(dateObj.getDate()).padStart(2, '0');
-  const months = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const month = months[dateObj.getMonth()];
   const year = dateObj.getFullYear();
   const hour = String(dateObj.getHours()).padStart(2, '0');
@@ -388,7 +388,7 @@ export function formatReceipt(transaction: any): string {
     receipt += `${footerMessage2}\n`;
   }
   if (footerMessage3) {
-    receipt += `\n${footerMessage3}\n`; // Tambah spasi kosong 1 baris
+    receipt += `\n${footerMessage3}\n\n`; // Tambah spasi kosong 1 baris di bawahnya agar tidak terpotong
   }
   
   receipt += ESC_POS.FEED_3_LINES;
@@ -743,7 +743,7 @@ function formatDateIndonesia(date: Date): string {
 
 // Helper: Format waktu untuk receipt (DD mon YYYY ,HH:MM)
 function formatWaktuReceipt(date: Date): string {
-  const bulanIndo = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
+  const bulanIndo = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const day = String(date.getDate()).padStart(2, '0');
   const month = bulanIndo[date.getMonth()];
   const year = date.getFullYear();
@@ -837,8 +837,8 @@ export function generateReceiptRaw(data: ReceiptData): string {
     earnedPoints = 0,
     finalCustomerPoints,
     footerMessage = 'terima kasih sudah berbelanja',
-    footerMessage2 = '',
-    footerMessage3 = '',
+    footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
+    footerMessage3 = 'Powered by Tembus Digital',
   } = data;
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
@@ -953,7 +953,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
     receipt += `${centerText(footerMessage2, PAPER_WIDTH)}\n`;
   }
   if (footerMessage3) {
-    receipt += `\n${centerText(footerMessage3, PAPER_WIDTH)}\n`; // Tambah spasi kosong 1 baris
+    receipt += `\n${centerText(footerMessage3, PAPER_WIDTH)}\n\n`; // Tambah spasi kosong 1 baris di bawahnya agar tidak terpotong
   }
   
   receipt += '\n';

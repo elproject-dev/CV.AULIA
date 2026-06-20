@@ -9,6 +9,12 @@ CREATE TABLE IF NOT EXISTS expense_categories (
 -- Enable RLS
 ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
 
+-- Drop policies before recreating
+DROP POLICY IF EXISTS "Allow public read on expense_categories" ON expense_categories;
+DROP POLICY IF EXISTS "Allow public insert on expense_categories" ON expense_categories;
+DROP POLICY IF EXISTS "Allow public update on expense_categories" ON expense_categories;
+DROP POLICY IF EXISTS "Allow public delete on expense_categories" ON expense_categories;
+
 -- Allow public read
 CREATE POLICY "Allow public read on expense_categories" ON expense_categories
   FOR SELECT USING (true);

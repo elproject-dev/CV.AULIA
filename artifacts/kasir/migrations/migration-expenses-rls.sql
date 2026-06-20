@@ -6,6 +6,10 @@ DROP POLICY IF EXISTS "expenses_select_all" ON expenses;
 DROP POLICY IF EXISTS "expenses_insert_all" ON expenses;
 DROP POLICY IF EXISTS "expenses_update_all" ON expenses;
 DROP POLICY IF EXISTS "expenses_delete_all" ON expenses;
+DROP POLICY IF EXISTS "expenses_select" ON expenses;
+DROP POLICY IF EXISTS "expenses_insert" ON expenses;
+DROP POLICY IF EXISTS "expenses_update" ON expenses;
+DROP POLICY IF EXISTS "expenses_delete" ON expenses;
 
 -- Enable RLS
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;

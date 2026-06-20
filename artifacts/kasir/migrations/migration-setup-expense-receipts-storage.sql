@@ -13,8 +13,11 @@ ON CONFLICT (id) DO NOTHING;
 -- Drop existing policies if any to avoid conflicts
 DROP POLICY IF EXISTS "Anyone can view expense receipts" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can upload expense receipts" ON storage.objects;
+DROP POLICY IF EXISTS "Anon can upload expense receipts" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can update expense receipts" ON storage.objects;
+DROP POLICY IF EXISTS "Anon can update expense receipts" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can delete expense receipts" ON storage.objects;
+DROP POLICY IF EXISTS "Anon can delete expense receipts" ON storage.objects;
 
 -- Create policies
 -- Allow public viewing of receipts (since it's a public bucket, we need a select policy)

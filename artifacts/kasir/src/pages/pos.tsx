@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useListProducts, useListCategories, useListCustomers, useCreateTransaction, getListProductsQueryKey, getListCustomersQueryKey, useListOutlets, useListPointsSettings, useListDiscountSettings, useListDiscountCategories } from "@workspace/api-client-react";
+import { useListProducts, useListCategories, useListCustomers, useCreateTransaction, getListProductsQueryKey, getListCustomersQueryKey, useListOutlets, useListPointsSettings, useListDiscountSettings, useListDiscountCategories, useListLoadingSessions, useListLoadingItems } from "@workspace/api-client-react";
 import { formatRupiah, formatInvoiceNumber } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
@@ -10,7 +10,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Award, Printer, Bluetooth, Circle, Store, AlertTriangle } from "lucide-react";
+import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Award, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,9 @@ interface CartItem {
   price: number;
   quantity: number;
   imageUrl?: string | null;
+  unitName: string;
+  conversionFactor: number;
+  unitPrice: number;
 }
 
 // Helper function untuk format angka dengan titik ribuan
@@ -119,6 +122,9 @@ export default function POSPage() {
   const [isPrinting, setIsPrinting] = useState(false);
   const [showProducts, setShowProducts] = useState(false); // Default tidak menampilkan produk
 
+  // UOM selector state
+  const [uomSelectorProduct, setUomSelectorProduct] = useState<any>(null);
+
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   // Initialize outlet: Kasir's specific outlet for Kasir, Admin's assigned outlet if set, otherwise 'all'
@@ -164,6 +170,38 @@ export default function POSPage() {
   const { data: allPointsSettings, refetch: refetchPointsSettings } = useListPointsSettings();
   const { data: allDiscountSettings, refetch: refetchDiscountSettings } = useListDiscountSettings();
   const { data: allDiscountCategories, refetch: refetchDiscountCategories } = useListDiscountCategories();
+
+  // FMCG: Fetch active loading session for Kasir
+  const { data: activeSessions } = useListLoadingSessions({
+    salesId: user?.staffId,
+    status: 'active'
+  });
+  const activeSession = activeSessions?.[0];
+  const { data: loadingItems } = useListLoadingItems(activeSession?.id);
+
+  const posProducts = useMemo(() => {
+    if (isAdmin) return products || [];
+    
+    if (!loadingItems) return [];
+    
+    return loadingItems
+      .map((item: any) => ({
+        ...item.products,
+        stock_quantity: item.quantity_loaded - item.quantity_sold - item.quantity_returned,
+        loadingItemId: item.id
+      }))
+      .filter((p: any) => p.stock_quantity > 0 && p.is_active !== false)
+      // apply search
+      .filter((p: any) => {
+        if (search.length > 2) {
+          return p.name.toLowerCase().includes(search.toLowerCase());
+        }
+        if (categoryId) {
+          return p.category_id === categoryId;
+        }
+        return true;
+      });
+  }, [isAdmin, products, loadingItems, search, categoryId]);
 
   const createTransaction = useCreateTransaction();
 
@@ -329,15 +367,16 @@ export default function POSPage() {
     setIsPrinting(true);
     try {
       // Prepare transaction data with store settings
+      const activeOutletObj = outlets?.find(o => o.id.toString() === selectedOutlet);
       const showFooter = localStorage.getItem('showFooter') !== 'false';
       const printData = {
         ...transaction,
-        storeName: localStorage.getItem('storeName') || 'SBAGIAMU',
-        storeAddress: localStorage.getItem('storeAddress') || '',
-        storePhone: localStorage.getItem('storePhone') || '',
-        footerMessage: showFooter ? (localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
-        footerMessage2: showFooter ? (localStorage.getItem('footerMessage2') || '') : '',
-        footerMessage3: showFooter ? (localStorage.getItem('footerMessage3') || '') : '',
+        storeName: activeOutletObj?.store_name || activeOutletObj?.name || localStorage.getItem('storeName') || 'SBAGIAMU',
+        storeAddress: activeOutletObj?.address || localStorage.getItem('storeAddress') || '',
+        storePhone: activeOutletObj?.phone || localStorage.getItem('storePhone') || '',
+        footerMessage: showFooter ? (activeOutletObj?.footer_message || localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
+        footerMessage2: showFooter ? (activeOutletObj?.footer_message2 || localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee') : '',
+        footerMessage3: showFooter ? (activeOutletObj?.footer_message3 || localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital') : '',
       };
       console.log('Print data prepared:', printData);
 
@@ -438,39 +477,89 @@ export default function POSPage() {
     setPointsToRedeem(cleanValue);
   };
 
-  const addToCart = (product: any) => {
+  const addToCart = (product: any, selectedUnit?: { unit_name: string; conversion_factor: number; price?: number }) => {
+    const unitName = selectedUnit?.unit_name || 'pcs';
+    const conversionFactor = selectedUnit?.conversion_factor || 1;
+    const unitPrice = selectedUnit?.price ? Number(selectedUnit.price) : product.price * conversionFactor;
+    const cartKey = `${product.id}_${unitName}`;
+
+    if (!isAdmin && product.stock_quantity !== undefined) {
+      const existing = cart.find(item => item.productId === product.id && item.unitName === unitName);
+      const currentPcsQty = existing ? existing.quantity * existing.conversionFactor : 0;
+      // Total pcs of this product across all units in cart
+      const totalPcsInCart = cart
+        .filter(item => item.productId === product.id)
+        .reduce((sum, item) => sum + item.quantity * item.conversionFactor, 0);
+      if (totalPcsInCart + conversionFactor > product.stock_quantity) {
+        toast({ title: "Stok Tidak Mencukupi", description: "Tidak dapat melebihi stok di tangan (Loading).", variant: "destructive" });
+        return;
+      }
+    }
+
     const imageUrl = getProductImageUrl(product, 'thumb');
     
-    // Tampilkan notifikasi di luar state updater untuk menghindari warning render phase
     toast({
       title: product.name,
-      description: "Ditambahkan ke keranjang",
+      description: `Ditambahkan ke keranjang (${unitName})`,
       duration: 1500,
       variant: "success",
     });
 
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id);
+      const existing = prev.find(item => item.productId === product.id && item.unitName === unitName);
       if (existing) {
-        return prev.map(item => item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+        return prev.map(item => 
+          (item.productId === product.id && item.unitName === unitName)
+            ? { ...item, quantity: item.quantity + 1 } 
+            : item
+        );
       }
       return [...prev, {
         productId: product.id,
         productName: product.name,
         price: product.price,
         quantity: 1,
-        imageUrl: imageUrl
+        imageUrl: imageUrl,
+        unitName,
+        conversionFactor,
+        unitPrice
       }];
     });
-
-    // Kategori tidak lagi di-reset saat produk ditambahkan agar pengguna bisa memilih beberapa produk dari kategori yang sama
-    // setCategoryId(undefined);
   };
 
-  const updateQuantity = (productId: number, delta: number) => {
+  // Handle clicking a product: if it has multiple UOMs, show selector
+  const handleProductClick = (product: any) => {
+    const uoms = product.uoms || [];
+    const nonPcsUoms = uoms.filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1);
+    
+    if (nonPcsUoms.length > 0) {
+      // Product has multiple units - show UOM selector
+      setUomSelectorProduct(product);
+    } else {
+      // Product only has pcs - add directly
+      addToCart(product);
+    }
+  };
+
+  const updateQuantity = (productId: number, delta: number, unitName: string = 'pcs') => {
+    if (!isAdmin && delta > 0) {
+      const product = posProducts.find((p: any) => p.id === productId);
+      if (product && product.stock_quantity !== undefined) {
+        const item = cart.find(i => i.productId === productId && i.unitName === unitName);
+        const totalPcsInCart = cart
+          .filter(i => i.productId === productId)
+          .reduce((sum, i) => sum + i.quantity * i.conversionFactor, 0);
+        const convFactor = item?.conversionFactor || 1;
+        if (totalPcsInCart + convFactor > product.stock_quantity) {
+          toast({ title: "Stok Tidak Mencukupi", description: "Tidak dapat melebihi stok di tangan.", variant: "destructive" });
+          return;
+        }
+      }
+    }
+
     setCart(prev => {
       return prev.map(item => {
-        if (item.productId === productId) {
+        if (item.productId === productId && item.unitName === unitName) {
           const newQuantity = Math.max(1, item.quantity + delta);
           return { ...item, quantity: newQuantity };
         }
@@ -479,8 +568,8 @@ export default function POSPage() {
     });
   };
 
-  const removeFromCart = (productId: number) => {
-    setCart(prev => prev.filter(item => item.productId !== productId));
+  const removeFromCart = (productId: number, unitName: string = 'pcs') => {
+    setCart(prev => prev.filter(item => !(item.productId === productId && item.unitName === unitName)));
   };
 
   // Function untuk create pelanggan baru
@@ -589,7 +678,7 @@ export default function POSPage() {
     }
   };
 
-  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.quantity), 0), [cart]);
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0), [cart]);
 
   const tax = useMemo(() => {
     if (!enablePPN) return 0;
@@ -682,11 +771,16 @@ export default function POSPage() {
         pointsRedeemed: pointsRedeemed,
         pointsDiscount: pointsDiscount,
         earnedPoints: isMemberTransaction ? earnedPoints : 0,
+        loadingSessionId: activeSession?.id,
         items: cart.map(item => ({
           productId: item.productId,
           productName: item.productName,
-          quantity: item.quantity,
-          price: item.price
+          quantity: item.quantity * item.conversionFactor,
+          price: item.unitPrice / item.conversionFactor,
+          unitName: item.unitName,
+          unitQty: item.quantity,
+          conversionFactor: item.conversionFactor,
+          loadingItemId: posProducts.find((p: any) => p.id === item.productId)?.loadingItemId
         }))
       }
     }, {
@@ -814,6 +908,24 @@ export default function POSPage() {
     );
   }
 
+  if (!isAdmin && !activeSession) {
+    return (
+      <Sidebar>
+        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
+          <Card className="max-w-md w-full p-8 text-center flex flex-col items-center shadow-lg border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900/50 rounded-2xl">
+            <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-orange-200/50 dark:border-orange-800/50">
+              <Package className="w-10 h-10 text-orange-600 dark:text-orange-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-orange-900 dark:text-orange-100 mb-3">Belum Ada Sesi Loading</h2>
+            <p className="text-orange-700 dark:text-orange-300 mb-6 leading-relaxed">
+              Anda belum memiliki sesi "Transfer Stock" (Loading) yang aktif dari Gudang. Silakan hubungi Admin Gudang untuk melakukan transfer stock kepada Anda.
+            </p>
+          </Card>
+        </div>
+      </Sidebar>
+    );
+  }
+
   return (
     <Sidebar>
       <div className="flex flex-col md:flex-row h-full w-full bg-slate-100 dark:bg-slate-900">
@@ -911,17 +1023,17 @@ export default function POSPage() {
                     <div key={i} className="aspect-square bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg" />
                   ))}
                 </div>
-              ) : products?.length === 0 ? (
+              ) : posProducts?.length === 0 ? (
                 <div></div>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-4">
-                  {products?.map(product => {
+                  {posProducts?.map(product => {
                    const imageUrl = getProductImageUrl(product, 'small');
                    return (
                      <div
                        key={product.id}
                        className="p-[3px] rounded-xl hover:scale-105 transition-transform duration-200 cursor-pointer"
-                       onClick={() => addToCart(product)}
+                       onClick={() => handleProductClick(product)}
                      >
                        <Card
                          className="overflow-hidden active:scale-95 flex flex-col h-full"
@@ -946,6 +1058,11 @@ export default function POSPage() {
                             <Package
                               className={`w-6 h-6 lg:w-10 lg:h-10 text-slate-300 dark:text-slate-600 ${imageUrl ? 'hidden' : ''} product-fallback-icon`}
                             />
+                            {!isAdmin && (
+                              <Badge className="absolute top-1 right-1 bg-white/90 text-slate-800 border-none font-bold shadow-sm">
+                                Stok: {product.stock_quantity}
+                              </Badge>
+                            )}
                           </div>
                           <div className="p-1.5 lg:p-3 flex flex-col flex-1">
                             <p className="font-bold text-[10px] lg:text-xs truncate leading-tight mb-0.5 flex-1 text-slate-800">{product.name}</p>
@@ -998,7 +1115,7 @@ export default function POSPage() {
               ) : (
                 <div className="space-y-2">
                   {cart.map(item => (
-                    <div key={item.productId} className="flex items-center gap-2 lg:gap-2 p-3 lg:p-2 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                    <div key={`${item.productId}_${item.unitName}`} className="flex items-center gap-2 lg:gap-2 p-3 lg:p-2 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                       <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-md bg-slate-200 dark:bg-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
                         {item.imageUrl ? (
                           <img
@@ -1021,27 +1138,34 @@ export default function POSPage() {
 
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-xs lg:text-sm leading-tight truncate text-slate-800">{item.productName}</p>
-                        <p className="font-bold text-xs text-primary dark:text-primary-400 mt-0.5">{formatRupiah(item.price)}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="font-bold text-xs text-primary dark:text-primary-400">{formatRupiah(item.unitPrice)}</p>
+                          {item.unitName !== 'pcs' && (
+                            <Badge className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0">
+                              {item.unitName}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1 lg:gap-2">
                         <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-0.5">
                           <button
-                            onClick={() => updateQuantity(item.productId, -1)}
+                            onClick={() => updateQuantity(item.productId, -1, item.unitName)}
                             className="w-5 h-5 lg:w-6 lg:h-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
                           >
                             <Minus className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                           </button>
                           <span className="w-4 text-center text-xs font-medium text-slate-700">{item.quantity}</span>
                           <button
-                            onClick={() => updateQuantity(item.productId, 1)}
+                            onClick={() => updateQuantity(item.productId, 1, item.unitName)}
                             className="w-5 h-5 lg:w-6 lg:h-6 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-slate-200 dark:active:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors"
                           >
                             <Plus className="w-2.5 h-2.5 lg:w-3 lg:h-3" />
                           </button>
                         </div>
                         <button
-                          onClick={() => removeFromCart(item.productId)}
+                          onClick={() => removeFromCart(item.productId, item.unitName)}
                           className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"
                         >
                           <X className="w-3 h-3 lg:w-3.5 lg:h-3.5" />
@@ -1591,6 +1715,49 @@ export default function POSPage() {
                 Selesai
               </Button>
             </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* UOM Selector Dialog */}
+      <Dialog open={!!uomSelectorProduct} onOpenChange={(open) => !open && setUomSelectorProduct(null)}>
+        <DialogContent className="sm:max-w-xs sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Ruler className="w-4 h-4 text-indigo-500" />
+              Pilih Satuan
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {uomSelectorProduct?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            {uomSelectorProduct && (uomSelectorProduct.uoms || []).map((uom: any) => {
+              const unitPrice = uom.price ? Number(uom.price) : uomSelectorProduct.price * uom.conversion_factor;
+              return (
+                <button
+                  key={uom.unit_name}
+                  onClick={() => {
+                    addToCart(uomSelectorProduct, uom);
+                    setUomSelectorProduct(null);
+                  }}
+                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all duration-200 active:scale-[0.98] group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-bold uppercase">
+                      {uom.unit_name.slice(0, 3)}
+                    </div>
+                    <div className="text-left">
+                      <div className="font-semibold text-sm text-slate-800 dark:text-slate-200 capitalize">{uom.unit_name}</div>
+                      {uom.conversion_factor > 1 && (
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">1 {uom.unit_name} = {uom.conversion_factor} pcs</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice)}</div>
+                </button>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

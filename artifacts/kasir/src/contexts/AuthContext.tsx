@@ -64,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await supabase.from('staff').update({ owner_id: sessionUser.id }).eq('id', data.id);
             }
             if (data.name) sessionUser.name = data.name;
+            if (data.id) sessionUser.staffId = data.id;
             if (data.role) sessionUser.role = data.role as any;
             if (data.avatar_url) sessionUser.avatarUrl = data.avatar_url;
             
@@ -188,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await supabase.from('staff').update({ owner_id: authUser.id }).eq('id', data.id);
         }
         if (data.name) authUser.name = data.name;
+        if (data.id) authUser.staffId = data.id;
         if (data.role) authUser.role = data.role as any;
         if (data.avatar_url) authUser.avatarUrl = data.avatar_url;
         

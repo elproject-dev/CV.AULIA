@@ -19,6 +19,7 @@ export interface AuthUser {
   loginMode: LoginMode;
   outletId?: string;
   avatarUrl?: string;
+  staffId?: number;
   createdAt?: string;
 }
 

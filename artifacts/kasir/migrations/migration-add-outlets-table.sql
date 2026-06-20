@@ -49,7 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_staff_outlet_id ON staff(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_outlets_is_active ON outlets(is_active);
 
 -- Trigger for outlets updated_at
+DROP TRIGGER IF EXISTS update_outlets_updated_at ON outlets;
 DROP FUNCTION IF EXISTS update_outlets_updated_at();
+
 CREATE OR REPLACE FUNCTION update_outlets_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -58,6 +60,5 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS update_outlets_updated_at ON outlets;
 CREATE TRIGGER update_outlets_updated_at BEFORE UPDATE ON outlets
   FOR EACH ROW EXECUTE FUNCTION update_outlets_updated_at();

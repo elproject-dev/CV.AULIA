@@ -3,4 +3,4 @@
 -- ==========================================
 
 ALTER TABLE discount_settings
-ADD COLUMN allowed_promos JSONB DEFAULT '[]'::jsonb;
+ADD COLUMN IF NOT EXISTS allowed_promos JSONB DEFAULT '[]'::jsonb;

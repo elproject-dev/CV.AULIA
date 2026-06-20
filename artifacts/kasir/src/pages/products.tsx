@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useListCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, getListProductsQueryKey, getListCategoriesQueryKey, useListOutlets } from "@workspace/api-client-react";
+import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useListCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, getListProductsQueryKey, getListCategoriesQueryKey, useListOutlets, useCreateStockMovement, useListStockMovements, useBulkSaveProductUoms } from "@workspace/api-client-react";
 import { formatRupiah } from "@/lib/formatters";
 import { uploadProductImage, deleteProductImage, deleteProductImageByName, getProductImageUrl } from "@/lib/supabase-storage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle, Filter, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle, Filter, ArrowUpDown, Clock, Layers, Archive, CheckCircle, Ruler } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -81,7 +81,6 @@ export default function ProductsPage() {
     
     return sorted;
   }, [products, sortOrder]);
-
   const { data: categories } = useListCategories({ outletId: selectedOutlet });
 
   const createProduct = useCreateProduct();
@@ -92,6 +91,16 @@ export default function ProductsPage() {
   const deleteCategory = useDeleteCategory();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRestockDialogOpen, setIsRestockDialogOpen] = useState(false);
+  const [restockItems, setRestockItems] = useState<{ productId: string, quantity: number }[]>([{ productId: "", quantity: 1 }]);
+  const createStockMovement = useCreateStockMovement();
+  const bulkSaveUoms = useBulkSaveProductUoms();
+
+  // UOM State for Add/Edit Dialog
+  const [uomRows, setUomRows] = useState<{ unit_name: string; conversion_factor: number; price: string; is_default: boolean }[]>([]);
+  // Quick Restock UOM
+  const [quickRestockUnit, setQuickRestockUnit] = useState<string>('pcs');
+  const [quickRestockConversion, setQuickRestockConversion] = useState<number>(1);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<any>(null);
@@ -100,6 +109,51 @@ export default function ProductsPage() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [showCategoryOutlets, setShowCategoryOutlets] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+
+  // Tab & Stock Management States
+  const [activeTab, setActiveTab] = useState<'products' | 'stock'>('products');
+  const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'out' | 'low' | 'available'>('all');
+  const [quickRestockProduct, setQuickRestockProduct] = useState<any>(null);
+  const [quickRestockQty, setQuickRestockQty] = useState<number>(10);
+  const [quickRestockNote, setQuickRestockNote] = useState<string>("Restock Manual Cepat");
+  const [historyProduct, setHistoryProduct] = useState<any>(null);
+
+  // Stock stats calculation from currently loaded products list
+  const stockStats = useMemo(() => {
+    if (!products) return { totalItems: 0, totalStock: 0, outOfStock: 0, lowStock: 0 };
+    let totalStock = 0;
+    let outOfStock = 0;
+    let lowStock = 0;
+
+    products.forEach((p: any) => {
+      const stock = p.stock_quantity || 0;
+      totalStock += stock;
+      if (stock <= 0) {
+        outOfStock++;
+      } else if (stock <= 5) {
+        lowStock++;
+      }
+    });
+
+    return {
+      totalItems: products.length,
+      totalStock,
+      outOfStock,
+      lowStock
+    };
+  }, [products]);
+
+  // Filtered products list for the stock table
+  const filteredStockProducts = useMemo(() => {
+    if (!sortedProducts) return [];
+    return sortedProducts.filter((product: any) => {
+      const stock = product.stock_quantity || 0;
+      if (stockStatusFilter === 'out') return stock <= 0;
+      if (stockStatusFilter === 'low') return stock > 0 && stock <= 5;
+      if (stockStatusFilter === 'available') return stock > 5;
+      return true;
+    });
+  }, [sortedProducts, stockStatusFilter]);
 
   const [imagePreview, setImagePreview] = useState<string>("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -146,6 +200,14 @@ export default function ProductsPage() {
         setImagePreview("");
       }
       setImageFile(null);
+      // Load existing UOMs
+      const existingUoms = (product.uoms || []).filter((u: any) => u.unit_name !== 'pcs');
+      setUomRows(existingUoms.map((u: any) => ({
+        unit_name: u.unit_name,
+        conversion_factor: u.conversion_factor,
+        price: u.price ? formatNumberWithDots(Math.round(Number(u.price)).toString()) : '',
+        is_default: u.is_default || false
+      })));
     } else {
       setEditingProduct(null);
       setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true });
@@ -153,6 +215,7 @@ export default function ProductsPage() {
       setHasChanges(false);
       setImagePreview("");
       setImageFile(null);
+      setUomRows([]);
     }
     setIsDialogOpen(true);
   };
@@ -166,6 +229,7 @@ export default function ProductsPage() {
     setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true });
     setOriginalData(null);
     setHasChanges(false);
+    setUomRows([]);
   };
 
   const handleFormChange = (field: string, value: any) => {
@@ -265,9 +329,27 @@ export default function ProductsPage() {
         isActive: formData.isActive
       };
 
+      // Build UOM data: always include pcs as base unit + user-defined units
+      const uomsToSave = [
+        { unit_name: 'pcs', conversion_factor: 1, price: null, is_default: uomRows.length === 0 },
+        ...uomRows.map(row => ({
+          unit_name: row.unit_name,
+          conversion_factor: row.conversion_factor,
+          price: row.price ? parseNumberFromDots(row.price) : null,
+          is_default: row.is_default
+        }))
+      ];
+
+      const saveUomsForProduct = (productId: number) => {
+        if (uomRows.length > 0) {
+          bulkSaveUoms.mutate({ productId, uoms: uomsToSave });
+        }
+      };
+
       if (isUpdate) {
         updateProduct.mutate({ id: editingProduct.id, data: payload }, {
           onSuccess: () => {
+            saveUomsForProduct(editingProduct.id);
             queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
             toast({ title: "Sukses", description: "Produk diperbarui" });
             handleCloseDialog();
@@ -279,7 +361,8 @@ export default function ProductsPage() {
         });
       } else {
         createProduct.mutate({ data: payload }, {
-          onSuccess: () => {
+          onSuccess: (data: any) => {
+            if (data?.id) saveUomsForProduct(data.id);
             queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
             toast({ title: "Sukses", description: "Produk ditambahkan" });
             handleCloseDialog();
@@ -392,6 +475,33 @@ export default function ProductsPage() {
     return getProductImageUrl(imageUrl);
   };
 
+  // Helper: format stock in multi-unit display
+  const formatMultiUnitStock = (product: any) => {
+    const stock = product.stock_quantity || 0;
+    const uoms = (product.uoms || []).filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1);
+    if (uoms.length === 0) return `${stock} pcs`;
+    // Sort by conversion factor descending
+    const sorted = [...uoms].sort((a: any, b: any) => b.conversion_factor - a.conversion_factor);
+    let remaining = stock;
+    const parts: string[] = [];
+    sorted.forEach((u: any) => {
+      const count = Math.floor(remaining / u.conversion_factor);
+      if (count > 0) {
+        parts.push(`${count} ${u.unit_name}`);
+        remaining = remaining % u.conversion_factor;
+      }
+    });
+    if (remaining > 0) parts.push(`${remaining} pcs`);
+    return parts.length > 0 ? parts.join(', ') : `${stock} pcs`;
+  };
+
+  // Helper: get UOM options for a product (for selects)
+  const getProductUomOptions = (product: any) => {
+    const uoms = product?.uoms || [];
+    if (uoms.length === 0) return [{ unit_name: 'pcs', conversion_factor: 1 }];
+    return uoms;
+  };
+
   const getOutletName = (product: any): string => {
     const allowedOutlets = product.allowed_outlets;
 
@@ -430,6 +540,33 @@ export default function ProductsPage() {
     return `${allowedOutlets.length} Outlet`;
   };
 
+  const handleRestockSubmit = async () => {
+    const validItems = restockItems.filter(item => item.productId && item.quantity > 0);
+    if (validItems.length === 0) {
+      toast({ title: "Error", description: "Minimal masukkan 1 produk dengan kuantitas > 0", variant: "destructive" });
+      return;
+    }
+
+    try {
+      for (const item of validItems) {
+        await createStockMovement.mutateAsync({
+          data: {
+            product_id: parseInt(item.productId),
+            quantity: item.quantity,
+            type: 'restock',
+            note: 'Manual Restock Gudang'
+          }
+        });
+      }
+      toast({ title: "Sukses", description: "Restock gudang berhasil" });
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+      setIsRestockDialogOpen(false);
+      setRestockItems([{ productId: "", quantity: 1 }]);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Gagal melakukan restock", variant: "destructive" });
+    }
+  };
+
   if (!isAdmin && (!user?.outletId || user?.outletId === "all")) {
     return (
       <Sidebar>
@@ -460,6 +597,9 @@ export default function ProductsPage() {
           <div className="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto">
             {isAdmin && (
               <>
+                <Button variant="outline" onClick={() => setIsRestockDialogOpen(true)} className="w-full sm:w-auto text-blue-600 border-blue-200 hover:bg-blue-50">
+                  <Package className="w-4 h-4 mr-2" /> Restock Gudang
+                </Button>
                 <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)} className="w-full sm:w-auto">
                   <FolderPlus className="w-4 h-4 mr-2" /> Kategori
                 </Button>
@@ -471,226 +611,523 @@ export default function ProductsPage() {
           </div>
         </div>
 
+        {/* Tabs Switcher */}
+        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-6">
+          <button
+            onClick={() => setActiveTab('products')}
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
+              activeTab === 'products'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            Daftar Produk
+          </button>
+          <button
+            onClick={() => setActiveTab('stock')}
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
+              activeTab === 'stock'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Stok Barang
+            {stockStats.outOfStock > 0 && (
+              <span className="flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
+            )}
+          </button>
+        </div>
+
         <div className="p-4 sm:p-6 flex-1 overflow-auto">
-          {/* Filters */}
-          <div className="mb-4 flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
-              <Input
-                placeholder="Cari produk..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  <span className="hidden sm:inline">Filter & Urutkan</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[280px] p-4" align="end">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                      <ArrowUpDown className="w-3 h-3" /> Urutkan Berdasarkan
-                    </label>
-                    <Select value={sortOrder} onValueChange={setSortOrder}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Urutkan" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="newest">Terbaru</SelectItem>
-                        <SelectItem value="nameAsc">Nama (A-Z)</SelectItem>
-                        <SelectItem value="nameDesc">Nama (Z-A)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                      <Tag className="w-3 h-3" /> Kategori
-                    </label>
-                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Semua Kategori" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Semua Kategori</SelectItem>
-                        {categories?.map((cat: any) => (
-                          <SelectItem key={cat.id} value={cat.id.toString()}>
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {isAdmin && (!user?.outletId || user.outletId === "all") && (
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                        <Store className="w-3 h-3" /> Outlet
-                      </label>
-                      <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Semua Outlet" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Semua Outlet</SelectItem>
-                          {outlets?.map((outlet: any) => (
-                            <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                              {outlet.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+          {activeTab === 'products' ? (
+            <>
+              {/* Filters */}
+              <div className="mb-4 flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
+                  <Input
+                    placeholder="Cari produk..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                  />
                 </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* Mobile Card List */}
-          <div className="flex flex-col gap-3 md:hidden">
-            {isLoading ? (
-              <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
-            ) : sortedProducts?.length === 0 ? (
-              <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data</div>
-            ) : (
-              sortedProducts?.map((product: any) => {
-                const categoryName = getCategoryName(product);
-                const productImage = getProductImage(product);
-
-                return (
-                  <div key={product.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-primary/20 hover:shadow-md active:bg-primary/5 transition-all duration-200" onClick={() => { setDetailProduct(product); setIsDetailDialogOpen(true); }}>
-                    <div className="flex gap-3 p-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-16 h-16 rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
-                          {productImage ? (
-                            <img src={productImage} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                          ) : (
-                            <Package className="w-8 h-8 text-slate-300 dark:text-slate-600" />
-                          )}
-                        </div>
+                
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <Filter className="w-4 h-4" />
+                      <span className="hidden sm:inline">Filter & Urutkan</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[280px] p-4" align="end">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                          <ArrowUpDown className="w-3 h-3" /> Urutkan Berdasarkan
+                        </label>
+                        <Select value={sortOrder} onValueChange={setSortOrder}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Urutkan" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="newest">Terbaru</SelectItem>
+                            <SelectItem value="nameAsc">Nama (A-Z)</SelectItem>
+                            <SelectItem value="nameDesc">Nama (Z-A)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
 
-                      <div className="flex-1 flex flex-col gap-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-2">{product.name}</h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{categoryName}</p>
-                            {isAdmin && (
-                              <div className="mt-1.5">
-                                <Badge className="bg-orange-500 hover:bg-orange-600 text-white whitespace-nowrap text-xs">
-                                  {getOutletCountText(product)}
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                          {product.isActive ? (
-                            <Badge className="bg-green-500 dark:bg-green-600 whitespace-nowrap text-xs">Aktif</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 whitespace-nowrap text-xs">Nonaktif</Badge>
-                          )}
-                        </div>
-                        <div className="font-bold text-primary text-sm mt-auto">{formatRupiah(product.price)}</div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                          <Tag className="w-3 h-3" /> Kategori
+                        </label>
+                        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Semua Kategori" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Semua Kategori</SelectItem>
+                            {categories?.map((cat: any) => (
+                              <SelectItem key={cat.id} value={cat.id.toString()}>
+                                {cat.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                    </div>
 
-                    <div className="flex justify-between items-center border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-2 px-3" onClick={(e) => e.stopPropagation()}>
-                      {isAdmin && (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(product)}>
-                            <Edit className="w-4 h-4 mr-1" /> Edit
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleDelete(product.id)}>
-                            <Trash2 className="w-4 h-4 mr-1" /> Hapus
-                          </Button>
-                        </>
+                      {isAdmin && (!user?.outletId || user.outletId === "all") && (
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                            <Store className="w-3 h-3" /> Outlet
+                          </label>
+                          <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Semua Outlet" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Semua Outlet</SelectItem>
+                              {outlets?.map((outlet: any) => (
+                                <SelectItem key={outlet.id} value={outlet.id.toString()}>
+                                  {outlet.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       )}
                     </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
 
-          {/* Desktop Table */}
-          <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50 dark:bg-slate-800/50">
-                    <TableHead className="w-16 text-center">Foto</TableHead>
-                    <TableHead>Nama</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Harga</TableHead>
-                    <TableHead className="text-center whitespace-nowrap">Kategori</TableHead>
-                    {isAdmin && <TableHead className="text-right whitespace-nowrap">Outlet</TableHead>}
-                    <TableHead className="text-center whitespace-nowrap">Status</TableHead>
-                    {isAdmin && <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow><TableCell colSpan={isAdmin ? 7 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
-                  ) : sortedProducts?.length === 0 ? (
-                    <TableRow><TableCell colSpan={isAdmin ? 7 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
-                  ) : (
-                    sortedProducts?.map((product: any) => {
-                      const categoryName = getCategoryName(product);
-                      const productImage = getProductImage(product);
+              {/* Mobile Card List */}
+              <div className="flex flex-col gap-3 md:hidden">
+                {isLoading ? (
+                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
+                ) : sortedProducts?.length === 0 ? (
+                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data</div>
+                ) : (
+                  sortedProducts?.map((product: any) => {
+                    const categoryName = getCategoryName(product);
+                    const productImage = getProductImage(product);
 
-                      return (
-                        <TableRow key={product.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-sm relative hover:z-10 transition-all duration-200 cursor-pointer" onClick={() => { setDetailProduct(product); setIsDetailDialogOpen(true); }}>
-                          <TableCell className="text-center">
-                            <div className="w-14 h-14 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0 mx-auto">
+                    return (
+                      <div key={product.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-primary/20 hover:shadow-md active:bg-primary/5 transition-all duration-200" onClick={() => { setDetailProduct(product); setIsDetailDialogOpen(true); }}>
+                        <div className="flex gap-3 p-3">
+                          <div className="flex-shrink-0">
+                            <div className="w-16 h-16 rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
                               {productImage ? (
                                 <img src={productImage} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                               ) : (
-                                <Package className="w-7 h-7 text-slate-300 dark:text-slate-600" />
+                                <Package className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                               )}
                             </div>
-                          </TableCell>
-                          <TableCell className="font-medium text-slate-900 dark:text-white">{product.name}</TableCell>
-                          <TableCell className="text-right font-bold text-primary whitespace-nowrap">{formatRupiah(product.price)}</TableCell>
-                          <TableCell className="text-center whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">{categoryName}</TableCell>
-                          {isAdmin && (
-                            <TableCell className="text-right whitespace-nowrap">
-                              <Badge className="bg-orange-500 hover:bg-orange-600 text-white">
-                                {getOutletCountText(product)}
-                              </Badge>
-                            </TableCell>
-                          )}
-                          <TableCell className="text-center whitespace-nowrap">
-                            {product.isActive ? (
-                              <Badge className="bg-green-500 dark:bg-green-600">Aktif</Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Nonaktif</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            {isAdmin && (
-                              <div className="flex items-center justify-end gap-1 sm:gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)} className="h-8 w-8 sm:h-9 sm:w-9">
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)} className="h-8 w-8 sm:h-9 sm:w-9 text-red-500 hover:text-red-600 dark:hover:text-red-400">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                          </div>
+
+                          <div className="flex-1 flex flex-col gap-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-2">{product.name}</h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{categoryName}</p>
+                                {isAdmin && (
+                                  <div className="mt-1.5">
+                                    <Badge className="bg-orange-500 hover:bg-orange-600 text-white whitespace-nowrap text-xs">
+                                      {getOutletCountText(product)}
+                                    </Badge>
+                                  </div>
+                                )}
                               </div>
+                              {product.isActive ? (
+                                <Badge className="bg-green-500 dark:bg-green-600 whitespace-nowrap text-xs">Aktif</Badge>
+                              ) : (
+                                <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 whitespace-nowrap text-xs">Nonaktif</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between mt-auto pt-1">
+                              <div className="font-bold text-primary text-sm">{formatRupiah(product.price)}</div>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                (product.stock_quantity || 0) <= 0 
+                                  ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" 
+                                  : (product.stock_quantity || 0) <= 5 
+                                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" 
+                                    : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                              }`}>
+                                Stok: {product.stock_quantity || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-2 px-3" onClick={(e) => e.stopPropagation()}>
+                          {isAdmin && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(product)}>
+                                <Edit className="w-4 h-4 mr-1" /> Edit
+                              </Button>
+                              <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleDelete(product.id)}>
+                                <Trash2 className="w-4 h-4 mr-1" /> Hapus
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50 dark:bg-slate-800/50">
+                        <TableHead className="w-16 text-center">Foto</TableHead>
+                        <TableHead>Nama</TableHead>
+                        <TableHead className="text-right whitespace-nowrap">Harga</TableHead>
+                        <TableHead className="text-center whitespace-nowrap">Stok Gudang</TableHead>
+                        <TableHead className="text-center whitespace-nowrap">Kategori</TableHead>
+                        {isAdmin && <TableHead className="text-right whitespace-nowrap">Outlet</TableHead>}
+                        <TableHead className="text-center whitespace-nowrap">Status</TableHead>
+                        {isAdmin && <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <TableRow><TableCell colSpan={isAdmin ? 8 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                      ) : sortedProducts?.length === 0 ? (
+                        <TableRow><TableCell colSpan={isAdmin ? 8 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
+                      ) : (
+                        sortedProducts?.map((product: any) => {
+                          const categoryName = getCategoryName(product);
+                          const productImage = getProductImage(product);
+
+                          return (
+                            <TableRow key={product.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-sm relative hover:z-10 transition-all duration-200 cursor-pointer" onClick={() => { setDetailProduct(product); setIsDetailDialogOpen(true); }}>
+                              <TableCell className="text-center">
+                                <div className="w-14 h-14 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0 mx-auto">
+                                  {productImage ? (
+                                    <img src={productImage} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                  ) : (
+                                    <Package className="w-7 h-7 text-slate-300 dark:text-slate-600" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-medium text-slate-900 dark:text-white">{product.name}</TableCell>
+                              <TableCell className="text-right font-bold text-primary whitespace-nowrap">{formatRupiah(product.price)}</TableCell>
+                              <TableCell className="text-center whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                  (product.stock_quantity || 0) <= 0 
+                                    ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" 
+                                    : (product.stock_quantity || 0) <= 5 
+                                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" 
+                                      : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                                }`}>
+                                  {product.stock_quantity || 0}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">{categoryName}</TableCell>
+                              {isAdmin && (
+                                <TableCell className="text-right whitespace-nowrap">
+                                  <Badge className="bg-orange-500 hover:bg-orange-600 text-white">
+                                    {getOutletCountText(product)}
+                                  </Badge>
+                                </TableCell>
+                              )}
+                              <TableCell className="text-center whitespace-nowrap">
+                                {product.isActive ? (
+                                  <Badge className="bg-green-500 dark:bg-green-600">Aktif</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Nonaktif</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                {isAdmin && (
+                                  <div className="flex items-center justify-end gap-1 sm:gap-2">
+                                    <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(product)} className="h-8 w-8 sm:h-9 sm:w-9">
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)} className="h-8 w-8 sm:h-9 sm:w-9 text-red-500 hover:text-red-600 dark:hover:text-red-400">
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Stock Metric Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg">
+                    <Package className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Jenis Barang</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.totalItems}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg">
+                    <Archive className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Stok Gudang</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.totalStock}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Stok Habis</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.outOfStock}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg">
+                    <AlertTriangle className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Stok Menipis</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.lowStock}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stock Filters */}
+              <div className="mb-4 flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
+                  <Input
+                    placeholder="Cari stok barang..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 bg-white dark:bg-slate-900"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Select
+                    value={stockStatusFilter}
+                    onValueChange={(val: any) => setStockStatusFilter(val)}
+                  >
+                    <SelectTrigger className="w-[180px] bg-white dark:bg-slate-900">
+                      <SelectValue placeholder="Filter Stok" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Stok</SelectItem>
+                      <SelectItem value="out">Stok Habis (0)</SelectItem>
+                      <SelectItem value="low">Stok Menipis (1-5)</SelectItem>
+                      <SelectItem value="available">Tersedia (&gt;5)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Mobile Stock Cards */}
+              <div className="flex flex-col gap-3 md:hidden">
+                {isLoading ? (
+                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
+                ) : filteredStockProducts.length === 0 ? (
+                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data stok</div>
+                ) : (
+                  filteredStockProducts.map((product: any) => {
+                    const categoryName = getCategoryName(product);
+                    const productImage = getProductImage(product);
+                    const stock = product.stock_quantity || 0;
+
+                    return (
+                      <div key={product.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-3 flex flex-col gap-3">
+                        <div className="flex gap-3">
+                          <div className="w-12 h-12 rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {productImage ? (
+                              <img src={productImage} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            ) : (
+                              <Package className="w-6 h-6 text-slate-300 dark:text-slate-600" />
                             )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-1">{product.name}</h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{categoryName}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Stok: {stock}</span>
+                              {(product.uoms || []).filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1).length > 0 && (
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400">({formatMultiUnitStock(product)})</span>
+                              )}
+                              {stock <= 0 ? (
+                                <Badge variant="destructive" className="bg-red-500 text-white text-[10px] py-0 px-1.5 h-4 font-semibold">Habis</Badge>
+                              ) : stock <= 5 ? (
+                                <Badge className="bg-amber-500 text-white text-[10px] py-0 px-1.5 h-4 font-semibold">Menipis</Badge>
+                              ) : (
+                                <Badge className="bg-green-500 text-white text-[10px] py-0 px-1.5 h-4 font-semibold">Tersedia</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {isAdmin && (
+                          <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 text-blue-600 border-blue-200 hover:bg-blue-50 text-xs py-1 h-8"
+                              onClick={() => {
+                                setQuickRestockProduct(product);
+                                setQuickRestockQty(10);
+                                setQuickRestockNote("Restock Manual Cepat");
+                              }}
+                            >
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Restock Cepat
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-1 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs py-1 h-8"
+                              onClick={() => setHistoryProduct(product)}
+                            >
+                              <Clock className="w-3.5 h-3.5 mr-1" /> Riwayat
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop Stock Table */}
+              <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-slate-50 dark:bg-slate-800/50">
+                        <TableHead className="w-16 text-center">Foto</TableHead>
+                        <TableHead>Nama Produk</TableHead>
+                        <TableHead className="text-center">Kategori</TableHead>
+                        <TableHead className="text-center">Stok Gudang</TableHead>
+                        <TableHead className="text-center">Status Stok</TableHead>
+                        <TableHead className="text-right">Terakhir Diupdate</TableHead>
+                        {isAdmin && <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                      ) : filteredStockProducts.length === 0 ? (
+                        <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data stok yang cocok</TableCell></TableRow>
+                      ) : (
+                        filteredStockProducts.map((product: any) => {
+                          const categoryName = getCategoryName(product);
+                          const productImage = getProductImage(product);
+                          const stock = product.stock_quantity || 0;
+
+                          return (
+                            <TableRow key={product.id} className="border-b dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200">
+                              <TableCell className="text-center">
+                                <div className="w-12 h-12 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0 mx-auto">
+                                  {productImage ? (
+                                    <img src={productImage} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                  ) : (
+                                    <Package className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-semibold text-slate-900 dark:text-white">{product.name}</TableCell>
+                              <TableCell className="text-center text-sm text-slate-600 dark:text-slate-400">{categoryName}</TableCell>
+                              <TableCell className="text-center font-bold text-base">
+                                <div>{stock}</div>
+                                {(product.uoms || []).filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1).length > 0 && (
+                                  <div className="text-[10px] font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                                    {formatMultiUnitStock(product)}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {stock <= 0 ? (
+                                  <Badge variant="destructive" className="bg-red-500 hover:bg-red-600 text-white font-semibold">Habis</Badge>
+                                ) : stock <= 5 ? (
+                                  <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-semibold">Menipis</Badge>
+                                ) : (
+                                  <Badge className="bg-green-500 hover:bg-green-600 text-white font-semibold">Tersedia</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-xs text-slate-500 dark:text-slate-400">
+                                {product.updated_at ? new Date(product.updated_at).toLocaleString('id-ID', {
+                                  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                }) : '-'}
+                              </TableCell>
+                              {isAdmin && (
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setQuickRestockProduct(product);
+                                        setQuickRestockQty(10);
+                                        setQuickRestockNote("Restock Manual Cepat");
+                                      }}
+                                      className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-xs py-1 h-8"
+                                    >
+                                      <Plus className="w-3.5 h-3.5 mr-1" /> Restock
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setHistoryProduct(product)}
+                                      className="text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs py-1 h-8"
+                                    >
+                                      <Clock className="w-3.5 h-3.5 mr-1" /> Riwayat
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -802,6 +1239,106 @@ export default function ProductsPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Satuan / UOM */}
+            {isAdmin && (
+              <div className="space-y-3 border border-indigo-200 dark:border-indigo-900/50 p-3 rounded-lg bg-indigo-50/30 dark:bg-indigo-900/10">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Ruler className="w-4 h-4 text-indigo-500" />
+                  Satuan Ukur (Multi UOM)
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
+                  Satuan dasar (pcs) otomatis ditambahkan. Tambahkan satuan lain (box, dus, pack) jika diperlukan.
+                </p>
+
+                {uomRows.length > 0 && (
+                  <div className="space-y-2">
+                    {uomRows.map((row, idx) => (
+                      <div key={idx} className="flex items-end gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Nama Satuan</label>
+                          <Input
+                            placeholder="box, dus, pack..."
+                            value={row.unit_name}
+                            onChange={(e) => {
+                              const newRows = [...uomRows];
+                              newRows[idx].unit_name = e.target.value.toLowerCase().trim();
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="w-20 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Isi (pcs)</label>
+                          <Input
+                            type="number"
+                            min={2}
+                            placeholder="12"
+                            value={row.conversion_factor}
+                            onChange={(e) => {
+                              const newRows = [...uomRows];
+                              newRows[idx].conversion_factor = parseInt(e.target.value) || 1;
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="w-28 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Harga (opsional)</label>
+                          <Input
+                            placeholder="Auto"
+                            value={row.price}
+                            onChange={(e) => {
+                              const newRows = [...uomRows];
+                              newRows[idx].price = formatNumberWithDots(e.target.value);
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                          onClick={() => {
+                            const newRows = [...uomRows];
+                            newRows.splice(idx, 1);
+                            setUomRows(newRows);
+                            setHasChanges(true);
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:text-indigo-400 dark:border-indigo-800 dark:hover:bg-indigo-900/20"
+                  onClick={() => {
+                    setUomRows([...uomRows, { unit_name: '', conversion_factor: 12, price: '', is_default: false }]);
+                    setHasChanges(true);
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Satuan
+                </Button>
+
+                {uomRows.length > 0 && (
+                  <div className="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 p-2 rounded border border-slate-100 dark:border-slate-800">
+                    <span className="font-medium">Preview:</span> 1 pcs = 1 pcs
+                    {uomRows.filter(r => r.unit_name).map((r, i) => (
+                      <span key={i}> • 1 {r.unit_name} = {r.conversion_factor} pcs</span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -966,18 +1503,30 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-100 dark:border-slate-800 pt-5">
+              <div className="grid grid-cols-3 gap-4 border-t border-slate-100 dark:border-slate-800 pt-5">
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">Status Produk</label>
+                  <label className="text-xs text-slate-500 block mb-1">Status</label>
                   {detailProduct.isActive ? (
                     <Badge className="bg-green-500 dark:bg-green-600">Aktif</Badge>
                   ) : (
                     <Badge variant="secondary">Nonaktif</Badge>
                   )}
                 </div>
+                <div className="text-center">
+                  <label className="text-xs text-slate-500 block mb-1">Stok Gudang</label>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                    (detailProduct.stock_quantity || 0) <= 0 
+                      ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" 
+                      : (detailProduct.stock_quantity || 0) <= 5 
+                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" 
+                        : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                  }`}>
+                    {detailProduct.stock_quantity || 0}
+                  </span>
+                </div>
                 <div className="text-right">
                   <label className="text-xs text-slate-500 block mb-1">Harga</label>
-                  <div className="font-bold text-primary text-base">{formatRupiah(detailProduct.price)}</div>
+                  <div className="font-bold text-primary text-sm sm:text-base whitespace-nowrap">{formatRupiah(detailProduct.price)}</div>
                 </div>
               </div>
 
@@ -998,6 +1547,271 @@ export default function ProductsPage() {
           )}
         </DialogContent>
       </Dialog>
+ 
+      {/* Restock Dialog */}
+      <Dialog open={isRestockDialogOpen} onOpenChange={setIsRestockDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Restock Gudang Utama</DialogTitle>
+          </DialogHeader>
+ 
+          <div className="space-y-4 py-4">
+            {restockItems.map((item, index) => (
+              <div key={index} className="flex items-end gap-3 bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                <div className="flex-1 space-y-1">
+                  <label className="text-xs font-medium text-slate-500">Produk</label>
+                  <Select 
+                    value={item.productId} 
+                    onValueChange={(v) => {
+                      const newItems = [...restockItems];
+                      newItems[index].productId = v;
+                      setRestockItems(newItems);
+                    }}
+                  >
+                    <SelectTrigger className="bg-white dark:bg-slate-950">
+                      <SelectValue placeholder="Pilih Produk" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products?.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id.toString()}>
+                          {p.name} (Stok Saat Ini: {p.stock_quantity || 0})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-32 space-y-1">
+                  <label className="text-xs font-medium text-slate-500">Tambah (Qty)</label>
+                  <Input 
+                    type="number" 
+                    min={1} 
+                    className="bg-white dark:bg-slate-950"
+                    value={item.quantity} 
+                    onChange={(e) => {
+                      const newItems = [...restockItems];
+                      newItems[index].quantity = parseInt(e.target.value) || 0;
+                      setRestockItems(newItems);
+                    }} 
+                  />
+                </div>
+                {restockItems.length > 1 && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50" 
+                    onClick={() => {
+                      const newItems = [...restockItems];
+                      newItems.splice(index, 1);
+                      setRestockItems(newItems);
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full"
+              onClick={() => setRestockItems([...restockItems, { productId: "", quantity: 1 }])}
+            >
+              <Plus className="w-4 h-4 mr-2" /> Tambah Baris Produk
+            </Button>
+          </div>
+ 
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRestockDialogOpen(false)}>Batal</Button>
+            <Button onClick={handleRestockSubmit}>Simpan Restock</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Restock Dialog */}
+      <Dialog open={!!quickRestockProduct} onOpenChange={(open) => { if (!open) { setQuickRestockProduct(null); setQuickRestockUnit('pcs'); setQuickRestockConversion(1); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Restock Cepat: {quickRestockProduct?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-500">Stok Saat Ini</label>
+              <div className="text-lg font-bold text-slate-700 dark:text-slate-300">
+                {quickRestockProduct?.stock_quantity || 0} pcs
+                {quickRestockProduct && (quickRestockProduct.uoms || []).filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1).length > 0 && (
+                  <span className="text-sm font-normal text-slate-500 ml-2">({formatMultiUnitStock(quickRestockProduct)})</span>
+                )}
+              </div>
+            </div>
+
+            {/* Unit Selector */}
+            {quickRestockProduct && getProductUomOptions(quickRestockProduct).length > 1 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Satuan Restock</label>
+                <Select
+                  value={quickRestockUnit}
+                  onValueChange={(val) => {
+                    const uom = getProductUomOptions(quickRestockProduct).find((u: any) => u.unit_name === val);
+                    setQuickRestockUnit(val);
+                    setQuickRestockConversion(uom?.conversion_factor || 1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Satuan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getProductUomOptions(quickRestockProduct).map((u: any) => (
+                      <SelectItem key={u.unit_name} value={u.unit_name}>
+                        {u.unit_name} {u.conversion_factor > 1 ? `(1 ${u.unit_name} = ${u.conversion_factor} pcs)` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Jumlah Restock</label>
+              <Input
+                type="number"
+                min={1}
+                value={quickRestockQty}
+                onChange={(e) => setQuickRestockQty(parseInt(e.target.value) || 0)}
+              />
+              {quickRestockConversion > 1 && (
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">
+                  = {quickRestockQty * quickRestockConversion} pcs akan ditambahkan ke stok
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Catatan</label>
+              <Input
+                placeholder="Masukkan catatan restock..."
+                value={quickRestockNote}
+                onChange={(e) => setQuickRestockNote(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setQuickRestockProduct(null); setQuickRestockUnit('pcs'); setQuickRestockConversion(1); }}>Batal</Button>
+            <Button
+              onClick={async () => {
+                if (quickRestockQty <= 0) {
+                  toast({ title: "Error", description: "Jumlah harus lebih besar dari 0", variant: "destructive" });
+                  return;
+                }
+                const actualPcsQty = quickRestockQty * quickRestockConversion;
+                try {
+                  await createStockMovement.mutateAsync({
+                    data: {
+                      product_id: quickRestockProduct.id,
+                      quantity: actualPcsQty,
+                      type: 'restock',
+                      note: quickRestockNote || 'Restock Manual Cepat',
+                      unit_name: quickRestockUnit,
+                      unit_qty: quickRestockQty,
+                      conversion_factor: quickRestockConversion
+                    }
+                  });
+                  toast({ title: "Sukses", description: `Berhasil menambahkan ${quickRestockQty} ${quickRestockUnit} (${actualPcsQty} pcs) stok` });
+                  setQuickRestockProduct(null);
+                  setQuickRestockUnit('pcs');
+                  setQuickRestockConversion(1);
+                } catch (e: any) {
+                  toast({ title: "Error", description: e.message || "Gagal melakukan restock", variant: "destructive" });
+                }
+              }}
+              disabled={createStockMovement.isPending}
+            >
+              {createStockMovement.isPending ? "Menyimpan..." : "Simpan Restock"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock History Dialog */}
+      <StockHistoryDialog
+        product={historyProduct}
+        open={!!historyProduct}
+        onOpenChange={(open) => !open && setHistoryProduct(null)}
+      />
     </Sidebar>
+  );
+}
+
+function StockHistoryDialog({ 
+  product, 
+  open, 
+  onOpenChange 
+}: { 
+  product: any; 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: movements, isLoading } = useListStockMovements(product?.id);
+
+  const formatMovementType = (type: string) => {
+    switch (type) {
+      case 'restock': return 'Restock Gudang';
+      case 'transfer_to_sales': return 'Transfer ke Sales';
+      case 'return_from_sales': return 'Kembali dari Sales';
+      case 'adjustment': return 'Penyesuaian Stok';
+      case 'sale': return 'Penjualan POS';
+      default: return type;
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0">
+        <DialogHeader className="p-6 pb-2">
+          <DialogTitle className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-indigo-500" />
+            Riwayat Mutasi: {product?.name}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 pt-2 space-y-3">
+          {isLoading ? (
+            <div className="text-center py-8 text-slate-500">Memuat riwayat...</div>
+          ) : movements.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">Belum ada riwayat mutasi untuk produk ini.</div>
+          ) : (
+            <div className="border border-slate-100 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
+              {movements.map((move: any) => {
+                const isPositive = move.quantity > 0;
+                return (
+                  <div key={move.id} className="p-3 bg-white dark:bg-slate-900 flex items-center justify-between text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <div className="space-y-1">
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        {formatMovementType(move.type)}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        {new Date(move.created_at).toLocaleString('id-ID', {
+                          day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        })}
+                      </div>
+                      {move.note && (
+                        <div className="text-xs text-slate-500 dark:text-slate-400 italic">
+                          Catatan: {move.note}
+                        </div>
+                      )}
+                    </div>
+                    <div className={`font-bold text-base ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
+                      {isPositive ? `+${move.quantity}` : move.quantity}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="p-6 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Tutup</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -115,8 +115,8 @@ export default function SettingsPage() {
   const [autoPrint, setAutoPrint] = useState(() => localStorage.getItem('autoPrint') !== 'false');
   const [showFooter, setShowFooter] = useState(() => localStorage.getItem('showFooter') !== 'false');
   const [footerMessage, setFooterMessage] = useState(() => localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda');
-  const [footerMessage2, setFooterMessage2] = useState(() => localStorage.getItem('footerMessage2') || '');
-  const [footerMessage3, setFooterMessage3] = useState(() => localStorage.getItem('footerMessage3') || '');
+  const [footerMessage2, setFooterMessage2] = useState(() => localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee');
+  const [footerMessage3, setFooterMessage3] = useState(() => localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
   const [notifyTransactionSuccess, setNotifyTransactionSuccess] = useState(
     () => localStorage.getItem('notifyTransactionSuccess') !== 'false'
@@ -526,7 +526,7 @@ export default function SettingsPage() {
                   <Label className="text-sm font-medium">Tampilkan Pesan Footer</Label>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Pesan di footer struk</p>
                 </div>
-                <Switch checked={showFooter} onCheckedChange={setShowFooter} />
+                <Switch checked={showFooter} onCheckedChange={setShowFooter} disabled={!isAdminSuper} />
               </div>
 
               {showFooter && (
@@ -539,6 +539,7 @@ export default function SettingsPage() {
                       onChange={(e) => setFooterMessage(e.target.value)}
                       placeholder="Masukkan pesan footer"
                       className="h-10"
+                      disabled={!isAdminSuper}
                     />
                   </div>
                   <div className="space-y-2">
@@ -549,6 +550,7 @@ export default function SettingsPage() {
                       onChange={(e) => setFooterMessage2(e.target.value)}
                       placeholder="Masukkan pesan footer ke-2 (default kosong)"
                       className="h-10"
+                      disabled={!isAdminSuper}
                     />
                   </div>
                   <div className="space-y-2">
@@ -559,6 +561,7 @@ export default function SettingsPage() {
                       onChange={(e) => setFooterMessage3(e.target.value)}
                       placeholder="Masukkan pesan footer ke-3 (default kosong)"
                       className="h-10"
+                      disabled={!isAdminSuper}
                     />
                   </div>
                 </div>

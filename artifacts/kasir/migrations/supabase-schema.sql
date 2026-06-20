@@ -7,16 +7,19 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Categories table
 
 DROP TABLE IF EXISTS transaction_items CASCADE;
-
 DROP TABLE IF EXISTS transactions CASCADE;
-
 DROP TABLE IF EXISTS staff CASCADE;
-
 DROP TABLE IF EXISTS customers CASCADE;
-
 DROP TABLE IF EXISTS products CASCADE;
-
 DROP TABLE IF EXISTS categories CASCADE;
+DROP TABLE IF EXISTS outlets CASCADE;
+DROP TABLE IF EXISTS expenses CASCADE;
+DROP TABLE IF EXISTS expense_categories CASCADE;
+DROP TABLE IF EXISTS point_settings CASCADE;
+DROP TABLE IF EXISTS discount_settings CASCADE;
+DROP TABLE IF EXISTS discount_categories CASCADE;
+DROP TABLE IF EXISTS promo_templates CASCADE;
+DROP TABLE IF EXISTS promo_sent_logs CASCADE;
 
 
 
@@ -422,7 +425,9 @@ INSERT INTO staff (name, email, phone, role, status) VALUES
 
 ('Ahmad Kasir', 'ahmad@sbagiamu.com', '08123456789', 'kasir', 'active'),
 
-('Budi Supervisor', 'budi@sbagiamu.com', '08156789012', 'supervisor', 'active');
+('Budi Supervisor', 'budi@sbagiamu.com', '08156789012', 'supervisor', 'active'),
+
+('Super Admin', 'sbagiamu.pos@gmail.com', '08123456789', 'admin', 'active');
 
 
 

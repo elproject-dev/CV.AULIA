@@ -7,20 +7,7 @@
   ],
   "permissions": [
     "core:default",
-    {
-      "identifier": "shell:allow-open",
-      "allow": [
-        {
-          "path": "https://api.whatsapp.com/**"
-        },
-        {
-          "path": "https://wa.me/**"
-        },
-        {
-          "path": "mailto:*"
-        }
-      ]
-    },
+    "shell:allow-open",
     "dialog:default",
     "dialog:allow-save",
     "fs:default",

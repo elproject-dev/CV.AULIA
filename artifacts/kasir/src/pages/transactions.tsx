@@ -343,7 +343,9 @@ export default function TransactionsPage() {
                                 </span>
                               )}
                             </span>
-                            <span className="text-xs text-slate-400">{trx.cashier_name}</span>
+                            <span className="text-xs text-slate-400">
+                              {trx.cashier_name} • {trx.outlets?.name || "-"}
+                            </span>
                           </div>
 
                           <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 rounded text-xs font-medium text-slate-700 whitespace-nowrap">
@@ -393,6 +395,7 @@ export default function TransactionsPage() {
                 <TableRow className="bg-slate-50/50">
                   <TableHead>ID / Waktu</TableHead>
                   <TableHead>Pelanggan</TableHead>
+                  <TableHead>Outlet</TableHead>
                   <TableHead className="text-center">Poin</TableHead>
                   <TableHead className="text-center">Kasir</TableHead>
                   <TableHead>Metode Pembayaran</TableHead>
@@ -402,7 +405,7 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">Memuat...</TableCell>
+                    <TableCell colSpan={7} className="text-center py-8">Memuat...</TableCell>
                   </TableRow>
                 ) : transactions?.map(trx => {
                   const total = calculateTotal(trx);
@@ -424,6 +427,11 @@ export default function TransactionsPage() {
                           {trx.customers?.membership_type && trx.customers.membership_type !== 'non_member'
                             ? trx.customers.name
                             : "Umum"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm text-slate-600 font-medium">
+                          {trx.outlets?.name || "-"}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
@@ -454,7 +462,7 @@ export default function TransactionsPage() {
                 })}
                 {transactions?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
                       Tidak ada transaksi ditemukan
                     </TableCell>
                   </TableRow>

@@ -192,10 +192,11 @@ CREATE POLICY "shared_update_customers" ON customers FOR UPDATE TO authenticated
 CREATE POLICY "shared_delete_customers" ON customers FOR DELETE TO authenticated USING (public.is_admin());
 
 CREATE POLICY "admin_select_staff" ON staff FOR SELECT TO authenticated USING (public.is_admin());
+CREATE POLICY "anon_select_staff" ON staff FOR SELECT TO anon USING (true);
 CREATE POLICY "admin_insert_staff" ON staff FOR INSERT TO authenticated WITH CHECK (public.is_admin());
 CREATE POLICY "admin_update_staff" ON staff FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 CREATE POLICY "admin_delete_staff" ON staff FOR DELETE TO authenticated USING (public.is_admin());
 
-GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON categories, products, customers, transactions, transaction_items, staff TO authenticated;
-GRANT USAGE, SELECT, UPDATE ON SEQUENCE categories_id_seq, products_id_seq, customers_id_seq, transactions_id_seq, transaction_items_id_seq, staff_id_seq TO authenticated;
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON categories, products, customers, transactions, transaction_items, staff TO anon, authenticated;
+GRANT USAGE, SELECT, UPDATE ON SEQUENCE categories_id_seq, products_id_seq, customers_id_seq, transactions_id_seq, transaction_items_id_seq, staff_id_seq TO anon, authenticated;

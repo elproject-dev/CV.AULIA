@@ -72,6 +72,10 @@ export default function TransactionDetailPage() {
   const deleteTransaction = useDeleteTransaction();
   const [isPrinting, setIsPrinting] = useState(false);
 
+  const displayedStoreName = trx?.outlets?.store_name || trx?.outlets?.name || storeInfo.name;
+  const displayedAddress = trx?.outlets?.address || storeInfo.address;
+  const displayedPhone = trx?.outlets?.phone || '';
+
   const handlePrintReceipt = async () => {
     if (!trx) return;
 
@@ -128,12 +132,12 @@ export default function TransactionDetailPage() {
         amountPaid: trx.amount_paid || 0,
         change: trx.change || 0,
         paymentMethod: trx.payment_method || 'cash',
-        storeName: localStorage.getItem('storeName') || 'SBAGIAMU',
-        storeAddress: localStorage.getItem('storeAddress') || '',
-        storePhone: localStorage.getItem('storePhone') || '',
-        footerMessage: showFooter ? (localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
-        footerMessage2: showFooter ? (localStorage.getItem('footerMessage2') || '') : '',
-        footerMessage3: showFooter ? (localStorage.getItem('footerMessage3') || '') : '',
+        storeName: displayedStoreName,
+        storeAddress: displayedAddress,
+        storePhone: displayedPhone,
+        footerMessage: showFooter ? (trx?.outlets?.footer_message || localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
+        footerMessage2: showFooter ? (trx?.outlets?.footer_message2 || localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee') : '',
+        footerMessage3: showFooter ? (trx?.outlets?.footer_message3 || localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital') : '',
       };
 
       console.log('Connecting to printer...', printerMac);
@@ -292,8 +296,11 @@ export default function TransactionDetailPage() {
               <div className="mb-4 sm:mb-6 pb-4 sm:pb-6 border-b-2 border-dashed border-slate-200">
                 {/* Store Name - Centered */}
                 <div className="text-center mb-4">
-                  <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">{storeInfo.name}</h2>
-                  <p className="text-xs text-slate-500 mt-1">{storeInfo.address}</p>
+                  <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">{displayedStoreName}</h2>
+                  <p className="text-xs text-slate-500 mt-1">{displayedAddress}</p>
+                  {displayedPhone && (
+                    <p className="text-xs text-slate-400 mt-0.5">{displayedPhone}</p>
+                  )}
                 </div>
                 {/* Date/Time - Invoice Row */}
                 <div className="flex justify-between items-start">

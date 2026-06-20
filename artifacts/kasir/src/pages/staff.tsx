@@ -47,6 +47,9 @@ export default function StaffPage() {
   const [newStoreName, setNewStoreName] = useState('');
   const [newOutletAddress, setNewOutletAddress] = useState('');
   const [newOutletPhone, setNewOutletPhone] = useState('');
+  const [newOutletFooter1, setNewOutletFooter1] = useState('');
+  const [newOutletFooter2, setNewOutletFooter2] = useState('');
+  const [newOutletFooter3, setNewOutletFooter3] = useState('');
   const [isCreatingOutlet, setIsCreatingOutlet] = useState(false);
   const [editingOutletId, setEditingOutletId] = useState<number | null>(null);
 
@@ -189,6 +192,9 @@ export default function StaffPage() {
             store_name: newStoreName.trim(),
             address: newOutletAddress.trim(),
             phone: newOutletPhone.trim(),
+            footer_message: newOutletFooter1.trim() || null,
+            footer_message2: newOutletFooter2.trim() || null,
+            footer_message3: newOutletFooter3.trim() || null,
           })
           .eq('id', editingOutletId);
         error = result.error;
@@ -200,6 +206,9 @@ export default function StaffPage() {
             store_name: newStoreName.trim(),
             address: newOutletAddress.trim(),
             phone: newOutletPhone.trim(),
+            footer_message: newOutletFooter1.trim() || null,
+            footer_message2: newOutletFooter2.trim() || null,
+            footer_message3: newOutletFooter3.trim() || null,
             is_active: true
           }]);
         error = result.error;
@@ -230,6 +239,9 @@ export default function StaffPage() {
     setNewStoreName(outlet.store_name || '');
     setNewOutletAddress(outlet.address || '');
     setNewOutletPhone(outlet.phone || '');
+    setNewOutletFooter1(outlet.footer_message || '');
+    setNewOutletFooter2(outlet.footer_message2 || '');
+    setNewOutletFooter3(outlet.footer_message3 || '');
   };
 
   const handleDeleteOutlet = async (id: number) => {
@@ -253,6 +265,9 @@ export default function StaffPage() {
     setNewStoreName('');
     setNewOutletAddress('');
     setNewOutletPhone('');
+    setNewOutletFooter1('');
+    setNewOutletFooter2('');
+    setNewOutletFooter3('');
     setEditingOutletId(null);
   };
 
@@ -620,6 +635,36 @@ export default function StaffPage() {
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Maksimal 32 karakter untuk print 58mm
                   </p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="outlet-footer1" className="text-sm font-medium">Pesan Footer 1</Label>
+                  <Input
+                    id="outlet-footer1"
+                    value={newOutletFooter1}
+                    onChange={(e) => setNewOutletFooter1(e.target.value)}
+                    placeholder="Masukkan pesan footer pertama..."
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="outlet-footer2" className="text-sm font-medium">Pesan Footer 2</Label>
+                  <Input
+                    id="outlet-footer2"
+                    value={newOutletFooter2}
+                    onChange={(e) => setNewOutletFooter2(e.target.value)}
+                    placeholder="Masukkan pesan footer kedua..."
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="outlet-footer3" className="text-sm font-medium">Pesan Footer 3</Label>
+                  <Input
+                    id="outlet-footer3"
+                    value={newOutletFooter3}
+                    onChange={(e) => setNewOutletFooter3(e.target.value)}
+                    placeholder="Masukkan pesan footer ketiga..."
+                    className="h-10"
+                  />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">

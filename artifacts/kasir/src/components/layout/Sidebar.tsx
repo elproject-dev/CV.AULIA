@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, CircleDollarSign, Tag, User, Megaphone } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, CircleDollarSign, Tag, User, Megaphone, ArrowRightLeft, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +12,8 @@ import { ProfileDialog } from "./ProfileDialog";
 const ALL_LINKS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
   { href: "/pos", label: "Kasir", icon: Calculator, adminOnly: false, kasirOnly: true },
+  { href: "/transfer-stock", label: "Transfer Stock", icon: ArrowRightLeft, adminOnly: true },
+  { href: "/return-stock", label: "Return Stock", icon: Undo2, adminOnly: true },
   { href: "/products", label: "Produk", icon: Package, adminOnly: false },
   { href: "/customers", label: "Pelanggan", icon: Users, adminOnly: false },
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
@@ -108,6 +110,27 @@ export function Sidebar({ children, className }: SidebarProps) {
         const newPhone = assignedOutlet.phone || '';
         if (currentPhone !== newPhone) {
           localStorage.setItem('storePhone', newPhone);
+          changed = true;
+        }
+
+        const currentFooter1 = localStorage.getItem('footerMessage');
+        const newFooter1 = assignedOutlet.footer_message || 'Terima kasih atas kunjungan Anda';
+        if (currentFooter1 !== newFooter1) {
+          localStorage.setItem('footerMessage', newFooter1);
+          changed = true;
+        }
+
+        const currentFooter2 = localStorage.getItem('footerMessage2');
+        const newFooter2 = assignedOutlet.footer_message2 || 'Real Brew, Real Bean, Real Coffee';
+        if (currentFooter2 !== newFooter2) {
+          localStorage.setItem('footerMessage2', newFooter2);
+          changed = true;
+        }
+
+        const currentFooter3 = localStorage.getItem('footerMessage3');
+        const newFooter3 = assignedOutlet.footer_message3 || 'Powered by Tembus Digital';
+        if (currentFooter3 !== newFooter3) {
+          localStorage.setItem('footerMessage3', newFooter3);
           changed = true;
         }
 

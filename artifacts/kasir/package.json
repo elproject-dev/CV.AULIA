@@ -9,7 +9,8 @@
     "cap:android": "node scripts/copy-notification-sound.mjs && npx cap sync android",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "db:migrate:transactions": "node scripts/apply-transaction-migration.mjs"
+    "db:migrate:transactions": "node scripts/apply-transaction-migration.mjs",
+    "db:compile-schema": "node scripts/generate-complete-schema.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
