@@ -770,7 +770,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center p-2 animate-logo-ring">
                     <img
-                      src="/logo-login.png"
+                      src={`${import.meta.env.BASE_URL}logo-login.png`}
                       alt="Logo"
                       className="w-12 h-12 object-contain"
                     />
@@ -785,7 +785,7 @@ export default function SettingsPage() {
                     {/* Developer */}
                     <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
                       <div className="w-10 h-10 bg-transparent flex items-center justify-center">
-                        <img src="/hacker.png" alt="Pengembang" className="w-full h-full object-contain" />
+                        <img src={`${import.meta.env.BASE_URL}hacker.png`} alt="Pengembang" className="w-full h-full object-contain" />
                       </div>
                       <div className="flex-1">
                         <p className="text-xs text-slate-500 dark:text-slate-400">Pengembang</p>
@@ -796,7 +796,7 @@ export default function SettingsPage() {
                     {/* Contact */}
                     <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
                       <div className="w-10 h-10 bg-transparent flex items-center justify-center">
-                        <img src="/whatsapp.png" alt="Kontak" className="w-full h-full object-contain" />
+                        <img src={`${import.meta.env.BASE_URL}whatsapp.png`} alt="Kontak" className="w-full h-full object-contain" />
                       </div>
                       <div className="flex-1">
                         <p className="text-xs text-slate-500 dark:text-slate-400">Nomor Telepon</p>
@@ -828,7 +828,7 @@ export default function SettingsPage() {
                     {/* Email */}
                     <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
                       <div className="w-10 h-10 bg-transparent flex items-center justify-center">
-                        <img src="/email.png" alt="Email" className="w-full h-full object-contain" />
+                        <img src={`${import.meta.env.BASE_URL}email.png`} alt="Email" className="w-full h-full object-contain" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-slate-500 dark:text-slate-400">Email</p>

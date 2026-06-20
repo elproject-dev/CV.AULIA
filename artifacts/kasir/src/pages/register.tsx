@@ -96,7 +96,7 @@ export default function RegisterPage() {
 
       <div className="w-full max-w-[420px] relative z-10 py-6">
         <div className="text-center mb-8">
-          <img src="/logo-login.png" alt="Logo" className="h-20 sm:h-24 w-auto mx-auto object-contain mb-4 drop-shadow-2xl" />
+          <img src={`${import.meta.env.BASE_URL}logo-login.png`} alt="Logo" className="h-20 sm:h-24 w-auto mx-auto object-contain mb-4 drop-shadow-2xl" />
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-widest drop-shadow-lg">DAFTAR KASIR</h1>
           <p className="text-white/80 mt-2 text-sm font-medium tracking-wide">Buat akun untuk mengelola toko Anda</p>
         </div>

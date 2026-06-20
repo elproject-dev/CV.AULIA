@@ -82,7 +82,7 @@ export default function LoginPage() {
 
       <div className="w-full max-w-[420px] relative z-10">
         <div className="text-center mb-10">
-          <img src="/logo-login.png" alt="Logo" className="h-28 w-auto mx-auto object-contain mb-5 drop-shadow-2xl" />
+          <img src={`${import.meta.env.BASE_URL}logo-login.png`} alt="Logo" className="h-28 w-auto mx-auto object-contain mb-5 drop-shadow-2xl" />
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-widest drop-shadow-lg">SBAGIAMU</h1>
           <p className="text-white/70 mt-3 text-sm sm:text-base font-medium tracking-wide">TEMAN BAHAGIAMU</p>
         </div>

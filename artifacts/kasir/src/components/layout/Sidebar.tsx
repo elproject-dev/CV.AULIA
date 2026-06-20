@@ -175,7 +175,7 @@ export function Sidebar({ children, className }: SidebarProps) {
       <aside className="w-16 bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex flex-col flex-shrink-0 transition-all duration-300">
         <div className="h-16 flex items-center justify-center border-b border-sidebar-border">
           <img
-            src="/logo-login.png"
+            src={`${import.meta.env.BASE_URL}logo-login.png`}
             alt="Store Logo"
             className="h-8 w-8 object-contain"
           />
