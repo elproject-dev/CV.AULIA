@@ -22,8 +22,7 @@ import CustomersPage from "@/pages/customers";
 import TransactionsPage from "@/pages/transactions";
 import TransactionDetailPage from "@/pages/transaction-detail";
 import SettingsPage from "@/pages/settings";
-import PointsSettingsPage from "@/pages/points-settings";
-import DiscountSettingsPage from "@/pages/discount-settings";
+
 import ExpensesPage from "@/pages/expenses";
 import StaffPage from "@/pages/staff";
 import PromoPage from "@/pages/promo";
@@ -95,16 +94,8 @@ function AppRoutes() {
           <TransactionDetailPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/points-settings">
-        <ProtectedRoute adminOnly>
-          <PointsSettingsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/discount-settings">
-        <ProtectedRoute adminOnly>
-          <DiscountSettingsPage />
-        </ProtectedRoute>
-      </Route>
+
+
       <Route path="/settings">
         <ProtectedRoute>
           <SettingsPage />

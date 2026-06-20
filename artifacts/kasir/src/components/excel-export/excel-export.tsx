@@ -35,13 +35,9 @@ interface Transaction {
   paymentMethod?: string;
   discount?: number;
   discountNote?: string;
-  earnedPoints?: number;
-  pointsRedeemed?: number;
-  totalPointsAfter?: number;
   total: number;
   cashierName?: string;
   outletId?: number;
-  pointsDiscount?: number;
   tax?: number;
 }
 
@@ -69,11 +65,6 @@ const DEFAULT_COL_WIDTHS: ExportColumn[] = [
   { header: "Status", key: "Status", width: 10 },
   { header: "Penjualan Produk", key: "Penjualan Produk", width: 35 },
   { header: "Total", key: "Total", width: 14 },
-  { header: "Diskon", key: "Diskon", width: 10 },
-  { header: "Ket. Diskon", key: "Ket. Diskon", width: 18 },
-  { header: "PPN", key: "PPN", width: 8 },
-  { header: "Tukar Poin", key: "Tukar Poin", width: 10 },
-  { header: "Grand Total", key: "Grand Total", width: 14 },
   { header: "Metode", key: "Metode", width: 14 },
   { header: "Kasir", key: "Kasir", width: 14 },
   { header: "Outlet", key: "Outlet", width: 16 },
@@ -93,7 +84,6 @@ const CENTER_ALIGNED_KEYS = new Set([
 const RIGHT_ALIGNED_KEYS = new Set([
   "Total",
   "PPN",
-  "Tukar Poin",
   "Grand Total",
   "Metode",
   "Kasir",
@@ -102,7 +92,7 @@ const RIGHT_ALIGNED_KEYS = new Set([
 ]);
 
 // Columns that need thousand separator format (numbers only)
-const THOUSAND_FORMAT_KEYS = new Set(["Total", "Diskon", "PPN", "Tukar Poin", "Grand Total", "Total Belanja"]);
+const THOUSAND_FORMAT_KEYS = new Set(["Total", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
 
 const HEADER_STYLE = {
   font: { bold: true, color: { rgb: "FFFFFF" } },
@@ -239,13 +229,9 @@ function addSumRow(
 
   const summaryCol = columns.length - 2;
 
-  // Add SUM formulas for Total, Diskon, Tukar Poin, Grand Total in column M
+  // Add SUM formulas for Total in column
   const sumItems = [
     { label: "Total", colKey: "Total" },
-    { label: "Diskon", colKey: "Diskon" },
-    { label: "PPN", colKey: "PPN" },
-    { label: "Tukar Poin", colKey: "Tukar Poin" },
-    { label: "Grand Total", colKey: "Grand Total" },
   ];
 
   // No fill - clean look
@@ -377,8 +363,6 @@ function buildExportRow(
 ): Record<string, unknown> {
   const transactionId = Number(trx.id);
 
-  const discountNote = trx.discountNote?.trim();
-
   // Format Penjualan Produk: "1x es teh, 1x es jeruk, 2x bakso"
   const itemsList = trx.items || [];
   const penjualanProduk = itemsList
@@ -396,11 +380,6 @@ function buildExportRow(
     Status: trx.membershipStatus || "Reguler",
     "Penjualan Produk": penjualanProduk || "-",
     Total: formatExcelRupiah(totalBelanja),
-    Diskon: formatExcelRupiah(trx.discount),
-    "Ket. Diskon": discountNote || "-",
-    PPN: formatExcelRupiah(trx.tax),
-    "Tukar Poin": formatExcelRupiah(trx.pointsDiscount),
-    "Grand Total": formatExcelRupiah(trx.total),
     Metode: formatPaymentMethod(trx.paymentMethod),
     Kasir: trx.cashierName || cashierDefault,
     Outlet: outletName || branchName,
@@ -448,72 +427,13 @@ function transformTransactions(
   return { data, rowStripes };
 }
 
-// Hitung total poin pelanggan setelah setiap transaksi (dari saldo saat ini mundur)
-function calculateTotalPointsAfter(
-  transactions: Record<string, unknown>[]
-): (number | undefined)[] {
-  const result: (number | undefined)[] = new Array(transactions.length);
-  const byCustomer = new Map<number, number[]>();
-
-  transactions.forEach((trx, index) => {
-    const customerId = Number(trx.customer_id);
-    if (!Number.isFinite(customerId) || customerId <= 0) {
-      result[index] = undefined;
-      return;
-    }
-    if (!byCustomer.has(customerId)) byCustomer.set(customerId, []);
-    byCustomer.get(customerId)!.push(index);
-  });
-
-  for (const indices of byCustomer.values()) {
-    const sample = transactions[indices[0]];
-    const customer = sample.customers as { points?: number; membership_type?: string } | null;
-    const isMember =
-      String(sample.customer_type ?? "").toLowerCase() === "member" ||
-      customer?.membership_type === "member";
-
-    if (!isMember) {
-      indices.forEach((index) => {
-        result[index] = undefined;
-      });
-      continue;
-    }
-
-    let balance = Number(customer?.points) || 0;
-    const sortedIndices = [...indices].sort((a, b) => {
-      const dateA = new Date(String(transactions[a].created_at ?? transactions[a].createdAt ?? "")).getTime();
-      const dateB = new Date(String(transactions[b].created_at ?? transactions[b].createdAt ?? "")).getTime();
-      return dateB - dateA;
-    });
-
-    sortedIndices.forEach((index) => {
-      result[index] = balance;
-      const earned = Number(transactions[index].points_earned ?? transactions[index].earnedPoints) || 0;
-      const redeemed = Number(transactions[index].points_used ?? transactions[index].pointsRedeemed) || 0;
-      balance = Math.max(0, balance - earned + redeemed);
-    });
-  }
-
-  return result;
-}
-
 // Map raw Supabase/API transactions to export format
 export function mapApiTransactionsToExport(
-  transactions: Record<string, unknown>[],
-  options?: { pointsValue?: number }
+  transactions: Record<string, unknown>[]
 ): Transaction[] {
-  const pointsValue =
-    options?.pointsValue ?? parseInt(localStorage.getItem("pointsValue") || "1000", 10);
-
-  const totalPointsAfterList = calculateTotalPointsAfter(transactions || []);
-
-  return (transactions || []).map((trx, index) => {
+  return (transactions || []).map((trx) => {
     const subtotal = Number(trx.subtotal) || 0;
-    const tax = Number(trx.tax) || 0;
-    const discount = Number(trx.discount) || 0;
-    const pointsUsed = Number(trx.points_used ?? trx.pointsRedeemed) || 0;
-    const pointsDiscount = pointsUsed * pointsValue;
-    const total = Math.max(0, subtotal + tax - discount - pointsDiscount);
+    const total = subtotal;
 
     const rawItems = (trx.transaction_items || trx.items || []) as Record<string, unknown>[];
     const customer = trx.customers as { name?: string; membership_type?: string } | null | undefined;
@@ -531,16 +451,12 @@ export function mapApiTransactionsToExport(
         price: Number(item.price) || 0,
         quantity: Number(item.quantity) || 0,
       })),
-      discount,
+      discount: 0,
       discountNote,
-      tax,
-      earnedPoints: Number(trx.points_earned ?? trx.earnedPoints) || 0,
-      pointsRedeemed: pointsUsed,
-      totalPointsAfter: totalPointsAfterList[index],
+      tax: 0,
       total,
       cashierName: (trx.cashier_name ?? trx.cashierName) as string | undefined,
       outletId: Number(trx.outlet_id ?? trx.outletId) || undefined,
-      pointsDiscount,
     };
   });
 }
@@ -945,22 +861,7 @@ export function DownloadExcelDialog({
         {/* Filter Section - Only show for admin */}
         {isAdmin && (
           <div className="space-y-2 mt-2">
-            {/* Outlet Filter */}
-            {outlets.length > 0 && (
-              <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semua Outlet" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Outlet</SelectItem>
-                  {outlets.map((outlet) => (
-                    <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                      {outlet.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+
 
             {/* Cashier Filter */}
             <Select value={selectedCashier} onValueChange={setSelectedCashier}>

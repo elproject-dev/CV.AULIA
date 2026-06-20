@@ -1034,28 +1034,7 @@ export default function ExpensesPage() {
                     </Select>
                   </div>
 
-                  {/* Outlet Filter (Admin Only) */}
-                  {isAdmin && outlets && outlets.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-slate-500">Outlet / Cabang</Label>
-                      <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                        <SelectTrigger className="w-full h-9">
-                          <div className="flex items-center gap-2">
-                            <Store className="w-4 h-4 text-slate-400 shrink-0" />
-                            <SelectValue placeholder="Semua Outlet" />
-                          </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Semua Outlet</SelectItem>
-                          {outlets.map((outlet: any) => (
-                            <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                              {outlet.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+
 
                   {/* User Filter (Admin Only) */}
                   {isAdmin && (
@@ -1174,12 +1153,7 @@ export default function ExpensesPage() {
                           <User className="w-3.5 h-3.5" />
                           {staffName}
                         </div>
-                        {isAdmin && (
-                          <div className="flex items-center gap-1.5">
-                            <Store className="w-3.5 h-3.5" />
-                            {outlets?.find(o => o.id === expense.outlet_id)?.name || "Semua Outlet"}
-                          </div>
-                        )}
+
                       </div>
                       {isAdmin && (
                         <div className="flex justify-end gap-1">
@@ -1223,7 +1197,7 @@ export default function ExpensesPage() {
                   <TableHead className="font-semibold text-center">Bukti</TableHead>
                   <TableHead className="font-semibold">Suplier</TableHead>
                   <TableHead className="font-semibold">Staff</TableHead>
-                  {isAdmin && <TableHead className="font-semibold">Outlet</TableHead>}
+
                   <TableHead className="text-right font-semibold">Jumlah</TableHead>
                   {isAdmin && <TableHead className="text-right w-28 font-semibold">Aksi</TableHead>}
                 </TableRow>
@@ -1298,11 +1272,7 @@ export default function ExpensesPage() {
                       <TableCell className="text-slate-600 dark:text-slate-400">
                         {getStaffNameDisplay(expense.owner_id)}
                       </TableCell>
-                      {isAdmin && (
-                        <TableCell className="text-slate-600 dark:text-slate-400">
-                          {outlets?.find(o => o.id === expense.outlet_id)?.name || "Semua Outlet"}
-                        </TableCell>
-                      )}
+
                       <TableCell className="text-right font-bold text-red-600 dark:text-red-400">
                         {formatCurrency(expense.amount)}
                       </TableCell>

@@ -2635,6 +2635,9 @@ export const useBulkSaveProductUoms = () => {
             barcode: uom.barcode || null,
             sort_order: index,
             is_default: uom.is_default || false,
+            discount_type: uom.discount_type || 'none',
+            discount_value: uom.discount_value || 0,
+            label: uom.label || null
           }));
 
           const { error } = await supabase
@@ -2671,6 +2674,13 @@ export const useListLoadingSessions = (params?: { salesId?: number, status?: str
   const [error, setError] = useState<any>(null);
 
   const fetchData = async () => {
+    // If salesId is explicitly -1 (guard for unknown/missing staffId), return empty immediately
+    if (params?.salesId === -1) {
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       let query = applyTenantFilter(
@@ -2680,7 +2690,8 @@ export const useListLoadingSessions = (params?: { salesId?: number, status?: str
           .order('created_at', { ascending: false })
       );
 
-      if (params?.salesId) {
+      // Always apply salesId filter when provided (prevents data leakage between sales staff)
+      if (params?.salesId !== undefined && params.salesId !== null) {
         query = query.eq('sales_id', params.salesId);
       }
       if (params?.status) {
@@ -3006,3 +3017,102 @@ export const useCloseLoadingSession = () => {
     isPending
   };
 };
+
+export const useRequestLoadingSessionReturn = () => {
+  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+
+  return {
+    mutate: async (params: { sessionId: string; items: any[], notes?: string }, options?: any) => {
+      setIsPending(true);
+      try {
+        // 1. Update session status to pending_return
+        const { error: sessionError } = await supabase
+          .from('loading_sessions')
+          .update({ status: 'pending_return', notes: params.notes })
+          .eq('id', params.sessionId);
+        if (sessionError) throw sessionError;
+
+        // 2. Process each item return (save quantity_returned, but NO stock movements or products stock update)
+        for (const item of params.items) {
+          const { error: itemError } = await supabase
+            .from('loading_items')
+            .update({ quantity_returned: item.actual_return })
+            .eq('id', item.loading_item_id);
+          
+          if (itemError) console.error('Error updating loading item', itemError);
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['loading_sessions'] });
+        queryClient.invalidateQueries({ queryKey: ['loading_items', params.sessionId] });
+        
+        if (options?.onSuccess) options.onSuccess(true);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending
+  };
+};
+
+export const useConfirmLoadingSessionReturn = () => {
+  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+
+  return {
+    mutate: async (params: { sessionId: string; items: any[], notes?: string }, options?: any) => {
+      setIsPending(true);
+      try {
+        // 1. Update session status to closed
+        const { error: sessionError } = await supabase
+          .from('loading_sessions')
+          .update({ status: 'closed', notes: params.notes })
+          .eq('id', params.sessionId);
+        if (sessionError) throw sessionError;
+
+        // 2. Process each item return (create stock movements and update products.stock_quantity)
+        for (const item of params.items) {
+          // Update loading_items.quantity_returned (in case admin modified it during confirmation)
+          const { error: itemError } = await supabase
+            .from('loading_items')
+            .update({ quantity_returned: item.actual_return })
+            .eq('id', item.loading_item_id);
+          
+          if (itemError) console.error('Error updating loading item', itemError);
+
+          // Only create movement and update stock if actual_return > 0
+          if (item.actual_return > 0) {
+            // Create stock movement
+            await supabase.from('stock_movements').insert({
+              product_id: item.product_id,
+              quantity: item.actual_return,
+              type: 'return_from_sales',
+              reference_id: params.sessionId,
+              note: 'Sisa stok dikembalikan dari Sales (Dikonfirmasi)'
+            });
+
+            // Update product stock in Gudang
+            const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
+            if (product) {
+              const newStock = (product.stock_quantity || 0) + item.actual_return;
+              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
+            }
+          }
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['loading_sessions'] });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        
+        if (options?.onSuccess) options.onSuccess(true);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending
+  };
+};
+

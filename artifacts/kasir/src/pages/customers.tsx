@@ -129,7 +129,6 @@ export default function CustomersPage() {
       { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 30 },
       { header: "No. Telepon", key: "No. Telepon", width: 15 },
       { header: "Status", key: "Status", width: 12 },
-      { header: "Poin", key: "Poin", width: 8 },
       { header: "Total Belanja", key: "Total Belanja", width: 20 },
       { header: "Bergabung Sejak", key: "Bergabung Sejak", width: 18 },
     ];
@@ -143,7 +142,6 @@ export default function CustomersPage() {
         "Nama Pelanggan": c.name || "-",
         "No. Telepon": c.phone || "-",
         "Status": getMembershipStatus(c) === "member" ? "MEMBER" : "REGULER",
-        "Poin": c.points || 0,
         "Total Belanja": c.total_spent || 0,
         "Bergabung Sejak": formattedDate
       };
@@ -166,9 +164,7 @@ export default function CustomersPage() {
     }
   };
 
-  const activeOutletId = isAdmin 
-    ? (outletFilter && outletFilter !== "all" ? parseInt(outletFilter) : null)
-    : null;
+  const activeOutletId = null;
 
   const filteredCustomers = customers?.filter((customer: any) => {
     // Filter by outlet (Hide if customer belongs to a DIFFERENT specific outlet)
@@ -182,24 +178,6 @@ export default function CustomersPage() {
     const s = search.toLowerCase();
     return customer.name?.toLowerCase().includes(s) || (customer.phone || "").toLowerCase().includes(s);
   });
-
-  if (!isAdmin && (!user?.outletId || user?.outletId === "all")) {
-    return (
-      <Sidebar>
-        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
-          <div className="max-w-md w-full p-8 text-center flex flex-col items-center bg-white dark:bg-slate-800 shadow-lg border border-red-200 dark:border-red-900/50 rounded-2xl">
-            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-red-200/50 dark:border-red-800/50">
-              <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-red-900 dark:text-red-100 mb-3">Akses Ditolak</h2>
-            <p className="text-red-700 dark:text-red-300 mb-6 leading-relaxed">
-              Akun Kasir Anda belum terhubung dengan Outlet (Cabang) manapun. Silakan hubungi Admin atau Pemilik untuk mengatur penugasan Outlet Anda agar dapat melihat data pelanggan.
-            </p>
-          </div>
-        </div>
-      </Sidebar>
-    );
-  }
 
   return (
     <Sidebar>
@@ -229,19 +207,7 @@ export default function CustomersPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
               <Input placeholder="Cari pelanggan..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
             </div>
-            {isAdmin && (
-              <Select value={outletFilter} onValueChange={(val) => { setOutletFilter(val); localStorage.setItem('selectedOutletId', val); }}>
-                <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Semua Outlet" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Outlet</SelectItem>
-                  {outlets?.map((o: any) => (
-                    <SelectItem key={o.id} value={o.id.toString()}>{o.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+
           </div>
 
           {/* Mobile Card List */}
@@ -287,11 +253,7 @@ export default function CustomersPage() {
                       )}
                     </div>
                     <div className="flex justify-between text-sm pt-2 border-t border-slate-100 dark:border-slate-800">
-                      <div>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Poin</span>
-                        <div className="font-bold text-amber-600 dark:text-amber-400">{(customer.points || 0).toLocaleString('id-ID')}</div>
-                      </div>
-                      <div className="text-right">
+                      <div className="text-left">
                         <span className="text-xs text-slate-500 dark:text-slate-400">Total Belanja</span>
                         <div className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah(customer.total_spent || 0)}</div>
                       </div>
@@ -318,7 +280,6 @@ export default function CustomersPage() {
                   <TableHead>Nama</TableHead>
                   <TableHead>Kontak</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-center">Poin</TableHead>
                   <TableHead className="text-left">Outlet</TableHead>
                   <TableHead className="text-right">Total Belanja</TableHead>
                   {isAdmin && <TableHead className="text-right">Aksi</TableHead>}
@@ -349,7 +310,6 @@ export default function CustomersPage() {
                             <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">REGULER</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-center font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">{(customer.points || 0).toLocaleString('id-ID')}</TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {outlets?.find((o: any) => o.id === customer.outlet_id)?.name || "Semua Outlet"}
                         </TableCell>
@@ -400,7 +360,7 @@ export default function CustomersPage() {
               </Select>
               {formData.membershipType === "member" && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <Award className="w-3 h-3" /> Member mendapatkan poin dari setiap pembelian
+                  <Award className="w-3 h-3" /> Pelanggan setia dengan tingkat keanggotaan Member
                 </p>
               )}
             </div>
@@ -456,10 +416,6 @@ export default function CustomersPage() {
                   )}
                 </div>
                 <div className="flex gap-4 pt-2 border-t border-amber-200 dark:border-amber-800">
-                  <div className="flex items-center gap-2">
-                    <Award className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                    <span className="font-bold text-amber-600 dark:text-amber-400">{(lookupResult.points || 0).toLocaleString('id-ID')} Poin</span>
-                  </div>
                   <div className="text-slate-500 dark:text-slate-400">Total: {formatRupiah(lookupResult.total_spent || 0)}</div>
                 </div>
               </div>
@@ -497,25 +453,17 @@ export default function CustomersPage() {
                   <p className="font-medium text-slate-700 dark:text-slate-300">{selectedCustomerDetail.phone || "-"}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Tipe Member</p>
-                    {getMembershipStatus(selectedCustomerDetail) === "member" ? (
-                      <Badge className="bg-amber-500 dark:bg-amber-600 flex w-fit items-center gap-1">
-                        <Award className="w-3 h-3" /> MEMBER
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                        REGULER
-                      </Badge>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Poin</p>
-                    <p className="font-bold text-amber-600 dark:text-amber-400 text-lg">
-                      {(selectedCustomerDetail.points || 0).toLocaleString('id-ID')}
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Tipe Member</p>
+                  {getMembershipStatus(selectedCustomerDetail) === "member" ? (
+                    <Badge className="bg-amber-500 dark:bg-amber-600 flex w-fit items-center gap-1">
+                      <Award className="w-3 h-3" /> MEMBER
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      REGULER
+                    </Badge>
+                  )}
                 </div>
 
                 <div>

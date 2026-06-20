@@ -13,7 +13,7 @@ envContent.split('\n').forEach(line => {
 const supabase = createClient(envVars.VITE_SUPABASE_URL, envVars.VITE_SUPABASE_ANON_KEY);
 
 async function run() {
-  const { data, error } = await supabase.from('staff').select('*').limit(1);
+  const { data, error } = await supabase.from('staff').select('*');
   console.log("Staff data:", JSON.stringify(data, null, 2));
 }
 

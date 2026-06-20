@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, CircleDollarSign, Tag, User, Megaphone, ArrowRightLeft, Undo2 } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,14 +13,12 @@ const ALL_LINKS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
   { href: "/pos", label: "Kasir", icon: Calculator, adminOnly: false, kasirOnly: true },
   { href: "/transfer-stock", label: "Transfer Stock", icon: ArrowRightLeft, adminOnly: true },
-  { href: "/return-stock", label: "Return Stock", icon: Undo2, adminOnly: true },
+  { href: "/return-stock", label: "Return Stock", icon: Undo2, adminOnly: false },
   { href: "/products", label: "Produk", icon: Package, adminOnly: false },
   { href: "/customers", label: "Pelanggan", icon: Users, adminOnly: false },
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
   { href: "/transactions", label: "Riwayat Transaksi", icon: History, adminOnly: false },
   { href: "/expenses", label: "Pengeluaran", icon: Wallet, adminOnly: false },
-  { href: "/points-settings", label: "Poin", icon: CircleDollarSign, adminOnly: true },
-  { href: "/discount-settings", label: "Diskon", icon: Tag, adminOnly: true },
   { href: "#profile", label: "Profil", icon: User, adminOnly: false, kasirOnly: true },
   { href: "/promo", label: "Promo", icon: Megaphone, adminOnly: true },
   { href: "/settings", label: "Pengaturan", icon: Settings, adminOnly: false },
@@ -163,8 +161,17 @@ export function Sidebar({ children, className }: SidebarProps) {
 
   const links = useMemo(() => {
     if (!user) return [];
-    if (isAdminMode(user)) return ALL_LINKS.filter((link) => !(link as any).kasirOnly);
-    return ALL_LINKS.filter((link) => !link.adminOnly);
+    const rawLinks = ALL_LINKS.map(link => {
+      if (link.href === "/return-stock") {
+        return {
+          ...link,
+          label: isAdminMode(user) ? "Konfirmasi Return" : "Return Stock Sales"
+        };
+      }
+      return link;
+    });
+    if (isAdminMode(user)) return rawLinks.filter((link) => !(link as any).kasirOnly);
+    return rawLinks.filter((link) => !link.adminOnly);
   }, [user]);
 
   const userInitial = user?.name?.charAt(0)?.toUpperCase() || "U";

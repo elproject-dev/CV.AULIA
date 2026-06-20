@@ -22,34 +22,7 @@ import {
   showPrintSuccessNotification
 } from "@/lib/android-notifications";
 
-const getPointsSettingsForUser = (user: any) => {
-  const outletId = user?.outletId || "all";
-  const staffEmail = user?.email || "all";
 
-  const getVal = (field: string, defaultValue: string): string => {
-    // 1. Combo specific
-    const keyCombo = `${field}_o_${outletId}_s_${staffEmail}`;
-    const valCombo = localStorage.getItem(keyCombo);
-    if (valCombo !== null) return valCombo;
-
-    // 2. Staff specific
-    const keyStaff = `${field}_o_all_s_${staffEmail}`;
-    const valStaff = localStorage.getItem(keyStaff);
-    if (valStaff !== null) return valStaff;
-
-    // 3. Outlet specific
-    const keyOutlet = `${field}_o_${outletId}_s_all`;
-    const valOutlet = localStorage.getItem(keyOutlet);
-    if (valOutlet !== null) return valOutlet;
-
-    // 4. Global fallback
-    return localStorage.getItem(field) || defaultValue;
-  };
-
-  const enablePoints = getVal('enablePoints', 'true') === 'true';
-  const pointsValue = parseInt(getVal('pointsValue', '1000'));
-  return { enablePoints, pointsValue };
-};
 
 export default function TransactionDetailPage() {
   const params = useParams();
@@ -104,13 +77,7 @@ export default function TransactionDetailPage() {
         price: item.price
       })) || [];
 
-      const { pointsValue } = getPointsSettingsForUser(user);
-      const pointsDiscount = (trx.points_used || 0) * pointsValue;
-      const finalCustomerPoints = isMemberTransaction
-        ? Math.max(0, (trx.customers?.points || 0))
-        : 0;
-
-      const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0) - pointsDiscount;
+      const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0);
 
       const showFooter = localStorage.getItem('showFooter') !== 'false';
       const printData = {
@@ -121,11 +88,6 @@ export default function TransactionDetailPage() {
         ppnPercentage: 11,
         discount: trx.discount || 0,
         discountNote: trx.discount_note || '',
-        pointsRedeemed: trx.points_used || 0,
-        pointsDiscount,
-        earnedPoints: trx.points_earned || 0,
-        finalCustomerPoints,
-        pointsValue,
         customerName: receiptCustomerName,
         customerType: trx.customer_type || (isMemberTransaction ? "member" : "regular"),
         total: total,
@@ -156,7 +118,7 @@ export default function TransactionDetailPage() {
         console.error('Print failed');
         void showPrinterNotConnectedNotification('Gagal mencetak struk. Pastikan printer menyala dan terhubung.');
       } else {
-        const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0) - pointsDiscount;
+        const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0);
         void showPrintSuccessNotification(total, formatInvoiceNumber(trx.id));
       }
 
@@ -213,10 +175,8 @@ export default function TransactionDetailPage() {
   };
 
 
-  const { enablePoints, pointsValue } = getPointsSettingsForUser(user);
   const displayedTax = trx.tax || 0;
-  const pointsDiscount = (trx.points_used || 0) * pointsValue;
-  const total = (trx.subtotal || 0) + displayedTax - (trx.discount || 0) - pointsDiscount;
+  const total = (trx.subtotal || 0) + displayedTax - (trx.discount || 0);
 
   const handleDelete = () => {
     if (!confirm(`Hapus transaksi ${formatInvoiceNumber(trx.id)}? Tindakan ini tidak bisa dibatalkan.`)) {
@@ -369,12 +329,7 @@ export default function TransactionDetailPage() {
                     <span>-{formatRupiah(trx.discount)}</span>
                   </div>
                 ) : null}
-                {trx.points_used && trx.points_used > 0 ? (
-                  <div className="flex justify-between text-amber-600">
-                    <span>Poin Ditukar</span>
-                    <span>{trx.points_used} Pts = {formatRupiah(pointsDiscount)}</span>
-                  </div>
-                ) : null}
+
                 <div className="flex justify-between font-bold text-sm sm:text-lg pt-3 sm:pt-4">
                   <span className="text-slate-900">TOTAL</span>
                   <span className="text-primary">{formatRupiah(total)}</span>
@@ -402,29 +357,10 @@ export default function TransactionDetailPage() {
                     <span>Status</span>
                     <span className="font-bold text-amber-700">MEMBER</span>
                   </div>
-                  {trx.points_earned && trx.points_earned > 0 ? (
-                    <div className="flex justify-between text-amber-600">
-                      <span>Poin Didapat</span>
-                      <span className="font-bold">{(trx.points_earned || 0).toLocaleString('id-ID')} Pts</span>
-                    </div>
-                  ) : null}
-                  {trx.points_used && trx.points_used > 0 ? (
-                    <div className="flex justify-between text-amber-600">
-                      <span>Poin Ditukar</span>
-                      <span className="font-bold">{(trx.points_used || 0).toLocaleString('id-ID')} Pts</span>
-                    </div>
-                  ) : null}
                 </div>
               )}
 
-              {/* Points Earned Alert */}
-              {trx.points_earned > 0 && (
-                <div className="mt-4 sm:mt-6 bg-amber-50 rounded-lg p-3 text-center border border-amber-100">
-                  <p className="text-amber-700 text-xs sm:text-sm font-medium">
-                    Mendapatkan <span className="font-bold">{trx.points_earned} Poin</span> dari transaksi ini
-                  </p>
-                </div>
-              )}
+
 
               {/* Footer */}
               <div className="mt-6 sm:mt-8 text-center text-slate-400 text-xs">

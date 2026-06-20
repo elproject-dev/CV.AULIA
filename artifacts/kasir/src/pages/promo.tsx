@@ -23,11 +23,6 @@ interface PromoTemplate {
 
 const DEFAULT_TEMPLATES: PromoTemplate[] = [
   {
-    id: -1,
-    name: "Template Poin",
-    content: "Hai @!\nAda kabar bahagia dari # 💖\n\n🔥 *PROMO HARI INI* 🔥\n\n✅ Member Baru dapat *Diskon Rp3.000*\n\nPoin anda saat ini %\n\n🎁 Yuk, tukarkan poinmu sekarang\ndapatkan diskon spesial hanya di #.\n\nKarena kebahagiaanmu selalu kami nantikan\n\n💝 Salam,\n*Teman Bahagiamu*",
-  },
-  {
     id: -2,
     name: "Template Member Baru",
     content: "🎉 *PROMO MEMBER BARU* 🎉\n\nHalo @ 😊\n\n🎁 Ada promo spesial buat kamu!\n\n💰 Dapatkan *diskon Rp10.000*\nuntuk pembelanjaan berikutnya dengan menunjukkan pesan ini saat bertransaksi.\n\nJangan lewatkan kesempatan spesial ini\nnikmati pengalaman belanja yang lebih hemat di #.\n\n📍 Yuk mampir ke # sekarang!\n\n🙏 Salam Teman Bahagiamu,",
@@ -192,18 +187,17 @@ export default function PromoPage() {
     }
   };
 
-  const formatMessage = (message: string, customerName: string, points: number = 0) => {
+  const formatMessage = (message: string, customerName: string) => {
     const cleanName = (customerName || "").trim();
     const cleanStore = (storeName || "SBAGIAMU").trim();
     
     return (message || "")
       .replace(/@/g, `*${cleanName}*`)
-      .replace(/#/g, `*${cleanStore}*`)
-      .replace(/%/g, `*${points}*`);
+      .replace(/#/g, `*${cleanStore}*`);
   };
 
   const renderPreviewMessage = (message: string) => {
-    const formatted = formatMessage(message, "Nama Pelanggan", 100);
+    const formatted = formatMessage(message, "Nama Pelanggan");
     return formatted.split(/(\*[^*]+\*)/g).map((part, i) => {
       if (part.startsWith("*") && part.endsWith("*")) {
         return <strong key={i} className="font-bold text-slate-900 dark:text-white">{part.slice(1, -1)}</strong>;
@@ -218,7 +212,7 @@ export default function PromoPage() {
       return;
     }
 
-    const message = formatMessage(customMessage, customer.name, customer.points || 0);
+    const message = formatMessage(customMessage, customer.name);
     let phone = customer.phone.replace(/[^0-9]/g, "");
     if (phone.startsWith("0")) phone = "62" + phone.substring(1);
     else if (!phone.startsWith("62") && !phone.startsWith("+")) phone = "62" + phone;
@@ -412,7 +406,6 @@ export default function PromoPage() {
                     <div className="mt-2 space-y-1">
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">@</span> untuk menyisipkan nama pelanggan</p>
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">#</span> untuk menyisipkan nama toko</p>
-                      <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">%</span> untuk menyisipkan jumlah poin pelanggan</p>
                     </div>
                   </div>
                 </div>
@@ -500,16 +493,15 @@ export default function PromoPage() {
                       <TableHead className="hidden sm:table-cell w-12 text-center">No</TableHead>
                       <TableHead>Nama Pelanggan</TableHead>
                       <TableHead>WhatsApp</TableHead>
-                      <TableHead className="text-center">Poin</TableHead>
                       <TableHead className="hidden md:table-cell">Aktif</TableHead>
                       <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
-                      <TableRow><TableCell colSpan={6} className="text-center py-20">Memuat...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="text-center py-20">Memuat...</TableCell></TableRow>
                     ) : paginatedCustomers.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="text-center py-20 text-slate-500">Tidak ada data</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="text-center py-20 text-slate-500">Tidak ada data</TableCell></TableRow>
                     ) : (
                       paginatedCustomers.map((customer, index) => (
                         <TableRow key={customer.id}>
@@ -519,11 +511,6 @@ export default function PromoPage() {
                             {customer.membership_type === 'member' && <span className="text-[10px] bg-orange-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Member</span>}
                           </TableCell>
                           <TableCell className="text-slate-600 dark:text-slate-400 font-mono text-xs">{customer.phone}</TableCell>
-                          <TableCell className="text-center">
-                            <span className="font-bold text-primary">
-                              {customer.points || 0}
-                            </span>
-                          </TableCell>
                           <TableCell className="hidden md:table-cell text-slate-500 text-xs">
                             {customer.created_at ? new Date(customer.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
                           </TableCell>

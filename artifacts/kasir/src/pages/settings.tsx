@@ -91,7 +91,7 @@ export default function SettingsPage() {
   const isAdminSuper = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
   const { data: outlets } = useListOutlets();
   const assignedOutletName = outlets?.find(o => o.id.toString() === user?.outletId)?.name || 'Semua Outlet';
-  const isOutletAssigned = Boolean(user?.outletId && user.outletId !== "all");
+  const isOutletAssigned = false;
 
   // Accordion state - only one card open at a time
   const [openCard, setOpenCard] = useState<string | null>(() => {

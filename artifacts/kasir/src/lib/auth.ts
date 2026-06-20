@@ -40,8 +40,8 @@ export function canAccessRoute(user: AuthUser | null, path: string): boolean {
   if (!user) return false;
   if (isAdminMode(user)) return true;
 
-  // Kasir can only access POS, transactions, products, dashboard, customers, expenses, and settings
-  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings"];
+  // Kasir can only access POS, transactions, products, dashboard, customers, expenses, settings, and return-stock
+  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings", "/return-stock"];
   return kasirAllowed.some(
     (route) => path === route || (route !== "/" && path.startsWith(`${route}/`))
   );

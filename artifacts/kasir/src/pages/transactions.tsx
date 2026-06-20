@@ -32,33 +32,7 @@ const formatTransactionHistoryDate = (dateStr: string) => {
   return `${day} ${month} ${year} — ${hour}:${minute}`;
 };
 
-const getPointsSettingsForUser = (user: any) => {
-  const outletId = user?.outletId || "all";
-  const staffEmail = user?.email || "all";
 
-  const getVal = (field: string, defaultValue: string): string => {
-    // 1. Combo specific
-    const keyCombo = `${field}_o_${outletId}_s_${staffEmail}`;
-    const valCombo = localStorage.getItem(keyCombo);
-    if (valCombo !== null) return valCombo;
-
-    // 2. Staff specific
-    const keyStaff = `${field}_o_all_s_${staffEmail}`;
-    const valStaff = localStorage.getItem(keyStaff);
-    if (valStaff !== null) return valStaff;
-
-    // 3. Outlet specific
-    const keyOutlet = `${field}_o_${outletId}_s_all`;
-    const valOutlet = localStorage.getItem(keyOutlet);
-    if (valOutlet !== null) return valOutlet;
-
-    // 4. Global fallback
-    return localStorage.getItem(field) || defaultValue;
-  };
-
-  const pointsValue = parseInt(getVal('pointsValue', '1000'));
-  return { pointsValue };
-};
 
 export default function TransactionsPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>("all");
@@ -119,9 +93,7 @@ export default function TransactionsPage() {
     setPage(1);
   };
 
-  const getPointsValue = () => {
-    return getPointsSettingsForUser(user).pointsValue;
-  };
+
 
   const getPaymentIcon = (method: string) => {
     switch (method) {
@@ -146,9 +118,7 @@ export default function TransactionsPage() {
     const subtotal = trx.subtotal || 0;
     const tax = trx.tax || 0;
     const discount = trx.discount || 0;
-    const pointsValue = getPointsValue();
-    const pointsDiscount = (trx.points_used || 0) * pointsValue;
-    return subtotal + tax - discount - pointsDiscount;
+    return subtotal + tax - discount;
   };
 
   return (
@@ -223,24 +193,7 @@ export default function TransactionsPage() {
                   {/* Only show for admin super */}
                   {isAdminSuper && (
                     <>
-                      {/* Outlet Filter */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-slate-500">Outlet</label>
-                        <Select value={outletFilter} onValueChange={(v) => { setOutletFilter(v); setPage(1); }}>
-                          <SelectTrigger className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1">
-                            <Building2 className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
-                            <SelectValue placeholder="Semua Outlet" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Semua Outlet</SelectItem>
-                            {outlets?.map((outlet: any) => (
-                              <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                                {outlet.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+
 
                       {/* Cashier Filter */}
                       <div className="space-y-2">
@@ -298,8 +251,6 @@ export default function TransactionsPage() {
               <>
                 {transactions?.map(trx => {
                   const total = calculateTotal(trx);
-                  const pointsUsed = trx.points_used || 0;
-                  const pointsEarned = trx.points_earned || 0;
                   const customerName = trx.customers?.membership_type && trx.customers.membership_type !== 'non_member'
                     ? trx.customers.name
                     : "Umum";
@@ -329,22 +280,9 @@ export default function TransactionsPage() {
                           <div className="flex flex-col gap-0.5">
                             <span className="text-xs text-slate-500">
                               <span className="font-medium text-slate-700">{customerName}</span>
-                              {(pointsUsed > 0 || pointsEarned > 0) && (
-                                <span className="inline-flex items-center gap-1 ml-2">
-                                  {pointsUsed > 0 && (
-                                    <span className="text-red-500 font-medium">-{pointsUsed}</span>
-                                  )}
-                                  {pointsUsed > 0 && pointsEarned > 0 && (
-                                    <span className="text-slate-400">|</span>
-                                  )}
-                                  {pointsEarned > 0 && (
-                                    <span className="text-emerald-600 font-medium">+{pointsEarned}</span>
-                                  )}
-                                </span>
-                              )}
                             </span>
                             <span className="text-xs text-slate-400">
-                              {trx.cashier_name} • {trx.outlets?.name || "-"}
+                              {trx.cashier_name}
                             </span>
                           </div>
 
@@ -395,8 +333,7 @@ export default function TransactionsPage() {
                 <TableRow className="bg-slate-50/50">
                   <TableHead>ID / Waktu</TableHead>
                   <TableHead>Pelanggan</TableHead>
-                  <TableHead>Outlet</TableHead>
-                  <TableHead className="text-center">Poin</TableHead>
+
                   <TableHead className="text-center">Kasir</TableHead>
                   <TableHead>Metode Pembayaran</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -405,12 +342,10 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">Memuat...</TableCell>
+                    <TableCell colSpan={6} className="text-center py-8">Memuat...</TableCell>
                   </TableRow>
                 ) : transactions?.map(trx => {
                   const total = calculateTotal(trx);
-                  const pointsUsed = trx.points_used || 0;
-                  const pointsEarned = trx.points_earned || 0;
 
                   return (
                     <TableRow
@@ -429,24 +364,8 @@ export default function TransactionsPage() {
                             : "Umum"}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="text-sm text-slate-600 font-medium">
-                          {trx.outlets?.name || "-"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1 text-sm">
-                          {pointsUsed > 0 && (
-                            <span className="text-red-500 font-semibold">-{pointsUsed}</span>
-                          )}
-                          {pointsEarned > 0 && (
-                            <span className="text-emerald-600 font-semibold">+{pointsEarned}</span>
-                          )}
-                          {pointsUsed === 0 && pointsEarned === 0 && (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </div>
-                      </TableCell>
+
+
                       <TableCell className="text-center text-slate-600">{trx.cashier_name}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 px-2 py-1 bg-slate-100 w-max rounded text-sm font-medium">
@@ -462,7 +381,7 @@ export default function TransactionsPage() {
                 })}
                 {transactions?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
                       Tidak ada transaksi ditemukan
                     </TableCell>
                   </TableRow>

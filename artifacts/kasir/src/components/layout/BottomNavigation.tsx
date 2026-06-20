@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, CircleDollarSign, Tag, Wallet, User, UserCog, Megaphone } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,6 +55,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
     if (!isAdmin) {
       return [
         { href: "/customers", label: "Pelanggan", icon: Users },
+        { href: "/return-stock", label: "Return Stock Sales", icon: Undo2 },
         { href: "/expenses", label: "Pengeluaran", icon: Wallet },
         { href: "#profile", label: "Profil", icon: User },
         { href: "/settings", label: "Pengaturan", icon: Settings },
@@ -64,8 +65,8 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
 
     return [
       { href: "/staff", label: "Staff", icon: UserCog },
+      { href: "/return-stock", label: "Konfirmasi Return", icon: Undo2 },
       { href: "/expenses", label: "Pengeluaran", icon: Wallet },
-      { href: "/points-settings", label: "Poin", icon: CircleDollarSign },
       { href: "/promo", label: "Promo", icon: Megaphone },
       { href: "/settings", label: "Pengaturan", icon: Settings },
     ];

@@ -334,47 +334,25 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Filter Outlet & Kasir (Khusus Admin) */}
+                  {/* Filter Kasir (Khusus Admin) */}
                   {isAdminSuper && (
-                    <>
-                      {/* Outlet Filter */}
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium text-slate-500">Filter Outlet</Label>
-                        <Select value={tempOutletFilter} onValueChange={setTempOutletFilter}>
-                          <SelectTrigger className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1">
-                            <Building2 className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
-                            <SelectValue placeholder="Semua Outlet" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Semua Outlet</SelectItem>
-                            {(outlets || []).map((outlet: any) => (
-                              <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                                {outlet.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Cashier Filter */}
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium text-slate-500">Filter Kasir</Label>
-                        <Select value={tempCashierFilter} onValueChange={setTempCashierFilter}>
-                          <SelectTrigger className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1">
-                            <UserCircle className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
-                            <SelectValue placeholder="Semua Kasir" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Semua Kasir</SelectItem>
-                            {(filterStaffList ? filterStaffList.filter((s: any) => s.role?.toLowerCase() === 'kasir').map((s: any) => s.name) : (cashierNames || [])).map((name: string) => (
-                              <SelectItem key={name} value={name}>
-                                {name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-500">Filter Kasir</Label>
+                      <Select value={tempCashierFilter} onValueChange={setTempCashierFilter}>
+                        <SelectTrigger className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1">
+                          <UserCircle className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+                          <SelectValue placeholder="Semua Kasir" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua Kasir</SelectItem>
+                          {(filterStaffList ? filterStaffList.filter((s: any) => s.role?.toLowerCase() === 'kasir').map((s: any) => s.name) : (cashierNames || [])).map((name: string) => (
+                            <SelectItem key={name} value={name}>
+                              {name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
                 </div>
 
@@ -756,21 +734,7 @@ export default function DashboardPage() {
                             <SlidersHorizontal className="w-4 h-4 text-primary" />
                             Filter Grafik
                           </div>
-                          <div className="space-y-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs font-medium text-slate-500">Outlet</Label>
-                              <Select value={generalProductOutletFilter} onValueChange={setGeneralProductOutletFilter}>
-                                <SelectTrigger className="h-9 text-xs">
-                                  <SelectValue placeholder="Semua Outlet" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Semua Outlet</SelectItem>
-                                  {outlets?.map((outlet: any) => (
-                                    <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                           <div className="space-y-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs font-medium text-slate-500">Hari</Label>
                               <Select value={generalProductDayFilter} onValueChange={setGeneralProductDayFilter}>
@@ -792,7 +756,7 @@ export default function DashboardPage() {
                             <Button
                               variant="ghost"
                               className="w-full h-8 text-xs text-slate-500 hover:text-slate-700"
-                              onClick={() => { setGeneralProductOutletFilter('all'); setGeneralProductDayFilter('all'); }}
+                              onClick={() => { setGeneralProductDayFilter('all'); }}
                             >
                               Reset Filter
                             </Button>
@@ -880,21 +844,7 @@ export default function DashboardPage() {
                           <SlidersHorizontal className="w-4 h-4 text-primary" />
                           Filter Grafik
                         </div>
-                        <div className="space-y-3">
-                          <div className="space-y-1.5">
-                            <Label className="text-xs font-medium text-slate-500">Outlet</Label>
-                            <Select value={memberProductOutletFilter} onValueChange={setMemberProductOutletFilter}>
-                              <SelectTrigger className="h-9 text-xs">
-                                <SelectValue placeholder="Semua Outlet" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">Semua Outlet</SelectItem>
-                                {outlets?.map((outlet: any) => (
-                                  <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                         <div className="space-y-3">
                           <div className="space-y-1.5">
                             <Label className="text-xs font-medium text-slate-500">Hari</Label>
                             <Select value={memberProductDayFilter} onValueChange={setMemberProductDayFilter}>
@@ -916,7 +866,7 @@ export default function DashboardPage() {
                           <Button
                             variant="ghost"
                             className="w-full h-8 text-xs text-slate-500 hover:text-slate-700"
-                            onClick={() => { setMemberProductOutletFilter('all'); setMemberProductDayFilter('all'); }}
+                            onClick={() => { setMemberProductDayFilter('all'); }}
                           >
                             Reset Filter
                           </Button>
@@ -984,46 +934,6 @@ export default function DashboardPage() {
                     <CardTitle className="text-slate-700 dark:text-slate-200 text-sm sm:text-base font-medium flex items-center gap-2">
                       <Crown className="w-4 h-4 text-slate-400" /> Pelanggan Sultan
                     </CardTitle>
-                    <div className="flex items-center gap-2">
-
-                      <Popover open={isTopCustomersFilterOpen} onOpenChange={setIsTopCustomersFilterOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="shrink-0 w-9 h-9 sm:w-auto sm:px-3 p-0 sm:gap-2 rounded-full border-2 border-slate-200 flex items-center justify-center">
-                            <SlidersHorizontal className="w-4 h-4 text-primary" />
-                            <span className="hidden sm:inline-block text-xs font-medium">Filter</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-[280px] p-4 sm:rounded-2xl shadow-xl border-slate-100 dark:border-slate-800">
-                          <div className="flex items-center gap-2 font-semibold text-sm mb-3 border-b pb-2">
-                            <SlidersHorizontal className="w-4 h-4 text-primary" />
-                            Filter Pelanggan
-                          </div>
-                          <div className="space-y-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs font-medium text-slate-500">Outlet</Label>
-                              <Select value={topCustomersOutletFilter} onValueChange={setTopCustomersOutletFilter}>
-                                <SelectTrigger className="h-9 text-xs">
-                                  <SelectValue placeholder="Semua Outlet" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Semua Outlet</SelectItem>
-                                  {outlets?.map((outlet: any) => (
-                                    <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Button
-                              variant="outline"
-                              className="w-full h-8 text-xs mt-2 text-slate-600 dark:text-slate-400"
-                              onClick={() => { setTopCustomersOutletFilter('all'); }}
-                            >
-                              Reset Filter
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0 px-4 pb-4">
@@ -1056,9 +966,6 @@ export default function DashboardPage() {
 
                                 {/* Total & Points */}
                                 <div className="text-right shrink-0 flex flex-col justify-center items-end">
-                                  <p className="text-[9px] sm:text-[10px] text-slate-400 dark:text-slate-500 font-normal mb-0.5">
-                                    {(customer.points || 0).toLocaleString('id-ID')} Poin
-                                  </p>
                                   <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
                                     {formatRupiah(customer.total_spent || 0)}
                                   </p>
@@ -1077,114 +984,6 @@ export default function DashboardPage() {
                   ) : (
                     <div className="text-center py-6">
                       <p className="text-xs text-slate-400">Belum ada pelanggan sultan</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Outlet Performance */}
-              <Card className="shadow-lg border-0 bg-white dark:bg-slate-900">
-                <CardHeader className="pb-3 px-4 pt-4">
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-slate-700 dark:text-slate-200 text-sm sm:text-base font-medium flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-slate-400" /> Peringkat Outlet
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Popover open={isOutletPerformanceFilterOpen} onOpenChange={setIsOutletPerformanceFilterOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="shrink-0 w-9 h-9 sm:w-auto sm:px-3 p-0 sm:gap-2 rounded-full border-2 border-slate-200 flex items-center justify-center">
-                            <SlidersHorizontal className="w-4 h-4 text-primary" />
-                            <span className="hidden sm:inline-block text-xs font-medium">Filter</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-[280px] p-4 sm:rounded-2xl shadow-xl border-slate-100 dark:border-slate-800">
-                          <div className="flex items-center gap-2 font-semibold text-sm mb-3 border-b pb-2">
-                            <SlidersHorizontal className="w-4 h-4 text-primary" />
-                            Filter Peringkat
-                          </div>
-                          <div className="space-y-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs font-medium text-slate-500">Hari</Label>
-                              <Select value={outletPerformanceDayFilter} onValueChange={setOutletPerformanceDayFilter}>
-                                <SelectTrigger className="h-9 text-xs">
-                                  <SelectValue placeholder="Semua Hari" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Semua Hari</SelectItem>
-                                  <SelectItem value="1">Senin</SelectItem>
-                                  <SelectItem value="2">Selasa</SelectItem>
-                                  <SelectItem value="3">Rabu</SelectItem>
-                                  <SelectItem value="4">Kamis</SelectItem>
-                                  <SelectItem value="5">Jumat</SelectItem>
-                                  <SelectItem value="6">Sabtu</SelectItem>
-                                  <SelectItem value="0">Minggu</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Button
-                              variant="outline"
-                              className="w-full h-8 text-xs mt-2 text-slate-600 dark:text-slate-400"
-                              onClick={() => { setOutletPerformanceDayFilter('all'); }}
-                            >
-                              Reset Filter
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0 px-4 pb-4">
-                  {advancedAnalytics.outletPerformance && advancedAnalytics.outletPerformance.length > 0 ? (
-                    <div className="space-y-2 mt-2 overflow-y-auto max-h-[430px] pr-2 scrollbar-slim">
-                      {(() => {
-                        const topList = advancedAnalytics.outletPerformance.slice(0, 20);
-                        const maxRevenue = topList[0]?.revenue || 1;
-
-                        return topList.map((outlet: any, idx: number) => {
-                          const percentage = Math.max((outlet.revenue / maxRevenue) * 100, 2);
-
-                          return (
-                            <div key={outlet.id} className="flex flex-col gap-2 p-2 sm:p-3 rounded-xl bg-white dark:bg-slate-800 border border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-100 dark:hover:border-slate-800 transition-all duration-200">
-                              <div className="flex items-center gap-3 w-full">
-                                {/* Outlet Badge */}
-                                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary flex items-center justify-center overflow-hidden shrink-0">
-                                  <span className="text-lg sm:text-xl font-bold text-primary-foreground">
-                                    {idx + 1}
-                                  </span>
-                                </div>
-
-                                {/* Outlet Info */}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{outlet.name}</p>
-                                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                    {outlet.transactions} Transaksi
-                                  </p>
-                                </div>
-
-                                {/* Revenue */}
-                                <div className="text-right shrink-0 flex flex-col justify-center items-end">
-                                  <p className="text-[9px] sm:text-[10px] text-slate-400 dark:text-slate-500 font-normal mb-0.5">
-                                    {outlet.percentage.toFixed(1)}% Kontribusi
-                                  </p>
-                                  <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
-                                    {formatRupiah(outlet.revenue)}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Progress bar line */}
-                              <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
-                                <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${percentage}%` }} />
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6">
-                      <p className="text-xs text-slate-400">Belum ada data outlet</p>
                     </div>
                   )}
                 </CardContent>
@@ -1220,21 +1019,7 @@ export default function DashboardPage() {
                               <SlidersHorizontal className="w-4 h-4 text-primary" />
                               Filter Grafik
                             </div>
-                            <div className="space-y-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs font-medium text-slate-500">Outlet</Label>
-                                <Select value={hourlyOutletFilter} onValueChange={setHourlyOutletFilter}>
-                                  <SelectTrigger className="h-9 text-xs">
-                                    <SelectValue placeholder="Semua Outlet" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="all">Semua Outlet</SelectItem>
-                                    {outlets?.map((outlet: any) => (
-                                      <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                             <div className="space-y-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs font-medium text-slate-500">Hari</Label>
                                 <Select value={hourlyDayFilter} onValueChange={setHourlyDayFilter}>
@@ -1256,7 +1041,7 @@ export default function DashboardPage() {
                               <Button
                                 variant="ghost"
                                 className="w-full h-8 text-xs text-slate-500 hover:text-slate-700"
-                                onClick={() => { setHourlyOutletFilter('all'); setHourlyDayFilter('all'); }}
+                                onClick={() => { setHourlyDayFilter('all'); }}
                               >
                                 Reset Filter
                               </Button>

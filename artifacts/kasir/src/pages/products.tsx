@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { ADMIN_EMAIL } from "@/lib/auth";
@@ -97,7 +98,7 @@ export default function ProductsPage() {
   const bulkSaveUoms = useBulkSaveProductUoms();
 
   // UOM State for Add/Edit Dialog
-  const [uomRows, setUomRows] = useState<{ unit_name: string; conversion_factor: number; price: string; is_default: boolean }[]>([]);
+  const [uomRows, setUomRows] = useState<{ unit_name: string; conversion_factor: number; price: string; is_default: boolean; discount_type: string; discount_value: string; label: string }[]>([]);
   // Quick Restock UOM
   const [quickRestockUnit, setQuickRestockUnit] = useState<string>('pcs');
   const [quickRestockConversion, setQuickRestockConversion] = useState<number>(1);
@@ -208,7 +209,10 @@ export default function ProductsPage() {
         unit_name: u.unit_name,
         conversion_factor: u.conversion_factor,
         price: u.price ? formatNumberWithDots(Math.round(Number(u.price)).toString()) : '',
-        is_default: u.is_default || false
+        is_default: u.is_default || false,
+        discount_type: u.discount_type || 'none',
+        discount_value: u.discount_value ? formatNumberWithDots(Math.round(Number(u.discount_value)).toString()) : '',
+        label: u.label || ''
       })));
     } else {
       setEditingProduct(null);
@@ -339,7 +343,10 @@ export default function ProductsPage() {
           unit_name: row.unit_name,
           conversion_factor: row.conversion_factor,
           price: row.price ? parseNumberFromDots(row.price) : null,
-          is_default: row.is_default
+          is_default: row.is_default,
+          discount_type: row.discount_type,
+          discount_value: row.discount_value ? (row.discount_type === 'percent' ? parseFloat(row.discount_value) : parseNumberFromDots(row.discount_value)) : 0,
+          label: row.label || null
         }))
       ];
 
@@ -416,17 +423,12 @@ export default function ProductsPage() {
   const handleSaveCategory = () => {
     if (!newCategoryName.trim()) return;
 
-    if (isAdmin && !editingCategoryId && !showCategoryOutlets) {
-      setShowCategoryOutlets(true);
-      return;
-    }
-
     if (editingCategoryId) {
       updateCategory.mutate({
         id: editingCategoryId,
         data: {
           name: newCategoryName,
-          allowedOutlets: isAdmin ? newCategoryOutlets : ["all"]
+          allowedOutlets: ["all"]
         }
       }, {
         onSuccess: () => {
@@ -439,7 +441,7 @@ export default function ProductsPage() {
       createCategory.mutate({
         data: {
           name: newCategoryName,
-          allowedOutlets: isAdmin ? newCategoryOutlets : ["all"]
+          allowedOutlets: ["all"]
         }
       }, {
         onSuccess: () => {
@@ -570,24 +572,6 @@ export default function ProductsPage() {
     }
   };
 
-  if (!isAdmin && (!user?.outletId || user?.outletId === "all")) {
-    return (
-      <Sidebar>
-        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
-          <div className="max-w-md w-full p-8 text-center flex flex-col items-center bg-white dark:bg-slate-800 shadow-lg border border-red-200 dark:border-red-900/50 rounded-2xl">
-            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-red-200/50 dark:border-red-800/50">
-              <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-red-900 dark:text-red-100 mb-3">Akses Ditolak</h2>
-            <p className="text-red-700 dark:text-red-300 mb-6 leading-relaxed">
-              Akun Kasir Anda belum terhubung dengan Outlet (Cabang) manapun. Silakan hubungi Admin atau Pemilik untuk mengatur penugasan Outlet Anda agar dapat melihat data produk.
-            </p>
-          </div>
-        </div>
-      </Sidebar>
-    );
-  }
-
   return (
     <Sidebar>
       <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950">
@@ -600,9 +584,6 @@ export default function ProductsPage() {
           <div className="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto">
             {isAdmin && (
               <>
-                <Button variant="outline" onClick={() => setIsRestockDialogOpen(true)} className="w-full sm:w-auto text-blue-600 border-blue-200 hover:bg-blue-50">
-                  <Package className="w-4 h-4 mr-2" /> Restock Gudang
-                </Button>
                 <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)} className="w-full sm:w-auto">
                   <FolderPlus className="w-4 h-4 mr-2" /> Kategori
                 </Button>
@@ -702,26 +683,7 @@ export default function ProductsPage() {
                         </Select>
                       </div>
 
-                      {isAdmin && (!user?.outletId || user.outletId === "all") && (
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                            <Store className="w-3 h-3" /> Outlet
-                          </label>
-                          <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Semua Outlet" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">Semua Outlet</SelectItem>
-                              {outlets?.map((outlet: any) => (
-                                <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                                  {outlet.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+
                     </div>
                   </PopoverContent>
                 </Popover>
@@ -756,13 +718,6 @@ export default function ProductsPage() {
                               <div className="flex-1 min-w-0">
                                 <h3 className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-2">{product.name}</h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{categoryName}</p>
-                                {isAdmin && (
-                                  <div className="mt-1.5">
-                                    <Badge className="bg-orange-500 hover:bg-orange-600 text-white whitespace-nowrap text-xs">
-                                      {getOutletCountText(product)}
-                                    </Badge>
-                                  </div>
-                                )}
                               </div>
                               {product.isActive ? (
                                 <Badge className="bg-green-500 dark:bg-green-600 whitespace-nowrap text-xs">Aktif</Badge>
@@ -814,7 +769,7 @@ export default function ProductsPage() {
                         <TableHead className="text-right whitespace-nowrap">Harga</TableHead>
                         <TableHead className="text-center whitespace-nowrap">Stok Gudang</TableHead>
                         <TableHead className="text-center whitespace-nowrap">Kategori</TableHead>
-                        {isAdmin && <TableHead className="text-right whitespace-nowrap">Outlet</TableHead>}
+
                         <TableHead className="text-center whitespace-nowrap">Status</TableHead>
                         {isAdmin && <TableHead className="text-right whitespace-nowrap">Aksi</TableHead>}
                       </TableRow>
@@ -854,13 +809,7 @@ export default function ProductsPage() {
                                 </span>
                               </TableCell>
                               <TableCell className="text-center whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">{categoryName}</TableCell>
-                              {isAdmin && (
-                                <TableCell className="text-right whitespace-nowrap">
-                                  <Badge className="bg-orange-500 hover:bg-orange-600 text-white">
-                                    {getOutletCountText(product)}
-                                  </Badge>
-                                </TableCell>
-                              )}
+
                               <TableCell className="text-center whitespace-nowrap">
                                 {product.isActive ? (
                                   <Badge className="bg-green-500 dark:bg-green-600">Aktif</Badge>
@@ -893,45 +842,77 @@ export default function ProductsPage() {
             <>
               {/* Stock Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg">
-                    <Package className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Jenis Barang</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.totalItems}</p>
-                  </div>
-                </div>
+                {/* Total Jenis Barang */}
+                <Card className="bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg">
+                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-blue-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Total Jenis Barang</p>
+                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                          {stockStats.totalItems}
+                        </p>
+                      </div>
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Package className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-blue-200 mt-2">Produk Terdaftar</p>
+                  </CardContent>
+                </Card>
 
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg">
-                    <Archive className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Stok Gudang</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.totalStock}</p>
-                  </div>
-                </div>
+                {/* Total Stok Gudang */}
+                <Card className="bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg">
+                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-purple-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Total Stok Gudang</p>
+                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                          {stockStats.totalStock}
+                        </p>
+                      </div>
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Archive className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-purple-200 mt-2">Pcs Terhitung</p>
+                  </CardContent>
+                </Card>
 
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg">
-                    <AlertTriangle className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Stok Habis</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.outOfStock}</p>
-                  </div>
-                </div>
+                {/* Stok Habis */}
+                <Card className="bg-gradient-to-br from-red-500 to-red-600 border-0 shadow-lg">
+                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-red-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Stok Habis</p>
+                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                          {stockStats.outOfStock}
+                        </p>
+                      </div>
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-red-200 mt-2">Perlu Restock Segera</p>
+                  </CardContent>
+                </Card>
 
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 flex items-center gap-4">
-                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg">
-                    <AlertTriangle className="w-6 h-6 animate-pulse" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Stok Menipis</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-900 dark:text-white">{stockStats.lowStock}</p>
-                  </div>
-                </div>
+                {/* Stok Menipis */}
+                <Card className="bg-gradient-to-br from-amber-500 to-orange-600 border-0 shadow-lg">
+                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-amber-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Stok Menipis</p>
+                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                          {stockStats.lowStock}
+                        </p>
+                      </div>
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-4 h-4 text-white animate-pulse" />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-amber-250 mt-2">Batas Kritis Low</p>
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Stock Filters */}
@@ -1208,53 +1189,7 @@ export default function ProductsPage() {
               />
             </div>
 
-            {/* Outlet */}
-            {isAdmin && (
-              <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-3 rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
-                <label className="text-sm font-medium">Outlet yang Diizinkan</label>
-                <div className="space-y-2 max-h-[150px] overflow-y-auto scrollbar-hide">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="outlet-all"
-                      checked={formData.allowedOutlets.includes("all")}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          handleFormChange('allowedOutlets', ["all"]);
-                        } else {
-                          handleFormChange('allowedOutlets', []);
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
-                    />
-                    <label htmlFor="outlet-all" className="text-sm font-medium cursor-pointer">Semua Outlet (Umum)</label>
-                  </div>
-                  {outlets?.map((outlet: any) => (
-                    <div key={outlet.id} className="flex items-center space-x-2 pl-6">
-                      <input
-                        type="checkbox"
-                        id={`outlet-${outlet.id}`}
-                        checked={formData.allowedOutlets.includes(outlet.id.toString()) && !formData.allowedOutlets.includes("all")}
-                        disabled={formData.allowedOutlets.includes("all")}
-                        onChange={(e) => {
-                          let newOutlets = [...formData.allowedOutlets.filter(id => id !== "all")];
-                          if (e.target.checked) {
-                            newOutlets.push(outlet.id.toString());
-                          } else {
-                            newOutlets = newOutlets.filter(id => id !== outlet.id.toString());
-                          }
-                          handleFormChange('allowedOutlets', newOutlets);
-                        }}
-                        className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary disabled:opacity-50 cursor-pointer"
-                      />
-                      <label htmlFor={`outlet-${outlet.id}`} className={`text-sm font-medium cursor-pointer ${formData.allowedOutlets.includes("all") ? "text-slate-400" : ""}`}>
-                        {outlet.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+
 
             {/* Satuan / UOM */}
             {isAdmin && (
@@ -1270,64 +1205,130 @@ export default function ProductsPage() {
                 {uomRows.length > 0 && (
                   <div className="space-y-2">
                     {uomRows.map((row, idx) => (
-                      <div key={idx} className="flex items-end gap-2 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                        <div className="flex-1 space-y-1">
-                          <label className="text-[10px] font-medium text-slate-500">Nama Satuan</label>
-                          <Input
-                            placeholder="box, dus, pack..."
-                            value={row.unit_name}
-                            onChange={(e) => {
+                      <div key={idx} className="flex flex-col gap-2 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <div className="flex items-end gap-2">
+                          <div className="flex-1 space-y-1">
+                            <label className="text-[10px] font-medium text-slate-500">Nama Satuan</label>
+                            <Input
+                              placeholder="box, dus, pack..."
+                              value={row.unit_name}
+                              onChange={(e) => {
+                                const newRows = [...uomRows];
+                                newRows[idx].unit_name = e.target.value.toLowerCase().trim();
+                                setUomRows(newRows);
+                                setHasChanges(true);
+                              }}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="w-20 space-y-1">
+                            <label className="text-[10px] font-medium text-slate-500">Isi (pcs)</label>
+                            <Input
+                              type="number"
+                              min={2}
+                              placeholder="12"
+                              value={row.conversion_factor}
+                              onChange={(e) => {
+                                const newRows = [...uomRows];
+                                newRows[idx].conversion_factor = parseInt(e.target.value) || 1;
+                                setUomRows(newRows);
+                                setHasChanges(true);
+                              }}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="w-28 space-y-1">
+                            <label className="text-[10px] font-medium text-slate-500">Harga Jual</label>
+                            <Input
+                              placeholder="Auto"
+                              value={row.price}
+                              onChange={(e) => {
+                                const newRows = [...uomRows];
+                                newRows[idx].price = formatNumberWithDots(e.target.value);
+                                setUomRows(newRows);
+                                setHasChanges(true);
+                              }}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                            onClick={() => {
                               const newRows = [...uomRows];
-                              newRows[idx].unit_name = e.target.value.toLowerCase().trim();
+                              newRows.splice(idx, 1);
                               setUomRows(newRows);
                               setHasChanges(true);
                             }}
-                            className="h-8 text-sm"
-                          />
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
-                        <div className="w-20 space-y-1">
-                          <label className="text-[10px] font-medium text-slate-500">Isi (pcs)</label>
-                          <Input
-                            type="number"
-                            min={2}
-                            placeholder="12"
-                            value={row.conversion_factor}
-                            onChange={(e) => {
-                              const newRows = [...uomRows];
-                              newRows[idx].conversion_factor = parseInt(e.target.value) || 1;
-                              setUomRows(newRows);
-                              setHasChanges(true);
-                            }}
-                            className="h-8 text-sm"
-                          />
+                        <div className="flex items-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 mt-1">
+                          <div className="w-32 space-y-1">
+                            <label className="text-[10px] font-medium text-slate-500">Tipe Diskon</label>
+                            <Select 
+                              value={row.discount_type} 
+                              onValueChange={(value) => {
+                                const newRows = [...uomRows];
+                                newRows[idx].discount_type = value;
+                                if (value === 'none') {
+                                  newRows[idx].discount_value = '';
+                                  newRows[idx].label = '';
+                                }
+                                setUomRows(newRows);
+                                setHasChanges(true);
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Pilih..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Tidak Ada</SelectItem>
+                                <SelectItem value="amount">Nominal (Rp)</SelectItem>
+                                <SelectItem value="percent">Persen (%)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {row.discount_type !== 'none' && (
+                            <>
+                              <div className="w-24 space-y-1">
+                                <label className="text-[10px] font-medium text-slate-500">Nilai</label>
+                                <Input
+                                  placeholder={row.discount_type === 'percent' ? "5" : "5.000"}
+                                  value={row.discount_value}
+                                  onChange={(e) => {
+                                    const newRows = [...uomRows];
+                                    if (row.discount_type === 'percent') {
+                                      // Allow decimals for percentage
+                                      newRows[idx].discount_value = e.target.value;
+                                    } else {
+                                      newRows[idx].discount_value = formatNumberWithDots(e.target.value);
+                                    }
+                                    setUomRows(newRows);
+                                    setHasChanges(true);
+                                  }}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div className="flex-1 space-y-1">
+                                <label className="text-[10px] font-medium text-slate-500">Label Struk/Promo</label>
+                                <Input
+                                  placeholder="Hemat 5%..."
+                                  value={row.label}
+                                  onChange={(e) => {
+                                    const newRows = [...uomRows];
+                                    newRows[idx].label = e.target.value;
+                                    setUomRows(newRows);
+                                    setHasChanges(true);
+                                  }}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            </>
+                          )}
                         </div>
-                        <div className="w-28 space-y-1">
-                          <label className="text-[10px] font-medium text-slate-500">Harga (opsional)</label>
-                          <Input
-                            placeholder="Auto"
-                            value={row.price}
-                            onChange={(e) => {
-                              const newRows = [...uomRows];
-                              newRows[idx].price = formatNumberWithDots(e.target.value);
-                              setUomRows(newRows);
-                              setHasChanges(true);
-                            }}
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
-                          onClick={() => {
-                            const newRows = [...uomRows];
-                            newRows.splice(idx, 1);
-                            setUomRows(newRows);
-                            setHasChanges(true);
-                          }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
                       </div>
                     ))}
                   </div>
@@ -1338,7 +1339,7 @@ export default function ProductsPage() {
                   size="sm"
                   className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:text-indigo-400 dark:border-indigo-800 dark:hover:bg-indigo-900/20"
                   onClick={() => {
-                    setUomRows([...uomRows, { unit_name: '', conversion_factor: 12, price: '', is_default: false }]);
+                    setUomRows([...uomRows, { unit_name: '', conversion_factor: 12, price: '', is_default: false, discount_type: 'none', discount_value: '', label: '' }]);
                     setHasChanges(true);
                   }}
                 >
@@ -1410,54 +1411,7 @@ export default function ProductsPage() {
               </div>
             )}
 
-            {isAdmin && (showCategoryOutlets || editingCategoryId) && (
-              <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-3 rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
-                <label className="text-sm font-medium">Tersedia di Outlet (Kategori)</label>
-                <div className="space-y-2 max-h-[150px] overflow-y-auto scrollbar-hide">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="cat-outlet-all"
-                      checked={newCategoryOutlets.includes("all")}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setNewCategoryOutlets(["all"]);
-                        } else {
-                          setNewCategoryOutlets([]);
-                        }
-                      }}
-                      className="w-4 h-4 rounded text-primary focus:ring-primary border-slate-300"
-                    />
-                    <label htmlFor="cat-outlet-all" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
-                      Semua Outlet
-                    </label>
-                  </div>
 
-                  {outlets?.map((outlet: any) => (
-                    <div key={outlet.id} className="flex items-center space-x-2 ml-6">
-                      <input
-                        type="checkbox"
-                        id={`cat-outlet-${outlet.id}`}
-                        disabled={newCategoryOutlets.includes("all")}
-                        checked={!newCategoryOutlets.includes("all") && newCategoryOutlets.includes(outlet.id.toString())}
-                        onChange={(e) => {
-                          const val = outlet.id.toString();
-                          if (e.target.checked) {
-                            setNewCategoryOutlets(prev => [...prev.filter(id => id !== "all"), val]);
-                          } else {
-                            setNewCategoryOutlets(prev => prev.filter(id => id !== val));
-                          }
-                        }}
-                        className="w-4 h-4 rounded text-primary focus:ring-primary border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                      <label htmlFor={`cat-outlet-${outlet.id}`} className="text-sm leading-none cursor-pointer text-slate-700 dark:text-slate-300 peer-disabled:opacity-50">
-                        {outlet.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-hide pr-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               {categories?.length === 0 ? (
@@ -1467,10 +1421,6 @@ export default function ProductsPage() {
                   <div key={cat.id} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-lg">
                     <div className="flex flex-col">
                       <span className="text-sm font-medium text-slate-900 dark:text-white">{cat.name}</span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1">
-                        <Store className="w-3 h-3" />
-                        {getOutletName(cat)}
-                      </span>
                     </div>
                     <div className="flex gap-1 items-center">
                       <Button variant="ghost" size="sm" onClick={() => handleEditCategory(cat)} className="text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 h-8 w-8 p-0">
@@ -1544,19 +1494,7 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              {isAdmin && (
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-                  <label className="text-xs text-slate-500 block mb-2">Outlet yang Diizinkan</label>
-                  <ul className="text-sm font-medium text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded-xl leading-relaxed shadow-sm space-y-2">
-                    {getOutletNamesArray(detailProduct).map((name, idx) => (
-                      <li key={idx} className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary/60"></div>
-                        <span>{name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+
             </div>
           )}
         </DialogContent>

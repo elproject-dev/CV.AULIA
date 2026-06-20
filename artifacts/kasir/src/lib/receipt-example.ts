@@ -36,14 +36,11 @@ export function exampleBasicReceipt(): string {
       },
     ],
     subtotal: 21000,
-    discount: 2000,
-    pointsRedeemed: 3,
-    pointsValue: 3000,
-    total: 16000,
+    discount: 0,
+    total: 21000,
     amountPaid: 50000,
-    change: 34000,
+    change: 29000,
     paymentMethod: 'Tunai',
-    earnedPoints: 1,
   };
 
   return generateReceiptRaw(receiptData);
@@ -59,8 +56,7 @@ export function exampleReceiptWithTax(): string {
   ];
 
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const tax = Math.round(subtotal * 0.1); // 10% tax
-  const total = subtotal + tax;
+  const total = subtotal;
 
   const receiptData: ReceiptData = {
     storeName: 'WARUNG MAKAN LEZAT',
@@ -72,6 +68,7 @@ export function exampleReceiptWithTax(): string {
     items,
     subtotal,
     discount: 0,
+    tax: 0,
     total,
     amountPaid: 150000,
     change: 150000 - total,
@@ -83,17 +80,14 @@ export function exampleReceiptWithTax(): string {
 
 // ==================== EXAMPLE 3: Member with Points ====================
 
-export function exampleReceiptMemberWithPoints(): string {
+export function exampleReceiptMember(): string {
   const items: ReceiptItem[] = [
     { productName: 'Cappuccino', quantity: 1, price: 25000 },
     { productName: 'Brownies', quantity: 2, price: 15000 },
   ];
 
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const pointsRedeemed = 50;
-  const pointsValue = 10000; // 1 poin = 200, jadi 50 poin = 10000
-  const discount = 5000;
-  const total = subtotal - pointsValue - discount;
+  const total = subtotal;
 
   const receiptData: ReceiptData = {
     storeName: 'KOPI ENAK',
@@ -104,14 +98,11 @@ export function exampleReceiptMemberWithPoints(): string {
     customerType: 'member',
     items,
     subtotal,
-    discount,
-    pointsRedeemed,
-    pointsValue,
+    discount: 0,
     total,
     amountPaid: 50000,
     change: 50000 - total,
     paymentMethod: 'Tunai',
-    earnedPoints: Math.floor(total / 5000), // setiap 5000 dapat 1 poin
   };
 
   return generateReceiptRaw(receiptData);
@@ -128,10 +119,7 @@ export function exampleLargeTransaction(): string {
   ];
 
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const discount = 5000000; // 5 juta diskon
-  const pointsRedeemed = 100;
-  const pointsValue = 2000000; // 100 poin = 2 juta
-  const total = subtotal - discount - pointsValue;
+  const total = subtotal;
 
   const receiptData: ReceiptData = {
     storeName: 'APPLE STORE',
@@ -142,14 +130,11 @@ export function exampleLargeTransaction(): string {
     customerType: 'member',
     items,
     subtotal,
-    discount,
-    pointsRedeemed,
-    pointsValue,
+    discount: 0,
     total,
-    amountPaid: 31000000,
-    change: 31000000 - total,
+    amountPaid: 35000000,
+    change: 35000000 - total,
     paymentMethod: 'Transfer Bank',
-    earnedPoints: 50,
   };
 
   return generateReceiptRaw(receiptData);
@@ -183,7 +168,6 @@ export async function exampleReceiptWithLogo(): Promise<string> {
     amountPaid: 100000,
     change: 100000 - total,
     paymentMethod: 'Tunai',
-    earnedPoints: Math.floor(total / 5000),
     footerMessage: 'terima kasih sudah berbelanja di Sbagiamu!',
   };
 
@@ -210,7 +194,7 @@ export async function printExampleReceipt(
         receiptText = exampleReceiptWithTax();
         break;
       case 'member':
-        receiptText = exampleReceiptMemberWithPoints();
+        receiptText = exampleReceiptMember();
         break;
       case 'large':
         receiptText = exampleLargeTransaction();
@@ -272,13 +256,10 @@ export function transactionToReceiptData(
     items,
     subtotal,
     discount: transaction.discount || 0,
-    pointsRedeemed: transaction.points_redeemed || 0,
-    pointsValue: transaction.points_value || 0,
     total: transaction.total,
     amountPaid: transaction.amount_paid,
     change: transaction.change,
     paymentMethod: translatePaymentMethod(transaction.payment_method),
-    earnedPoints: transaction.earned_points || 0,
   };
 }
 
@@ -303,8 +284,8 @@ export function testAllExamples(): void {
   console.log('\n=== EXAMPLE 2: Receipt with Tax ===');
   console.log(exampleReceiptWithTax());
 
-  console.log('\n=== EXAMPLE 3: Member with Points ===');
-  console.log(exampleReceiptMemberWithPoints());
+  console.log('\n=== EXAMPLE 3: Member (No Points) ===');
+  console.log(exampleReceiptMember());
 
   console.log('\n=== EXAMPLE 4: Large Transaction ===');
   console.log(exampleLargeTransaction());

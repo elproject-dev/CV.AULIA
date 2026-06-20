@@ -276,7 +276,7 @@ export default function StaffPage() {
       case "admin": return "Admin";
       case "developer": return "Developer";
       case "supervisor": return "Supervisor";
-      case "kasir": return "Kasir";
+      case "kasir": return "Sales";
       default: return role;
     }
   };
@@ -305,10 +305,7 @@ export default function StaffPage() {
             </div>
             {isAdmin && (
               <div className="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0">
-                <Button variant="outline" onClick={() => setIsOutletDialogOpen(true)} className="w-full sm:w-auto">
-                  <Store className="w-4 h-4 mr-2" />
-                  Tambah Outlet
-                </Button>
+
                 <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" />
                   Tambah Staff
@@ -334,23 +331,7 @@ export default function StaffPage() {
                 </div>
               </div>
 
-              {/* Outlet Filter (Admin Only) */}
-              {isAdmin && outlets && outlets.length > 0 && (
-                <Select value={selectedOutletFilter} onValueChange={setSelectedOutletFilter}>
-                  <SelectTrigger className="w-full sm:w-64 h-10">
-                    <Building2 className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
-                    <SelectValue placeholder="Semua Outlet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Outlet</SelectItem>
-                    {outlets.map((outlet: any) => (
-                      <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                        {outlet.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+
             </div>
           </div>
 
@@ -369,7 +350,7 @@ export default function StaffPage() {
                   <TableHead className="font-semibold">Telepon</TableHead>
                   <TableHead className="font-semibold">Peran</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="font-semibold text-right">Outlet</TableHead>
+
                   {isAdmin && <TableHead className="text-right w-28 font-semibold">Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -444,9 +425,7 @@ export default function StaffPage() {
                           <Badge variant="destructive">Nonaktif</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-slate-600 dark:text-slate-400 text-right">
-                        {staff.role === 'admin' ? "Semua Outlet" : (staff.outlets?.name || "Belum Ditugaskan")}
-                      </TableCell>
+
                       {isAdmin && (
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
@@ -528,17 +507,11 @@ export default function StaffPage() {
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
-                    <div>
-                      <span className="block text-[10px] text-slate-400 uppercase mb-0.5">Outlet</span>
-                      <span className="font-medium text-slate-700 dark:text-slate-300">{staff.role === 'admin' ? "Semua Outlet" : (staff.outlets?.name || "Belum Ditugaskan")}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="block text-[10px] text-slate-400 uppercase mb-0.5">Status</span>
-                      <span className={staff.status === 'active' ? "text-green-600 dark:text-green-400 font-medium" : "text-red-500 font-medium"}>
-                        {staff.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                      </span>
-                    </div>
+                  <div className="flex justify-between items-center text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg">
+                    <span className="text-[10px] text-slate-400 uppercase">Status</span>
+                    <span className={staff.status === 'active' ? "text-green-600 dark:text-green-400 font-medium" : "text-red-500 font-medium"}>
+                      {staff.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                    </span>
                   </div>
 
                   {isAdmin && (
@@ -570,180 +543,7 @@ export default function StaffPage() {
         </div>
       </div>
 
-      {/* Outlet Dialog Form */}
-      <Dialog open={isOutletDialogOpen} onOpenChange={(open) => {
-        setIsOutletDialogOpen(open);
-        if (!open) resetOutletForm();
-      }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col sm:rounded-2xl">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <Store className="w-5 h-5 text-primary" />
-              </div>
-              Manajemen Outlet
-            </DialogTitle>
-            <DialogDescription className="sr-only">Kelola daftar outlet</DialogDescription>
-          </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto scrollbar-hide pr-2 pb-4 space-y-6">
-            <div className="space-y-4 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-              <h3 className="font-semibold text-slate-900 dark:text-white">
-                {editingOutletId ? "Edit Outlet" : "Tambah Outlet Baru"}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="store-name" className="text-sm font-medium">Nama Toko (Untuk Struk)</Label>
-                  <Input
-                    id="store-name"
-                    value={newStoreName}
-                    onChange={(e) => setNewStoreName(e.target.value)}
-                    placeholder="Masukkan nama toko untuk struk..."
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="outlet-name" className="text-sm font-medium">Nama Outlet (Internal)</Label>
-                  <Input
-                    id="outlet-name"
-                    value={newOutletName}
-                    onChange={(e) => setNewOutletName(e.target.value)}
-                    placeholder="Masukkan nama outlet internal..."
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="outlet-phone" className="text-sm font-medium">Nomor Telepon</Label>
-                  <Input
-                    id="outlet-phone"
-                    value={newOutletPhone}
-                    onChange={(e) => setNewOutletPhone(e.target.value)}
-                    placeholder="Masukkan nomor telepon..."
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="outlet-address" className="text-sm font-medium">Alamat</Label>
-                  <Input
-                    id="outlet-address"
-                    value={newOutletAddress}
-                    onChange={(e) => setNewOutletAddress(e.target.value)}
-                    placeholder="Masukkan alamat lengkap..."
-                    className="h-10"
-                    maxLength={32}
-                  />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Maksimal 32 karakter untuk print 58mm
-                  </p>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="outlet-footer1" className="text-sm font-medium">Pesan Footer 1</Label>
-                  <Input
-                    id="outlet-footer1"
-                    value={newOutletFooter1}
-                    onChange={(e) => setNewOutletFooter1(e.target.value)}
-                    placeholder="Masukkan pesan footer pertama..."
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="outlet-footer2" className="text-sm font-medium">Pesan Footer 2</Label>
-                  <Input
-                    id="outlet-footer2"
-                    value={newOutletFooter2}
-                    onChange={(e) => setNewOutletFooter2(e.target.value)}
-                    placeholder="Masukkan pesan footer kedua..."
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="outlet-footer3" className="text-sm font-medium">Pesan Footer 3</Label>
-                  <Input
-                    id="outlet-footer3"
-                    value={newOutletFooter3}
-                    onChange={(e) => setNewOutletFooter3(e.target.value)}
-                    placeholder="Masukkan pesan footer ketiga..."
-                    className="h-10"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                {editingOutletId && (
-                  <Button variant="outline" onClick={resetOutletForm} className="h-9">
-                    Batal Edit
-                  </Button>
-                )}
-                <Button
-                  onClick={handleSaveOutlet}
-                  className="h-9 px-6"
-                  disabled={isCreatingOutlet}
-                >
-                  {isCreatingOutlet ? (
-                    <>
-                      <div className="w-4 h-4 mr-2 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                      Menyimpan...
-                    </>
-                  ) : (editingOutletId ? "Simpan Perubahan" : "Tambah Outlet")}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="font-semibold text-slate-900 dark:text-white">Daftar Outlet</h3>
-              {outlets?.length === 0 ? (
-                <div className="text-center py-6 text-slate-500 text-sm border rounded-xl bg-slate-50/50 dark:bg-slate-800/30">
-                  Belum ada outlet terdaftar
-                </div>
-              ) : (
-                <div className="border rounded-2xl overflow-hidden divide-y dark:border-slate-800 dark:divide-slate-800">
-                  {outlets?.map((outlet: any) => (
-                    <div key={outlet.id} className="p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <div className="min-w-0">
-                        {outlet.store_name && (
-                          <div className="font-bold text-slate-900 dark:text-white uppercase">
-                            {outlet.store_name}
-                          </div>
-                        )}
-                        <div className={outlet.store_name ? "text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 capitalize" : "font-semibold text-slate-900 dark:text-white capitalize"}>
-                          {outlet.name.toLowerCase().startsWith('outlet') ? outlet.name : `Outlet ${outlet.name}`}
-                        </div>
-                        <div className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[300px]">
-                          {outlet.address || "Alamat tidak tersedia"}
-                        </div>
-                        {outlet.phone && (
-                          <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                            {outlet.phone}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0 w-full sm:w-auto justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditOutlet(outlet)}
-                          className="h-8 w-8 text-slate-500 hover:text-slate-600 dark:hover:text-slate-400"
-                          title="Edit"
-                        >
-                          <SquarePen className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteOutlet(outlet.id)}
-                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                          title="Hapus"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Dialog Form */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -802,7 +602,7 @@ export default function StaffPage() {
                     <SelectValue placeholder="Pilih peran" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="kasir">Kasir</SelectItem>
+                    <SelectItem value="kasir">Sales</SelectItem>
                     <SelectItem value="supervisor">Supervisor</SelectItem>
                     {isAdmin && <SelectItem value="admin">Admin</SelectItem>}
                     {isAdmin && <SelectItem value="developer">Developer</SelectItem>}
@@ -827,25 +627,7 @@ export default function StaffPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="outlet" className="text-sm font-medium">Penugasan Outlet</Label>
-              <Select
-                value={formData.outlet_id}
-                onValueChange={(value) => setFormData({ ...formData, outlet_id: value })}
-              >
-                <SelectTrigger id="outlet" className="h-11">
-                  <SelectValue placeholder="Pilih outlet penugasan" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Belum Ditugaskan</SelectItem>
-                  {outlets?.map((outlet: any) => (
-                    <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                      {outlet.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="h-11">
@@ -929,13 +711,7 @@ export default function StaffPage() {
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Penugasan Outlet</p>
-                  <p className="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                    <Store className="w-4 h-4 text-slate-400" />
-                    {selectedStaffDetail.role === 'admin' ? "Semua Outlet" : (selectedStaffDetail.outlets?.name || "Belum Ditugaskan")}
-                  </p>
-                </div>
+
               </div>
             </div>
           )}

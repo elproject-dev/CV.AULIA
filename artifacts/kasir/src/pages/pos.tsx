@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useListProducts, useListCategories, useListCustomers, useCreateTransaction, getListProductsQueryKey, getListCustomersQueryKey, useListOutlets, useListPointsSettings, useListDiscountSettings, useListDiscountCategories, useListLoadingSessions, useListLoadingItems } from "@workspace/api-client-react";
+import { useListProducts, useListCategories, useListCustomers, useCreateTransaction, getListProductsQueryKey, getListCustomersQueryKey, useListOutlets, useListLoadingSessions, useListLoadingItems } from "@workspace/api-client-react";
 import { formatRupiah, formatInvoiceNumber } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
@@ -10,7 +10,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Award, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler } from "lucide-react";
+import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,9 @@ interface CartItem {
   unitName: string;
   conversionFactor: number;
   unitPrice: number;
+  uomDiscountType?: string;
+  uomDiscountAmount?: number;
+  uomLabel?: string;
 }
 
 // Helper function untuk format angka dengan titik ribuan
@@ -103,7 +106,6 @@ export default function POSPage() {
   const [manualCustomerName, setManualCustomerName] = useState<string>("");
   const [manualCustomerPhone, setManualCustomerPhone] = useState<string>("");
   const [customerType, setCustomerType] = useState<string>("umum");
-  const [pointsToRedeem, setPointsToRedeem] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [amountPaidDisplay, setAmountPaidDisplay] = useState<string>("");
   const [amountPaidStr, setAmountPaidStr] = useState<string>("");
@@ -112,10 +114,10 @@ export default function POSPage() {
   const [discountNote, setDiscountNote] = useState<string>("");
   const [discountNoteOptions, setDiscountNoteOptions] = useState<string[]>([]);
   const [isCustomDiscountNote, setIsCustomDiscountNote] = useState(false);
-  const [enableDiscount, setEnableDiscount] = useState(true);
-  const [defaultDiscountPrice, setDefaultDiscountPrice] = useState("0");
-  const [enablePPN, setEnablePPN] = useState(false);
-  const [ppnPercentage, setPpnPercentage] = useState(11);
+  const enableDiscount = false;
+  const defaultDiscountPrice = "0";
+  const enablePPN = false;
+  const ppnPercentage = 11;
 
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastTransaction, setLastTransaction] = useState<any>(null);
@@ -167,9 +169,6 @@ export default function POSPage() {
   });
   const { data: categories } = useListCategories({ outletId: selectedOutlet });
   const { data: customers, isLoading: isLoadingCustomers, refetch: refetchCustomers } = useListCustomers();
-  const { data: allPointsSettings, refetch: refetchPointsSettings } = useListPointsSettings();
-  const { data: allDiscountSettings, refetch: refetchDiscountSettings } = useListDiscountSettings();
-  const { data: allDiscountCategories, refetch: refetchDiscountCategories } = useListDiscountCategories();
 
   // FMCG: Fetch active loading session for Kasir
   const { data: activeSessions } = useListLoadingSessions({
@@ -223,124 +222,15 @@ export default function POSPage() {
     const currentLength = cart.length;
     prevCartLengthRef.current = currentLength;
 
-    if (prevLength === 0 && currentLength > 0 && enableDiscount) {
-      const parsedVal = parseInt(defaultDiscountPrice) || 0;
-      if (parsedVal > 0) {
-        const formatted = formatNumberWithDots(defaultDiscountPrice);
-        setDiscountDisplay(formatted);
-        setDiscountStr(formatted);
-      }
-    } else if (currentLength === 0 && prevLength > 0) {
+    if (currentLength === 0 && prevLength > 0) {
       setDiscountDisplay("");
       setDiscountStr("");
       setDiscountNote("");
       setIsCustomDiscountNote(false);
     }
-  }, [cart.length, enableDiscount, defaultDiscountPrice]);
+  }, [cart.length]);
 
-  // Ambil pengaturan PPN dan sync dengan event
-  const discountSettings = useMemo(() => {
-    const outletId = user?.outletId || "all";
-    const staffEmail = user?.email || "all";
 
-    if (!allDiscountSettings || allDiscountSettings.length === 0) {
-      return { enableDiscount: true, defaultDiscountPrice: "0", enablePPN: false, ppnPercentage: "11", allowedPromos: [] };
-    }
-
-    // 1. Combo specific: outlet + staff email
-    let setting = allDiscountSettings.find(s => (s.outletId?.toString() === outletId) && (s.staffEmail === staffEmail));
-    // 2. Staff specific: all outlets + staff email
-    if (!setting) setting = allDiscountSettings.find(s => (s.outletId === 'all' || !s.outletId) && (s.staffEmail === staffEmail));
-    // 3. Outlet specific: outlet + all staff
-    if (!setting) setting = allDiscountSettings.find(s => (s.outletId?.toString() === outletId) && (s.staffEmail === 'all' || !s.staffEmail));
-    // 4. Global fallback
-    if (!setting) setting = allDiscountSettings.find(s => (s.outletId === 'all' || !s.outletId) && (s.staffEmail === 'all' || !s.staffEmail));
-
-    if (setting) {
-      return {
-        enableDiscount: setting.enableDiscount,
-        defaultDiscountPrice: setting.defaultDiscountPrice,
-        enablePPN: setting.enablePPN,
-        ppnPercentage: setting.ppnPercentage,
-        allowedPromos: Array.isArray(setting.allowedPromos) ? setting.allowedPromos : []
-      };
-    }
-    return { enableDiscount: true, defaultDiscountPrice: "0", enablePPN: false, ppnPercentage: "11", allowedPromos: [] };
-  }, [allDiscountSettings, user]);
-
-  const discountNotesList = useMemo(() => {
-    if (allDiscountCategories && allDiscountCategories.length > 0) {
-      const allowed = discountSettings.allowedPromos;
-      if (allowed && allowed.length > 0) {
-        return allDiscountCategories.map(c => c.note).filter(note => allowed.includes(note));
-      } else {
-        // Jika tidak ada allowed promos, return empty array (kasir tidak bisa milih promo)
-        return [];
-      }
-    }
-    return getDefaultDiscountNotes();
-  }, [allDiscountCategories, discountSettings.allowedPromos]);
-
-  useEffect(() => {
-    setEnableDiscount(discountSettings.enableDiscount);
-    setDefaultDiscountPrice(discountSettings.defaultDiscountPrice);
-    setEnablePPN(discountSettings.enablePPN);
-    setPpnPercentage(discountSettings.ppnPercentage);
-    setDiscountNoteOptions(discountNotesList);
-  }, [discountSettings, discountNotesList]);
-
-  useEffect(() => {
-    const handlePointsSettingsChanged = () => {
-      refetchPointsSettings();
-    };
-    const handleDiscountSettingsChanged = () => {
-      refetchDiscountSettings();
-      refetchDiscountCategories();
-    };
-    window.addEventListener('pointsSettingsChanged', handlePointsSettingsChanged);
-    window.addEventListener('discountSettingsChanged', handleDiscountSettingsChanged);
-    window.addEventListener('discountNotesChanged', handleDiscountSettingsChanged);
-
-    return () => {
-      window.removeEventListener('pointsSettingsChanged', handlePointsSettingsChanged);
-      window.removeEventListener('discountSettingsChanged', handleDiscountSettingsChanged);
-      window.removeEventListener('discountNotesChanged', handleDiscountSettingsChanged);
-    };
-  }, [refetchPointsSettings, refetchDiscountSettings, refetchDiscountCategories]);
-
-  // Ambil pengaturan Poin dari Supabase Point Settings
-  const getActivePointsSettings = () => {
-    const outletId = user?.outletId || "all";
-    const staffEmail = user?.email || "all";
-
-    if (!allPointsSettings || allPointsSettings.length === 0) {
-      return { enablePoints: false, pointsValue: 1000, pointsBaseType: '10000', pointsBaseCustom: '5000', pointsEarnRate: 1, maxPointsPerTransaction: 1000 };
-    }
-
-    // 1. Combo specific: outlet + staff email
-    let setting = allPointsSettings.find(s => (s.outletId?.toString() === outletId) && (s.staffEmail === staffEmail));
-    // 2. Staff specific: all outlets + staff email
-    if (!setting) setting = allPointsSettings.find(s => !s.outletId && (s.staffEmail === staffEmail));
-    // 3. Outlet specific: outlet + all staff
-    if (!setting) setting = allPointsSettings.find(s => (s.outletId?.toString() === outletId) && !s.staffEmail);
-    // 4. Global fallback
-    if (!setting) setting = allPointsSettings.find(s => !s.outletId && !s.staffEmail);
-
-    if (setting) {
-      return {
-        enablePoints: setting.enablePoints,
-        pointsValue: parseInt(setting.pointsValue || '1000'),
-        pointsBaseType: setting.pointsBaseType || '10000',
-        pointsBaseCustom: setting.pointsBaseCustom || '5000',
-        pointsEarnRate: parseFloat(setting.pointsEarnRate || '1'),
-        maxPointsPerTransaction: parseInt(setting.maxPointsPerTransaction || '1000')
-      };
-    }
-
-    return { enablePoints: false, pointsValue: 1000, pointsBaseType: '10000', pointsBaseCustom: '5000', pointsEarnRate: 1, maxPointsPerTransaction: 1000 };
-  };
-
-  const { enablePoints, pointsValue, pointsBaseType, pointsBaseCustom, pointsEarnRate, maxPointsPerTransaction } = getActivePointsSettings();
 
   // Function to handle printing receipt
   const handlePrintReceipt = async (
@@ -444,12 +334,7 @@ export default function POSPage() {
     return getProductImageUrlFromStorage(imageUrl, options);
   };
 
-  const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value;
-    const formattedValue = formatNumberWithDots(rawValue);
-    setDiscountDisplay(formattedValue);
-    setDiscountStr(formattedValue);
-  };
+
 
   const handleAmountPaidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
@@ -458,29 +343,20 @@ export default function POSPage() {
     setAmountPaidStr(formattedValue);
   };
 
-  const handlePointsRedeemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value;
-    let cleanValue = rawValue.replace(/[^0-9]/g, '');
-    
-    if (cleanValue !== "") {
-      const numValue = parseInt(cleanValue);
-      if (maxPointsPerTransaction > 0 && numValue > maxPointsPerTransaction) {
-        cleanValue = maxPointsPerTransaction.toString();
-        toast({
-          title: "Batas Penukaran",
-          description: `Maksimal penukaran adalah ${maxPointsPerTransaction} poin per transaksi`,
-          duration: 3000,
-        });
-      }
-    }
-    
-    setPointsToRedeem(cleanValue);
-  };
 
-  const addToCart = (product: any, selectedUnit?: { unit_name: string; conversion_factor: number; price?: number }) => {
+
+  const addToCart = (product: any, selectedUnit?: { unit_name: string; conversion_factor: number; price?: number; discount_type?: string; discount_value?: number; label?: string }) => {
     const unitName = selectedUnit?.unit_name || 'pcs';
     const conversionFactor = selectedUnit?.conversion_factor || 1;
     const unitPrice = selectedUnit?.price ? Number(selectedUnit.price) : product.price * conversionFactor;
+    
+    let uomDiscountAmount = 0;
+    if (selectedUnit?.discount_type === 'amount') {
+      uomDiscountAmount = Number(selectedUnit.discount_value) || 0;
+    } else if (selectedUnit?.discount_type === 'percent') {
+      uomDiscountAmount = unitPrice * ((Number(selectedUnit.discount_value) || 0) / 100);
+    }
+
     const cartKey = `${product.id}_${unitName}`;
 
     if (!isAdmin && product.stock_quantity !== undefined) {
@@ -522,7 +398,10 @@ export default function POSPage() {
         imageUrl: imageUrl,
         unitName,
         conversionFactor,
-        unitPrice
+        unitPrice,
+        uomDiscountType: selectedUnit?.discount_type || 'none',
+        uomDiscountAmount,
+        uomLabel: selectedUnit?.label || ''
       }];
     });
   };
@@ -627,12 +506,12 @@ export default function POSPage() {
     }
   };
 
-  // Function untuk update poin dan total belanja customer langsung di supabase
-  const updateCustomerData = async (customerId: number, earnedPoints: number, redeemedPoints: number, transactionTotal: number) => {
+  // Function untuk update total belanja customer langsung di supabase
+  const updateCustomerData = async (customerId: number, transactionTotal: number) => {
     try {
       const { data: customer, error: fetchError } = await supabase
         .from('customers')
-        .select('points, total_spent')
+        .select('total_spent')
         .eq('id', customerId)
         .single();
 
@@ -640,27 +519,16 @@ export default function POSPage() {
         return false;
       }
 
-      const currentPoints = customer?.points || 0;
       const currentTotalSpent = customer?.total_spent || 0;
-
-      // Hitung poin baru
-      let newPoints = currentPoints;
-      if (earnedPoints > 0) {
-        newPoints += earnedPoints;
-      }
-      if (redeemedPoints > 0) {
-        newPoints = Math.max(0, newPoints - redeemedPoints);
-      }
 
       // Hitung total belanja baru
       const newTotalSpent = (currentTotalSpent || 0) + transactionTotal;
 
       // Update customer dengan data baru
-      if (newPoints !== currentPoints || newTotalSpent !== currentTotalSpent) {
+      if (newTotalSpent !== currentTotalSpent) {
         const { error: updateError } = await supabase
           .from('customers')
           .update({
-            points: newPoints,
             total_spent: newTotalSpent
           })
           .eq('id', customerId);
@@ -678,7 +546,7 @@ export default function POSPage() {
     }
   };
 
-  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0), [cart]);
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + ((item.unitPrice - (item.uomDiscountAmount || 0)) * item.quantity), 0), [cart]);
 
   const tax = useMemo(() => {
     if (!enablePPN) return 0;
@@ -686,22 +554,8 @@ export default function POSPage() {
   }, [subtotal, enablePPN, ppnPercentage]);
 
   // Hitung poin yang akan didapat dari pembelian saat ini
-  const getPointsBaseNominal = (): number => {
-    if (pointsBaseType === 'custom') {
-      return pointsBaseCustom ? parseInt(pointsBaseCustom) : 5000;
-    }
-    return pointsBaseType ? parseInt(pointsBaseType) : 10000;
-  };
-
-  const pointsBaseNominal = getPointsBaseNominal();
-  const earnedPointsRaw = enablePoints ? Math.floor((subtotal / pointsBaseNominal) * pointsEarnRate) : 0;
-  const earnedPoints = enablePoints ? (maxPointsPerTransaction > 0 ? Math.min(earnedPointsRaw, maxPointsPerTransaction) : earnedPointsRaw) : 0;
-  const earnedPointsValue = earnedPoints * pointsValue;
-
   const discount = enableDiscount ? parseNumberFromDots(discountStr) : 0;
-  const pointsRedeemed = parseInt(pointsToRedeem) || 0;
-  const pointsDiscount = enablePoints ? pointsRedeemed * pointsValue : 0;
-  const total = useMemo(() => Math.max(0, subtotal + tax - discount - pointsDiscount), [subtotal, tax, discount, pointsDiscount]);
+  const total = useMemo(() => Math.max(0, subtotal + tax - discount), [subtotal, tax, discount]);
   const amountPaid = parseNumberFromDots(amountPaidStr);
   const change = amountPaid > 0 ? amountPaid - total : 0;
   const discountNoteSelectValue = isCustomDiscountNote
@@ -718,16 +572,6 @@ export default function POSPage() {
 
     if (paymentMethod === "cash" && amountPaid < total) {
       toast({ title: "Error", description: "Uang diterima kurang dari total", variant: "destructive" });
-      return;
-    }
-
-    if (pointsRedeemed > (selectedCustomer?.points || 0)) {
-      toast({ title: "Error", description: "Poin yang ditukar melebihi saldo tersedia", variant: "destructive" });
-      return;
-    }
-
-    if (maxPointsPerTransaction > 0 && pointsRedeemed > maxPointsPerTransaction) {
-      toast({ title: "Error", description: `Maksimal penukaran poin adalah ${maxPointsPerTransaction} poin per transaksi`, variant: "destructive" });
       return;
     }
 
@@ -749,10 +593,6 @@ export default function POSPage() {
 
     const isMemberTransaction = selectedCustomer?.membership_type === "member" || customerType === "member";
     const receiptCustomerName = selectedCustomer?.name || manualCustomerName || "Umum";
-    const currentCustomerPoints = selectedCustomer?.points || 0;
-    const finalCustomerPoints = isMemberTransaction
-      ? Math.max(0, currentCustomerPoints + earnedPoints - pointsRedeemed)
-      : 0;
 
     createTransaction.mutate({
       data: {
@@ -768,15 +608,15 @@ export default function POSPage() {
         customerName: receiptCustomerName !== "Umum" ? receiptCustomerName : undefined,
         customerPhone: selectedCustomer?.phone || manualCustomerPhone || undefined,
         customerType: normalizedCustomerType,
-        pointsRedeemed: pointsRedeemed,
-        pointsDiscount: pointsDiscount,
-        earnedPoints: isMemberTransaction ? earnedPoints : 0,
+        pointsRedeemed: 0,
+        pointsDiscount: 0,
+        earnedPoints: 0,
         loadingSessionId: activeSession?.id,
         items: cart.map(item => ({
           productId: item.productId,
           productName: item.productName,
           quantity: item.quantity * item.conversionFactor,
-          price: item.unitPrice / item.conversionFactor,
+          price: (item.unitPrice - (item.uomDiscountAmount || 0)) / item.conversionFactor,
           unitName: item.unitName,
           unitQty: item.quantity,
           conversionFactor: item.conversionFactor,
@@ -785,9 +625,9 @@ export default function POSPage() {
       }
     }, {
       onSuccess: async (res: any) => {
-        // Update customer data langsung (points + total_spent)
-        if (finalCustomerId && (earnedPoints > 0 || pointsRedeemed > 0 || total > 0)) {
-          await updateCustomerData(finalCustomerId, earnedPoints, pointsRedeemed, total);
+        // Update customer data langsung (total_spent)
+        if (finalCustomerId && total > 0) {
+          await updateCustomerData(finalCustomerId, total);
           await refetchCustomers?.();
         }
 
@@ -809,11 +649,11 @@ export default function POSPage() {
           customerName: receiptCustomerName,
           customerPhone: selectedCustomer?.phone || manualCustomerPhone,
           customerType: isMemberTransaction ? "member" : customerType,
-          pointsRedeemed: pointsRedeemed,
-          pointsDiscount: pointsDiscount,
-          earnedPoints: isMemberTransaction ? earnedPoints : 0,
-          finalCustomerPoints,
-          pointsValue: pointsValue
+          pointsRedeemed: 0,
+          pointsDiscount: 0,
+          earnedPoints: 0,
+          finalCustomerPoints: 0,
+          pointsValue: 0
         });
         setShowReceipt(true);
 
@@ -837,11 +677,11 @@ export default function POSPage() {
             customerName: receiptCustomerName,
             customerPhone: selectedCustomer?.phone || manualCustomerPhone,
             customerType: isMemberTransaction ? "member" : customerType,
-            pointsRedeemed: pointsRedeemed,
-            pointsDiscount: pointsDiscount,
-            earnedPoints: isMemberTransaction ? earnedPoints : 0,
-            finalCustomerPoints,
-            pointsValue: pointsValue,
+            pointsRedeemed: 0,
+            pointsDiscount: 0,
+            earnedPoints: 0,
+            finalCustomerPoints: 0,
+            pointsValue: 0,
             createdAt: res?.created_at || new Date().toISOString()
           };
           handlePrintReceipt(transactionData);
@@ -851,7 +691,6 @@ export default function POSPage() {
         setManualCustomerName("");
         setManualCustomerPhone("");
         setCustomerType("umum");
-        setPointsToRedeem("");
         setPaymentMethod("cash");
         setAmountPaidDisplay("");
         setAmountPaidStr("");
@@ -889,24 +728,6 @@ export default function POSPage() {
       phone.includes(query)
     );
   });
-
-  if (!isAdmin && (!user?.outletId || user?.outletId === "all")) {
-    return (
-      <Sidebar>
-        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
-          <Card className="max-w-md w-full p-8 text-center flex flex-col items-center shadow-lg border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/50 rounded-2xl">
-            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-red-200/50 dark:border-red-800/50">
-              <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-red-900 dark:text-red-100 mb-3">Akses Ditolak</h2>
-            <p className="text-red-700 dark:text-red-300 mb-6 leading-relaxed">
-              Akun Kasir Anda belum terhubung dengan Outlet (Cabang) manapun. Silakan hubungi Admin atau Pemilik untuk mengatur penugasan Outlet Anda agar dapat mulai melayani transaksi.
-            </p>
-          </Card>
-        </div>
-      </Sidebar>
-    );
-  }
 
   if (!isAdmin && !activeSession) {
     return (
@@ -955,25 +776,6 @@ export default function POSPage() {
                 />
               </div>
 
-              {/* Outlet Filter for Admin Only (if not assigned to specific outlet) */}
-              {isAdmin && (!user?.outletId || user.outletId === "all") && (
-                <div className="w-full sm:w-[200px]">
-                  <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                    <SelectTrigger className="h-11 lg:h-12 bg-white dark:bg-slate-900 shadow-md border-primary/20">
-                      <Store className="w-4 h-4 mr-2 text-slate-500" />
-                      <SelectValue placeholder="Semua Outlet" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Outlet</SelectItem>
-                      {outlets?.map((outlet: any) => (
-                        <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                          {outlet.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
             </div>
 
             {/* Category Filter */}
@@ -1139,10 +941,26 @@ export default function POSPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-xs lg:text-sm leading-tight truncate text-slate-800">{item.productName}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <p className="font-bold text-xs text-primary dark:text-primary-400">{formatRupiah(item.unitPrice)}</p>
+                          {item.uomDiscountAmount && item.uomDiscountAmount > 0 ? (
+                            <div className="flex flex-col">
+                              <p className="font-bold text-xs text-primary dark:text-primary-400">
+                                {formatRupiah(item.unitPrice - item.uomDiscountAmount)}
+                              </p>
+                              <p className="text-[9px] text-slate-400 line-through">
+                                {formatRupiah(item.unitPrice)}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="font-bold text-xs text-primary dark:text-primary-400">{formatRupiah(item.unitPrice)}</p>
+                          )}
                           {item.unitName !== 'pcs' && (
                             <Badge className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0">
                               {item.unitName}
+                            </Badge>
+                          )}
+                          {item.uomLabel && (
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0 whitespace-nowrap">
+                              🏷️ {item.uomLabel}
                             </Badge>
                           )}
                         </div>
@@ -1231,11 +1049,7 @@ export default function POSPage() {
                     </div>
                   )}
                 </div>
-                {selectedCustomer?.membership_type === "member" && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                    🎁 Poin tersedia: {selectedCustomer.points}
-                  </p>
-                )}
+
                 {selectedCustomer && (
                   <button
                     onClick={() => {
@@ -1294,63 +1108,7 @@ export default function POSPage() {
               </div>
             </div>
 
-            {/* DISCOUNT SECTION */}
-            {enableDiscount && (
-              <div className="px-4 lg:px-3 pb-4 lg:pb-3">
-                <div className="flex flex-col gap-3 lg:gap-2">
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-primary dark:text-primary-400" />
-                    <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Diskon</label>
-                  </div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 font-medium text-sm">Rp</span>
-                    <Input
-                      type="text"
-                      value={discountDisplay}
-                      onChange={handleDiscountChange}
-                      className="pl-9"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Select
-                      value={discountNoteSelectValue}
-                      onValueChange={(value) => {
-                        if (value === CUSTOM_DISCOUNT_NOTE_VALUE) {
-                          setIsCustomDiscountNote(true);
-                          setDiscountNote('');
-                          return;
-                        }
-                        setIsCustomDiscountNote(false);
-                        setDiscountNote(value);
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Pilih keterangan diskon" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {discountNoteOptions.map((note) => (
-                          <SelectItem key={note} value={note}>
-                            {note}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value={CUSTOM_DISCOUNT_NOTE_VALUE}>Lainnya</SelectItem>
-                      </SelectContent>
-                    </Select>
 
-                    {isCustomDiscountNote && (
-                      <Input
-                        type="text"
-                        value={discountNote}
-                        onChange={(e) => setDiscountNote(e.target.value)}
-                        className="text-sm"
-                        placeholder="Tulis keterangan diskon custom..."
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Payment Method */}
             <div className="px-4 lg:px-3 pb-4 lg:pb-3">
@@ -1416,81 +1174,7 @@ export default function POSPage() {
               </div>
             )}
 
-            {/* POINTS EARNED SECTION */}
-            {enablePoints && (selectedCustomer?.membership_type === "member" || customerType === "member") && cart.length > 0 && (
-              <div className="px-4 lg:px-3 pb-4 lg:pb-3">
-                <div className="flex flex-col gap-3 lg:gap-2">
-                  <div className="flex items-center gap-2">
-                    <Award className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                    <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Poin yang Akan Didapat</label>
-                  </div>
-                  <div className="p-3 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-600 dark:text-slate-300">Total belanja:</span>
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{formatRupiah(subtotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-600 dark:text-slate-300">Poin yang didapat:</span>
-                      <span className="font-bold text-amber-700 dark:text-amber-400">{earnedPoints.toLocaleString('id-ID')} poin</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* POINTS REDEMPTION SECTION - For selected member customer */}
-            {enablePoints && selectedCustomer?.membership_type === "member" && (
-              <div className="px-4 lg:px-3 pb-4 lg:pb-3">
-                <div className="flex flex-col gap-3 lg:gap-2">
-                  <div className="flex items-center gap-2">
-                    <Award className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                    <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tukar Poin</label>
-                  </div>
-                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-600 dark:text-slate-300">Poin tersedia:</span>
-                      <span className="font-bold text-amber-700 dark:text-amber-400">{selectedCustomer.points?.toLocaleString('id-ID') || 0} poin</span>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      type="text"
-                      value={pointsToRedeem}
-                      onChange={handlePointsRedeemChange}
-                      placeholder="0"
-                      className="pr-24"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-sm">
-                      poin
-                    </span>
-                  </div>
-                  {pointsRedeemed > 0 && (
-                    <div className="p-2 bg-green-50 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-600 dark:text-slate-300">Diskon dari poin:</span>
-                        <span className="font-bold text-green-700 dark:text-green-400">{formatRupiah(pointsDiscount)}</span>
-                      </div>
-                    </div>
-                  )}
-                  {pointsRedeemed > (selectedCustomer.points || 0) && (
-                    <p className="text-xs text-red-500 dark:text-red-400 font-medium">
-                      ⚠️ Poin melebihi saldo tersedia
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* POINTS INFO - For manual member customer (info only) */}
-            {enablePoints && customerType === "member" && !selectedCustomer && cart.length > 0 && (
-              <div className="px-4 lg:px-3 pb-4 lg:pb-3">
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                    💡 Member baru akan mendapatkan poin dari pembelian ini saat transaksi selesai.
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Summary */}
             <div className="px-4 lg:px-3 pb-4 lg:pb-3">
@@ -1499,18 +1183,6 @@ export default function POSPage() {
                   <span className="text-slate-500 dark:text-slate-400">Subtotal</span>
                   <span className="font-medium text-slate-900 dark:text-slate-100">{formatRupiah(subtotal)}</span>
                 </div>
-                {enablePPN && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">Pajak ({ppnPercentage}%)</span>
-                    <span className="font-medium text-slate-900 dark:text-slate-100">{formatRupiah(tax)}</span>
-                  </div>
-                )}
-                {discount > 0 && (
-                  <div className="flex justify-between text-sm text-red-600 dark:text-red-400">
-                    <span>Diskon {discountNote && `(${discountNote})`}</span>
-                    <span className="font-medium">-{formatRupiah(discount)}</span>
-                  </div>
-                )}
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                   <span className="font-medium text-slate-700 dark:text-slate-200">TOTAL</span>
                   <span className="text-xl font-bold text-primary dark:text-primary-400">{formatRupiah(total)}</span>
@@ -1601,15 +1273,23 @@ export default function POSPage() {
                 </div>
               )}
 
-              {lastTransaction?.items?.map((item: any, idx: number) => (
-                <div key={idx} className="flex justify-between text-xs">
-                  <div className="flex-1">
-                    <p className="text-slate-900 dark:text-slate-100">{item.productName}</p>
-                    <p className="text-slate-400 dark:text-slate-500">{item.quantity} x {formatRupiah(item.price)}</p>
+              {lastTransaction?.items?.map((item: any, idx: number) => {
+                const itemPrice = item.unitPrice - (item.uomDiscountAmount || 0);
+                return (
+                  <div key={idx} className="flex justify-between text-xs mb-1">
+                    <div className="flex-1">
+                      <p className="text-slate-900 dark:text-slate-100">{item.productName} {item.unitName !== 'pcs' ? `(${item.unitName})` : ''}</p>
+                      <p className="text-slate-400 dark:text-slate-500">{item.quantity} x {formatRupiah(itemPrice)}</p>
+                      {item.uomDiscountAmount && item.uomDiscountAmount > 0 && (
+                        <p className="text-[10px] text-green-600 dark:text-green-400">
+                          Diskon: -{formatRupiah(item.uomDiscountAmount * item.quantity)} {item.uomLabel ? `(${item.uomLabel})` : ''}
+                        </p>
+                      )}
+                    </div>
+                    <p className="font-bold text-slate-900 dark:text-slate-100">{formatRupiah(item.quantity * itemPrice)}</p>
                   </div>
-                  <p className="font-bold text-slate-900 dark:text-slate-100">{formatRupiah(item.quantity * item.price)}</p>
-                </div>
-              ))}
+                );
+              })}
 
               <div className="border-t border-dashed border-slate-200 dark:border-slate-700 pt-2 mt-2 space-y-1">
                 <div className="flex justify-between text-xs">
@@ -1620,12 +1300,7 @@ export default function POSPage() {
                   <span className="text-slate-500 dark:text-slate-400">Subtotal</span>
                   <span className="text-slate-700 dark:text-slate-300">{formatRupiah(lastTransaction?.subtotal || 0)}</span>
                 </div>
-                {(lastTransaction?.pointsDiscount || 0) > 0 && (
-                  <div className="flex justify-between text-xs text-amber-600 dark:text-amber-400">
-                    <span>Diskon Poin</span>
-                    <span>-{formatRupiah(lastTransaction?.pointsDiscount || 0)}</span>
-                  </div>
-                )}
+
                 {lastTransaction?.enablePPN && (
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500 dark:text-slate-400">Pajak ({lastTransaction?.ppnPercentage || 11}%)</span>
@@ -1660,30 +1335,6 @@ export default function POSPage() {
                       <span className="text-slate-500 dark:text-slate-400">Status</span>
                       <span className="font-bold text-slate-900 dark:text-slate-100">Member</span>
                     </div>
-                    {(lastTransaction?.earnedPoints || 0) > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">Poin didapat</span>
-                        <span className="font-bold text-amber-600 dark:text-amber-400">
-                          {(lastTransaction?.earnedPoints || 0).toLocaleString('id-ID')} poin
-                        </span>
-                      </div>
-                    )}
-                    {(lastTransaction?.pointsRedeemed || 0) > 0 && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">Poin ditukar</span>
-                        <span className="font-bold text-amber-600 dark:text-amber-400">
-                          {(lastTransaction?.pointsRedeemed || 0).toLocaleString('id-ID')} poin
-                        </span>
-                      </div>
-                    )}
-                    {((lastTransaction?.finalCustomerPoints || 0) > 0 || (lastTransaction?.earnedPoints || 0) > 0 || (lastTransaction?.pointsRedeemed || 0) > 0) && (
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">Saldo poin</span>
-                        <span className="font-bold text-amber-600 dark:text-amber-400">
-                          {(lastTransaction?.finalCustomerPoints || 0).toLocaleString('id-ID')} poin
-                        </span>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -1732,9 +1383,29 @@ export default function POSPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">
-            {uomSelectorProduct && (uomSelectorProduct.uoms || []).map((uom: any) => {
-              const unitPrice = uom.price ? Number(uom.price) : uomSelectorProduct.price * uom.conversion_factor;
-              return (
+            {uomSelectorProduct && (() => {
+              const uoms = [...(uomSelectorProduct.uoms || [])];
+              if (!uoms.some(u => u.unit_name === 'pcs')) {
+                uoms.unshift({
+                  unit_name: 'pcs',
+                  conversion_factor: 1,
+                  price: null,
+                  discount_type: 'none',
+                  discount_value: 0
+                });
+              }
+              
+              return uoms.map((uom: any) => {
+                const unitPrice = uom.price ? Number(uom.price) : uomSelectorProduct.price * uom.conversion_factor;
+                
+                let uomDiscountAmount = 0;
+                if (uom.discount_type === 'amount') {
+                  uomDiscountAmount = Number(uom.discount_value) || 0;
+                } else if (uom.discount_type === 'percent') {
+                  uomDiscountAmount = unitPrice * ((Number(uom.discount_value) || 0) / 100);
+                }
+
+                return (
                 <button
                   key={uom.unit_name}
                   onClick={() => {
@@ -1752,12 +1423,25 @@ export default function POSPage() {
                       {uom.conversion_factor > 1 && (
                         <div className="text-[10px] text-slate-500 dark:text-slate-400">1 {uom.unit_name} = {uom.conversion_factor} pcs</div>
                       )}
+                      {uom.label && (
+                        <div className="text-[10px] font-medium text-green-600 dark:text-green-400 mt-0.5">🏷️ {uom.label}</div>
+                      )}
                     </div>
                   </div>
-                  <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice)}</div>
+                  <div className="text-right flex flex-col items-end">
+                    {uomDiscountAmount > 0 ? (
+                      <>
+                        <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice - uomDiscountAmount)}</div>
+                        <div className="text-[10px] text-slate-400 line-through">{formatRupiah(unitPrice)}</div>
+                      </>
+                    ) : (
+                      <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice)}</div>
+                    )}
+                  </div>
                 </button>
               );
-            })}
+            });
+          })()}
           </div>
         </DialogContent>
       </Dialog>

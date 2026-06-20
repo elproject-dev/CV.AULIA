@@ -85,15 +85,7 @@ export function ProfileContent() {
           </div>
         </div>
         
-        <div className="space-y-1">
-          <Label className="text-xs text-slate-500 uppercase tracking-wider">Outlet / Cabang</Label>
-          <div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-              <Store className="w-3.5 h-3.5 text-slate-500" />
-              {user?.role === 'admin' ? 'Semua Outlet' : (user?.outletId ? assignedOutletName : 'Belum Ditugaskan')}
-            </span>
-          </div>
-        </div>
+
       </div>
 
       <div className="flex flex-col items-center gap-3">

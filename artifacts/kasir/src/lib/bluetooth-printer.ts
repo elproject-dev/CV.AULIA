@@ -244,11 +244,6 @@ export function formatReceipt(transaction: any): string {
     enablePPN = false,
     ppnPercentage = 11,
     customerType = 'regular',
-    pointsRedeemed = 0,
-    pointsDiscount = 0,
-    earnedPoints = 0,
-    finalCustomerPoints = 0,
-    pointsValue = 1000,
     footerMessage = 'terima kasih sudah berbelanja',
     footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
     footerMessage3 = 'Powered by Tembus Digital',
@@ -348,9 +343,7 @@ export function formatReceipt(transaction: any): string {
     receipt += formatLine('Diskon', formatPrice(discount), PAPER_WIDTH) + '\n';
   }
 
-  if (pointsDiscount > 0) {
-    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsDiscount), PAPER_WIDTH) + '\n';
-  }
+
 
   receipt += ESC_POS.BOLD_ON;
   receipt += formatLine('TOTAL', formatPrice(total), PAPER_WIDTH) + '\n';
@@ -367,13 +360,7 @@ export function formatReceipt(transaction: any): string {
 
   // Poin yang didapat dan total poin (untuk member)
   if (customerType === 'member') {
-    if (earnedPoints > 0) {
-      receipt += formatLine('Poin', `+${earnedPoints}`, PAPER_WIDTH) + '\n';
-    }
-    // Asumsikan finalCustomerPoints ada dan di-passing dari komponen checkout
-    if (finalCustomerPoints !== undefined && finalCustomerPoints !== null) {
-      receipt += formatLine('Total Poin', `${finalCustomerPoints}`, PAPER_WIDTH) + '\n';
-    }
+    // Poin system removed
   }
 
   receipt += `${SEPARATOR}\n`;
@@ -785,8 +772,6 @@ export interface ReceiptData {
   tax?: number; // PPN/Pajak
   ppnPercentage?: number; // Persentase PPN (default 11%)
   discount?: number;
-  pointsRedeemed?: number; // jumlah poin yang digunakan
-  pointsValue?: number; // nilai rupiah dari poin
   total: number;
 
   // Payment
@@ -794,9 +779,7 @@ export interface ReceiptData {
   change: number;
   paymentMethod?: string; // Tunai, Transfer, dll
 
-  // Points (untuk member)
-  earnedPoints?: number; // poin yang didapat
-  finalCustomerPoints?: number; // total poin pelanggan
+
 
   // Footer
   footerMessage?: string;
@@ -828,14 +811,10 @@ export function generateReceiptRaw(data: ReceiptData): string {
     tax = 0,
     ppnPercentage = 11,
     discount = 0,
-    pointsRedeemed = 0,
-    pointsValue = 0,
     total,
     amountPaid,
     change,
     paymentMethod = 'Tunai',
-    earnedPoints = 0,
-    finalCustomerPoints,
     footerMessage = 'terima kasih sudah berbelanja',
     footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
     footerMessage3 = 'Powered by Tembus Digital',
@@ -909,9 +888,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
     receipt += formatLine('Diskon', formatPrice(discount), PAPER_WIDTH) + '\n';
   }
 
-  if (pointsRedeemed > 0 && pointsValue > 0) {
-    receipt += formatLine(`Poin digunakan -${pointsRedeemed}`, formatPrice(pointsValue), PAPER_WIDTH) + '\n';
-  }
+
 
   receipt += `${SEPARATOR}\n`;
 
@@ -932,12 +909,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
   receipt += formatLine('Metode', paymentMethod, PAPER_WIDTH) + '\n';
 
   if (customerType === 'member') {
-    if (earnedPoints > 0) {
-      receipt += formatLine('Poin', `+${earnedPoints}`, PAPER_WIDTH) + '\n';
-    }
-    if (finalCustomerPoints !== undefined && finalCustomerPoints !== null) {
-      receipt += formatLine('Total Poin', `${finalCustomerPoints}`, PAPER_WIDTH) + '\n';
-    }
+    // Poin system removed
   }
 
   receipt += `${SEPARATOR}\n`;
