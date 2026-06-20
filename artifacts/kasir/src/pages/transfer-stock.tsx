@@ -6,7 +6,8 @@ import {
   useCreateLoadingItem,
   useCreateStockMovement,
   getListLoadingSessionsQueryKey,
-  useListProducts
+  useListProducts,
+  useListLoadingItems
 } from "@/mocks/api-client-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ export default function TransferStockPage() {
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
+  const [detailSession, setDetailSession] = useState<any | null>(null);
+  const { data: detailItems, isLoading: isLoadingDetailItems } = useListLoadingItems(detailSession?.id?.toString());
   const { data: sessions, isLoading: isLoadingSessions } = useListLoadingSessions();
   const { data: products } = useListProducts();
   const [staffList, setStaffList] = useState<any[]>([]);
@@ -198,8 +201,8 @@ export default function TransferStockPage() {
                       <TableCell className="text-slate-500">{session.notes || '-'}</TableCell>
                       <TableCell>{getStatusBadge(session.status)}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm">
-                          <ChevronRight className="w-4 h-4" /> Detail
+                        <Button variant="ghost" size="sm" onClick={() => setDetailSession(session)}>
+                          <ChevronRight className="w-4 h-4 mr-1" /> Detail
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -293,6 +296,113 @@ export default function TransferStockPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Batal</Button>
             <Button onClick={handleSubmit}>Simpan Transfer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detailSession} onOpenChange={(open) => !open && setDetailSession(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Detail Transfer Stock</DialogTitle>
+          </DialogHeader>
+
+          {detailSession && (
+            <div className="space-y-6 py-4">
+              {/* Session Meta Info */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="space-y-1">
+                  <span className="text-xs text-slate-500 font-medium">Sales / Kasir</span>
+                  <div className="font-semibold text-slate-900 dark:text-white">
+                    {detailSession.staff?.name || 'Unknown Sales'}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-slate-500 font-medium">Tanggal Transfer</span>
+                  <div className="font-semibold text-slate-900 dark:text-white">
+                    {new Date(detailSession.created_at).toLocaleDateString('id-ID', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-slate-500 font-medium">Status</span>
+                  <div>{getStatusBadge(detailSession.status)}</div>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-slate-500 font-medium">Catatan</span>
+                  <div className="text-slate-700 dark:text-slate-300">
+                    {detailSession.notes || '-'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <PackageOpen className="w-4 h-4 text-slate-500" />
+                  Daftar Item Transfer
+                </h3>
+
+                <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-900">
+                      <TableRow>
+                        <TableHead>Produk</TableHead>
+                        <TableHead className="text-center">Diambil (Load)</TableHead>
+                        <TableHead className="text-center">Terjual</TableHead>
+                        <TableHead className="text-center">Retur</TableHead>
+                        <TableHead className="text-center">Sisa</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoadingDetailItems ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-6">
+                            Memuat detail item...
+                          </TableCell>
+                        </TableRow>
+                      ) : detailItems?.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-6">
+                            Tidak ada item dalam session ini.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        detailItems?.map((item) => {
+                          const remaining = (item.quantity_loaded || 0) - (item.quantity_sold || 0) - (item.quantity_returned || 0);
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="font-medium">
+                                {item.products?.name || `Produk ID: ${item.product_id}`}
+                              </TableCell>
+                              <TableCell className="text-center font-semibold text-blue-600 dark:text-blue-400">
+                                {item.quantity_loaded} pcs
+                              </TableCell>
+                              <TableCell className="text-center text-green-600 dark:text-green-400">
+                                {item.quantity_sold || 0} pcs
+                              </TableCell>
+                              <TableCell className="text-center text-amber-600 dark:text-amber-400">
+                                {item.quantity_returned || 0} pcs
+                              </TableCell>
+                              <TableCell className="text-center font-bold text-slate-900 dark:text-white">
+                                {remaining} pcs
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => setDetailSession(null)}>Tutup</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
