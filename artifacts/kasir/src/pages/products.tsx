@@ -167,7 +167,8 @@ export default function ProductsPage() {
     categoryId: "none",
     allowedOutlets: ["all"] as string[],
     imageUrl: "",
-    isActive: true
+    isActive: true,
+    stockQuantity: "0"
   });
 
   // Handle price input with auto-formatting dots
@@ -189,7 +190,8 @@ export default function ProductsPage() {
         categoryId: product.categoryId?.toString() || product.category_id?.toString() || "none",
         allowedOutlets: storedAllowedOutlets,
         imageUrl: storedImageUrl,
-        isActive: product.isActive
+        isActive: product.isActive,
+        stockQuantity: product.stock_quantity?.toString() || "0"
       };
       setFormData(initialData);
       setOriginalData(initialData);
@@ -210,7 +212,7 @@ export default function ProductsPage() {
       })));
     } else {
       setEditingProduct(null);
-      setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true });
+      setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "0" });
       setOriginalData(null);
       setHasChanges(false);
       setImagePreview("");
@@ -226,7 +228,7 @@ export default function ProductsPage() {
     setImagePreview("");
     setImageFile(null);
     setIsUploading(false);
-    setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true });
+    setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "0" });
     setOriginalData(null);
     setHasChanges(false);
     setUomRows([]);
@@ -326,7 +328,8 @@ export default function ProductsPage() {
         categoryId: formData.categoryId === "none" ? null : parseInt(formData.categoryId),
         allowedOutlets: formData.allowedOutlets,
         imageUrl: finalImageUrl,
-        isActive: formData.isActive
+        isActive: formData.isActive,
+        stockQuantity: parseInt(formData.stockQuantity) || 0
       };
 
       // Build UOM data: always include pcs as base unit + user-defined units
@@ -1192,6 +1195,17 @@ export default function ProductsPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Stock Quantity (pcs) */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Stok Gudang Utama (pcs)</label>
+              <Input
+                type="number"
+                placeholder="Masukkan jumlah stok awal"
+                value={formData.stockQuantity}
+                onChange={(e) => handleFormChange('stockQuantity', e.target.value)}
+              />
             </div>
 
             {/* Outlet */}

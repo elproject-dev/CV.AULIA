@@ -1242,10 +1242,12 @@ export const useCreateProduct = () => {
     mutate: async (params: any, options?: any) => {
       setIsPending(true);
       try {
+        const initialStock = parseInt(params.data.stockQuantity) || 0;
         const payload: any = {
           name: params.data.name,
           price: params.data.price,
-          is_active: params.data.isActive === true
+          is_active: params.data.isActive === true,
+          stock_quantity: initialStock
         };
 
         if (params.data.categoryId && params.data.categoryId !== "none") {
@@ -1271,6 +1273,16 @@ export const useCreateProduct = () => {
           .single();
 
         if (error) throw error;
+
+        // Log stock movement if initial stock > 0
+        if (initialStock > 0) {
+          await supabase.from('stock_movements').insert({
+            product_id: data.id,
+            quantity: initialStock,
+            type: 'restock',
+            note: 'Stok Awal Produk Baru'
+          });
+        }
 
         const formattedData = {
           ...data,
@@ -1317,6 +1329,26 @@ export const useUpdateProduct = () => {
           payload.allowed_outlets = ["all"];
         }
 
+        // Fetch old stock to calculate diff for stock_movements log
+        let diff = 0;
+        let oldStock = 0;
+        let newStock = 0;
+        const hasStockChange = params.data.stockQuantity !== undefined;
+
+        if (hasStockChange) {
+          newStock = parseInt(params.data.stockQuantity) || 0;
+          const { data: productData } = await supabase
+            .from('products')
+            .select('stock_quantity')
+            .eq('id', params.id)
+            .single();
+          if (productData) {
+            oldStock = productData.stock_quantity || 0;
+            diff = newStock - oldStock;
+          }
+          payload.stock_quantity = newStock;
+        }
+
         // Produk adalah data bersama - tidak pakai filter tenant
         const { data, error } = await supabase
           .from('products')
@@ -1326,6 +1358,16 @@ export const useUpdateProduct = () => {
           .single();
 
         if (error) throw error;
+
+        // Log stock movement if stock adjusted
+        if (hasStockChange && diff !== 0) {
+          await supabase.from('stock_movements').insert({
+            product_id: params.id,
+            quantity: diff,
+            type: 'adjustment',
+            note: 'Penyesuaian Stok dari Edit Produk'
+          });
+        }
 
         const formattedData = {
           ...data,
