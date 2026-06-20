@@ -223,7 +223,7 @@ export const getProductImageUrl = (filePath: string, options?: { width?: number;
     } : undefined);
 
   if (!data?.publicUrl) {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://jtvldoohgcgjsddagrdj.supabase.co';
     if (supabaseUrl && filePath) {
       return `${supabaseUrl}/storage/v1/object/public/${BUCKET_NAME}/${filePath}`;
     }
