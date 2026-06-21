@@ -1,9 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2 } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2, RefreshCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminMode } from "@/lib/auth";
+import { usePendingExpensesCount } from "@/hooks/usePendingExpenses";
+import { usePendingReturnsCount } from "@/hooks/usePendingReturns";
 
 interface BottomNavigationProps {
   onOpenProfile?: () => void;
@@ -33,6 +35,8 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
   }, []);
 
   const isAdmin = isAdminMode(user);
+  const pendingExpensesCount = usePendingExpensesCount();
+  const pendingReturnsCount = usePendingReturnsCount();
 
   const mainLinks = useMemo(() => {
     if (isAdmin) {
@@ -55,7 +59,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
     if (!isAdmin) {
       return [
         { href: "/customers", label: "Pelanggan", icon: Users },
-        { href: "/return-stock", label: "Return Stock Sales", icon: Undo2 },
+        { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
         { href: "/expenses", label: "Pengeluaran", icon: Wallet },
         { href: "#profile", label: "Profil", icon: User },
         { href: "/settings", label: "Pengaturan", icon: Settings },
@@ -65,7 +69,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
 
     return [
       { href: "/staff", label: "Staff", icon: UserCog },
-      { href: "/return-stock", label: "Konfirmasi Return", icon: Undo2 },
+      { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
       { href: "/expenses", label: "Pengeluaran", icon: Wallet },
       { href: "/promo", label: "Promo", icon: Megaphone },
       { href: "/settings", label: "Pengaturan", icon: Settings },
@@ -184,13 +188,21 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                     href={link.href}
                     onClick={() => setShowMore(false)}
                     className={cn(
-                      "flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200",
+                      "flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200 relative",
                       isActive
                         ? "text-primary dark:text-primary-400"
                         : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     )}
                   >
-                    <Icon className={cn("w-5 h-5 mb-1", isActive ? "text-primary dark:text-primary-400" : "text-slate-400 dark:text-slate-500")} />
+                    <div className="relative">
+                      <Icon className={cn("w-5 h-5 mb-1", isActive ? "text-primary dark:text-primary-400" : "text-slate-400 dark:text-slate-500")} />
+                      {link.href === "/expenses" && pendingExpensesCount > 0 && isAdmin && (
+                        <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
+                      )}
+                      {link.href === "/customer-returns" && pendingReturnsCount > 0 && isAdmin && (
+                        <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
+                      )}
+                    </div>
                     <span className={cn(
                       "text-[9px] font-medium text-center leading-tight",
                       isActive ? "text-primary dark:text-primary-400 font-semibold" : "text-slate-400 dark:text-slate-500"

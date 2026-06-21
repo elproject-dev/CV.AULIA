@@ -216,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(async (email: string, password: string, name: string, phone: string) => {
     try {
       const authUser = await registerWithSupabase(email, password, name, phone);
-      setUser(authUser);
+      // We don't auto-login because the account is inactive and needs admin validation
       return authUser;
     } catch (error) {
       throw error;

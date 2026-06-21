@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useAuthUserName } from "@/contexts/AuthContext";
 import { ADMIN_EMAIL } from "@/lib/auth";
 import { exportToExcel } from "@/components/excel-export/excel-export";
 import { useListOutlets } from "@/mocks/api-client-react";
@@ -29,6 +29,7 @@ export default function CustomersPage() {
   const createCustomer = useCreateCustomer();
   const updateCustomer = useUpdateCustomer();
   const deleteCustomer = useDeleteCustomer();
+  const salesName = useAuthUserName();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLookupDialogOpen, setIsLookupDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
@@ -74,6 +75,10 @@ export default function CustomersPage() {
       payload.outlet_id = parseInt(formData.outlet_id);
     } else {
       payload.outlet_id = null;
+    }
+
+    if (!editingCustomer) {
+      payload.sales_name = salesName;
     }
 
     if (editingCustomer) {
@@ -233,13 +238,6 @@ export default function CustomersPage() {
                             <Phone className="w-3.5 h-3.5 text-slate-400" />
                             {customer.phone || "-"}
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <Store className="w-3.5 h-3.5 text-slate-400" />
-                            {outlets?.find((o: any) => o.id === customer.outlet_id)?.name || 
-                             (!isAdmin && user?.outletId && user.outletId !== "all" 
-                              ? (outlets?.find((o: any) => o.id === parseInt(user.outletId || "0"))?.name || "Semua Outlet")
-                              : "Semua Outlet")}
-                          </div>
                         </div>
                       </div>
                       {status === "member" ? (
@@ -254,6 +252,10 @@ export default function CustomersPage() {
                     </div>
                     <div className="flex justify-between text-sm pt-2 border-t border-slate-100 dark:border-slate-800">
                       <div className="text-left">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Pelanggan dari</span>
+                        <div className="font-semibold text-slate-700 dark:text-slate-300">{customer.sales_name || "-"}</div>
+                      </div>
+                      <div className="text-right">
                         <span className="text-xs text-slate-500 dark:text-slate-400">Total Belanja</span>
                         <div className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah(customer.total_spent || 0)}</div>
                       </div>
@@ -277,19 +279,19 @@ export default function CustomersPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50 dark:bg-slate-800/50">
-                  <TableHead>Nama</TableHead>
+                  <TableHead>Nama Pelanggan</TableHead>
                   <TableHead>Kontak</TableHead>
                   <TableHead className="text-center">Status</TableHead>
-                  <TableHead className="text-left">Outlet</TableHead>
+                  <TableHead>Pelanggan dari</TableHead>
                   <TableHead className="text-right">Total Belanja</TableHead>
                   {isAdmin && <TableHead className="text-right">Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
                 ) : filteredCustomers?.length === 0 ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                 ) : (
                   filteredCustomers?.map((customer: any) => {
                     const status = getMembershipStatus(customer);
@@ -311,9 +313,9 @@ export default function CustomersPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                          {outlets?.find((o: any) => o.id === customer.outlet_id)?.name || "Semua Outlet"}
+                          {customer.sales_name || "-"}
                         </TableCell>
-                        <TableCell className="text-right text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatRupiah(customer.total_spent || 0)}</TableCell>
+                        <TableCell className="text-right font-bold text-primary whitespace-nowrap">{formatRupiah(customer.total_spent || 0)}</TableCell>
                         {isAdmin && (
                           <TableCell className="text-right whitespace-nowrap">
                             <div className="flex justify-end gap-1">
@@ -364,22 +366,6 @@ export default function CustomersPage() {
                 </p>
               )}
             </div>
-            
-            {isAdmin && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Outlet (Cabang)</label>
-                <Select value={formData.outlet_id} onValueChange={(v: string) => setFormData({ ...formData, outlet_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Pilih Outlet" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Outlet (Global)</SelectItem>
-                    {outlets?.map((outlet: any) => (
-                      <SelectItem key={outlet.id} value={outlet.id.toString()}>{outlet.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Pilih "Semua Outlet" jika pelanggan ini bisa diakses semua cabang</p>
-              </div>
-            )}
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Batal</Button>

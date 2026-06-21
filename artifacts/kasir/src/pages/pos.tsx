@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useListProducts, useListCategories, useListCustomers, useCreateTransaction, getListProductsQueryKey, getListCustomersQueryKey, useListOutlets, useListLoadingSessions, useListLoadingItems } from "@workspace/api-client-react";
+import { useListProducts, useListCategories, useListCustomers, useCreateTransaction, getListProductsQueryKey, getListCustomersQueryKey, useListOutlets } from "@workspace/api-client-react";
 import { formatRupiah, formatInvoiceNumber } from "@/lib/formatters";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
@@ -175,25 +175,8 @@ export default function POSPage() {
   const { data: categories } = useListCategories({ outletId: selectedOutlet });
   const { data: customers, isLoading: isLoadingCustomers, refetch: refetchCustomers } = useListCustomers();
 
-  // FMCG: Fetch active loading session for Kasir
-  const { data: activeSessions, isLoading: isLoadingSessions } = useListLoadingSessions({
-    salesId: user?.staffId,
-    status: 'active'
-  });
-  const activeSession = activeSessions?.[0];
-  const { data: loadingItems, isLoading: isLoadingItems } = useListLoadingItems(activeSession?.id);
-
   const posProducts = useMemo(() => {
-    if (isAdmin) return products || [];
-    
-    if (!loadingItems) return [];
-    
-    return loadingItems
-      .map((item: any) => ({
-        ...item.products,
-        stock_quantity: item.quantity_loaded - item.quantity_sold - item.quantity_returned,
-        loadingItemId: item.id
-      }))
+    return (products || [])
       .filter((p: any) => p.stock_quantity > 0 && p.is_active !== false)
       // apply search
       .filter((p: any) => {
@@ -205,7 +188,7 @@ export default function POSPage() {
         }
         return true;
       });
-  }, [isAdmin, products, loadingItems, search, categoryId]);
+  }, [products, search, categoryId]);
 
 
 
@@ -366,15 +349,17 @@ export default function POSPage() {
 
     const cartKey = `${product.id}_${unitName}`;
 
-    if (!isAdmin && product.stock_quantity !== undefined) {
-      const existing = cart.find(item => item.productId === product.id && item.unitName === unitName);
-      const currentPcsQty = existing ? existing.quantity * existing.conversionFactor : 0;
-      // Total pcs of this product across all units in cart
-      const totalPcsInCart = cart
-        .filter(item => item.productId === product.id)
-        .reduce((sum, item) => sum + item.quantity * item.conversionFactor, 0);
+    if (product.stock_quantity !== undefined && product.stock_quantity !== null) {
+      const conversionFactor = selectedUnit ? (selectedUnit.conversion_factor || 1) : 1;
+      const totalPcsInCart = cart.reduce((acc, item) => {
+        if (item.productId === product.id) {
+          return acc + (item.quantity * item.conversionFactor);
+        }
+        return acc;
+      }, 0);
+
       if (totalPcsInCart + (conversionFactor * qtyToAdd) > product.stock_quantity) {
-        toast({ title: "Stok Tidak Mencukupi", description: "Tidak dapat melebihi stok di tangan (Loading).", variant: "destructive" });
+        toast({ title: "Stok Tidak Cukup", description: `Sisa stok: ${Math.floor(product.stock_quantity - totalPcsInCart)} pcs`, variant: "destructive" });
         return;
       }
     }
@@ -430,16 +415,21 @@ export default function POSPage() {
   };
 
   const updateQuantity = (productId: number, delta: number, unitName: string = 'pcs') => {
-    if (!isAdmin && delta > 0) {
+    if (delta > 0) {
       const product = posProducts.find((p: any) => p.id === productId);
-      if (product && product.stock_quantity !== undefined) {
-        const item = cart.find(i => i.productId === productId && i.unitName === unitName);
-        const totalPcsInCart = cart
-          .filter(i => i.productId === productId)
-          .reduce((sum, i) => sum + i.quantity * i.conversionFactor, 0);
-        const convFactor = item?.conversionFactor || 1;
+      const item = cart.find(i => i.productId === productId && i.unitName === unitName);
+      const convFactor = item?.conversionFactor || 1;
+      
+      if (product && product.stock_quantity !== undefined && product.stock_quantity !== null) {
+        const totalPcsInCart = cart.reduce((acc, cartItem) => {
+          if (cartItem.productId === product.id && !(cartItem.unitName === item?.unitName)) {
+            return acc + (cartItem.quantity * cartItem.conversionFactor);
+          }
+          return acc;
+        }, 0);
+
         if (totalPcsInCart + convFactor > product.stock_quantity) {
-          toast({ title: "Stok Tidak Mencukupi", description: "Tidak dapat melebihi stok di tangan.", variant: "destructive" });
+          toast({ title: "Stok Tidak Cukup", description: `Sisa stok: ${Math.floor(product.stock_quantity - totalPcsInCart)} pcs`, variant: "destructive" });
           return;
         }
       }
@@ -480,8 +470,8 @@ export default function POSPage() {
           name: trimmedName,
           phone: trimmedPhone || null,
           membership_type: membershipType,
-          points: 0,
           total_spent: 0,
+          sales_name: cashierName,
           ...(outletIdToSave !== null ? { outlet_id: outletIdToSave } : {})
         })
         .select()
@@ -555,10 +545,46 @@ export default function POSPage() {
     }
   };
 
+  const getCartItemPriceAndDiscount = (item: CartItem) => {
+    const product = posProducts.find(p => p.id === item.productId);
+    if (!product) {
+      const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+      return { price: item.unitPrice, discount: activeDiscount, label: item.uomLabel };
+    }
+
+    const uoms = product.uoms || [];
+    const matchingUoms = uoms.filter((u: any) => u.unit_name.toLowerCase() === item.unitName.toLowerCase());
+    
+    if (matchingUoms.length === 0) {
+      if (item.unitName.toLowerCase() === 'pcs') {
+        return { price: product.price, discount: 0, label: '' };
+      }
+      const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+      return { price: item.unitPrice, discount: activeDiscount, label: item.uomLabel };
+    }
+
+    const eligibleUoms = matchingUoms.filter((u: any) => item.quantity >= (u.min_qty || 1));
+    const activeUom = eligibleUoms.length > 0 
+      ? eligibleUoms.reduce((max: any, u: any) => (u.min_qty || 1) > (max.min_qty || 1) ? u : max, eligibleUoms[0])
+      : matchingUoms.reduce((min: any, u: any) => (u.min_qty || 1) < (min.min_qty || 1) ? u : min, matchingUoms[0]);
+
+    const basePrice = activeUom.price ? Number(activeUom.price) : product.price * activeUom.conversion_factor;
+    let discountAmount = 0;
+    if (item.quantity >= (activeUom.min_qty || 1)) {
+      if (activeUom.discount_type === 'amount') {
+        discountAmount = Number(activeUom.discount_value) || 0;
+      } else if (activeUom.discount_type === 'percent') {
+        discountAmount = basePrice * ((Number(activeUom.discount_value) || 0) / 100);
+      }
+    }
+
+    return { price: basePrice, discount: discountAmount, label: activeUom.label || '' };
+  };
+
   const subtotal = useMemo(() => cart.reduce((sum, item) => {
-    const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
-    return sum + ((item.unitPrice - activeDiscount) * item.quantity);
-  }, 0), [cart]);
+    const { price, discount } = getCartItemPriceAndDiscount(item);
+    return sum + ((price - discount) * item.quantity);
+  }, 0), [cart, posProducts]);
 
   const tax = useMemo(() => {
     if (!enablePPN) return 0;
@@ -623,20 +649,18 @@ export default function POSPage() {
         pointsRedeemed: 0,
         pointsDiscount: 0,
         earnedPoints: 0,
-        loadingSessionId: activeSession?.id,
         items: cart.map(item => {
-          const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+          const { price, discount } = getCartItemPriceAndDiscount(item);
           return {
             product_id: item.productId,
             productName: item.productName,
             quantity: item.quantity * item.conversionFactor,
-            price: (item.unitPrice - activeDiscount) / item.conversionFactor,
+            price: (price - discount) / item.conversionFactor,
             cost_price: 0,
-            total: (item.unitPrice - activeDiscount) * item.quantity,
+            total: (price - discount) * item.quantity,
             unitName: item.unitName,
             unitQty: item.quantity,
-            conversionFactor: item.conversionFactor,
-            loadingItemId: posProducts.find((p: any) => p.id === item.productId)?.loadingItemId
+            conversionFactor: item.conversionFactor
           };
         })
       }
@@ -746,38 +770,7 @@ export default function POSPage() {
     );
   });
 
-  if (!isAdmin) {
-    if (isLoadingSessions || isLoadingItems) {
-      return (
-        <Sidebar>
-          <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-              <p className="text-slate-600 dark:text-slate-400 font-medium">Memeriksa Sesi Loading...</p>
-            </div>
-          </div>
-        </Sidebar>
-      );
-    }
 
-    if (!activeSession) {
-    return (
-      <Sidebar>
-        <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
-          <Card className="max-w-md w-full p-8 text-center flex flex-col items-center shadow-lg border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900/50 rounded-2xl">
-            <div className="w-20 h-20 bg-orange-100 dark:bg-orange-900/50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-orange-200/50 dark:border-orange-800/50">
-              <Package className="w-10 h-10 text-orange-600 dark:text-orange-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-orange-900 dark:text-orange-100 mb-3">Belum Ada Sesi Loading</h2>
-            <p className="text-orange-700 dark:text-orange-300 mb-6 leading-relaxed">
-              Anda belum memiliki sesi "Transfer Stock" (Loading) yang aktif dari Gudang. Silakan hubungi Admin Gudang untuk melakukan transfer stock kepada Anda.
-            </p>
-          </Card>
-        </div>
-      </Sidebar>
-    );
-  }
-}
 
   return (
     <Sidebar>
@@ -892,7 +885,7 @@ export default function POSPage() {
                             <Package
                               className={`w-6 h-6 lg:w-10 lg:h-10 text-slate-300 dark:text-slate-600 ${imageUrl ? 'hidden' : ''} product-fallback-icon`}
                             />
-                            {!isAdmin && (
+                            {isAdmin && (
                               <Badge className="absolute top-1 right-1 bg-white/90 text-slate-800 border-none font-bold shadow-sm">
                                 Stok: {product.stock_quantity}
                               </Badge>
@@ -973,28 +966,35 @@ export default function POSPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-xs lg:text-sm leading-tight truncate text-slate-800">{item.productName}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          {item.uomDiscountAmount && item.uomDiscountAmount > 0 && item.quantity >= (item.uomMinQty || 1) ? (
-                            <div className="flex flex-col">
-                              <p className="font-bold text-xs text-primary dark:text-primary-400">
-                                {formatRupiah(item.unitPrice - item.uomDiscountAmount)}
-                              </p>
-                              <p className="text-[9px] text-slate-400 line-through">
-                                {formatRupiah(item.unitPrice)}
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="font-bold text-xs text-primary dark:text-primary-400">{formatRupiah(item.unitPrice)}</p>
-                          )}
-                          {item.unitName !== 'pcs' && (
-                            <Badge className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0">
-                              {item.unitName}
-                            </Badge>
-                          )}
-                          {item.uomLabel && (
-                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0 whitespace-nowrap">
-                              🏷️ {item.uomLabel}
-                            </Badge>
-                          )}
+                          {(() => {
+                            const { price, discount, label } = getCartItemPriceAndDiscount(item);
+                            return (
+                              <>
+                                {discount > 0 ? (
+                                  <div className="flex flex-col">
+                                    <p className="font-bold text-xs text-primary dark:text-primary-400">
+                                      {formatRupiah(price - discount)}
+                                    </p>
+                                    <p className="text-[9px] text-slate-400 line-through">
+                                      {formatRupiah(price)}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="font-bold text-xs text-primary dark:text-primary-400">{formatRupiah(price)}</p>
+                                )}
+                                {item.unitName !== 'pcs' && (
+                                  <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[9px] px-1 py-0 h-3.5 font-semibold border-0">
+                                    {item.unitName}
+                                  </Badge>
+                                )}
+                                {label && (
+                                  <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0 whitespace-nowrap">
+                                    🏷️ {label}
+                                  </Badge>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -1410,7 +1410,7 @@ export default function POSPage() {
         <DialogContent className="sm:max-w-xs sm:rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
-              <Ruler className="w-4 h-4 text-indigo-500" />
+              <Ruler className="w-4 h-4 text-slate-500" />
               Pilih Satuan
             </DialogTitle>
             <DialogDescription className="text-xs">
@@ -1430,7 +1430,7 @@ export default function POSPage() {
                 });
               }
               
-              return uoms.map((uom: any) => {
+              return uoms.map((uom: any, idx: number) => {
                 const unitPrice = uom.price ? Number(uom.price) : uomSelectorProduct.price * uom.conversion_factor;
                 
                 let uomDiscountAmount = 0;
@@ -1442,16 +1442,16 @@ export default function POSPage() {
 
                 return (
                 <button
-                  key={uom.unit_name}
+                  key={`${uom.unit_name}_${idx}`}
                   onClick={() => {
                     setQtyInput(1);
                     setQtySelector({ product: uomSelectorProduct, uom });
                     setUomSelectorProduct(null);
                   }}
-                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all duration-200 active:scale-[0.98] group"
+                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 active:scale-[0.98] group"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-bold uppercase">
+                    <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-xs font-bold uppercase">
                       {uom.unit_name.slice(0, 3)}
                     </div>
                     <div className="text-left">
@@ -1467,14 +1467,14 @@ export default function POSPage() {
                   <div className="text-right flex flex-col items-end">
                     {uomDiscountAmount > 0 ? (
                       <div className="text-right">
-                        <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice - uomDiscountAmount)}</div>
+                        <div className="font-bold text-sm text-primary group-hover:text-primary/80">{formatRupiah(unitPrice - uomDiscountAmount)}</div>
                         <div className="text-[10px] text-slate-400 line-through">{formatRupiah(unitPrice)}</div>
                         {uom.min_qty > 1 && (
                           <div className="text-[9px] font-semibold text-orange-500">Min. {uom.min_qty}</div>
                         )}
                       </div>
                     ) : (
-                      <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice)}</div>
+                      <div className="font-bold text-sm text-primary group-hover:text-primary/80">{formatRupiah(unitPrice)}</div>
                     )}
                   </div>
                 </button>

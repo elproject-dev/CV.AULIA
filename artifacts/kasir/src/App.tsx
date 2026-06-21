@@ -26,8 +26,7 @@ import SettingsPage from "@/pages/settings";
 import ExpensesPage from "@/pages/expenses";
 import StaffPage from "@/pages/staff";
 import PromoPage from "@/pages/promo";
-import TransferStockPage from "@/pages/transfer-stock";
-import ReturnStockPage from "@/pages/return-stock";
+import CustomerReturnsPage from "@/pages/customer-returns";
 
 const queryClient = new QueryClient();
 
@@ -116,14 +115,9 @@ function AppRoutes() {
           <PromoPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/transfer-stock">
+      <Route path="/customer-returns">
         <ProtectedRoute>
-          <TransferStockPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/return-stock">
-        <ProtectedRoute>
-          <ReturnStockPage />
+          <CustomerReturnsPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

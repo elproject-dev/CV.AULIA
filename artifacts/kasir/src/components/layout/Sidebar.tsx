@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2 } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,12 +8,13 @@ import { isAdminMode } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { useListOutlets } from "@/mocks/api-client-react";
 import { ProfileDialog } from "./ProfileDialog";
+import { usePendingExpensesCount } from "@/hooks/usePendingExpenses";
+import { usePendingReturnsCount } from "@/hooks/usePendingReturns";
 
 const ALL_LINKS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
   { href: "/pos", label: "Kasir", icon: Calculator, adminOnly: false, kasirOnly: true },
-  { href: "/transfer-stock", label: "Transfer Stock", icon: ArrowRightLeft, adminOnly: true },
-  { href: "/return-stock", label: "Return Stock", icon: Undo2, adminOnly: false },
+  { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw, adminOnly: false },
   { href: "/products", label: "Produk", icon: Package, adminOnly: false },
   { href: "/customers", label: "Pelanggan", icon: Users, adminOnly: false },
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
@@ -159,19 +160,13 @@ export function Sidebar({ children, className }: SidebarProps) {
     return () => window.removeEventListener('cartUpdated', handleCartUpdate);
   }, []);
 
+  const pendingExpensesCount = usePendingExpensesCount();
+  const pendingReturnsCount = usePendingReturnsCount();
+
   const links = useMemo(() => {
     if (!user) return [];
-    const rawLinks = ALL_LINKS.map(link => {
-      if (link.href === "/return-stock") {
-        return {
-          ...link,
-          label: isAdminMode(user) ? "Konfirmasi Return" : "Return Stock Sales"
-        };
-      }
-      return link;
-    });
-    if (isAdminMode(user)) return rawLinks.filter((link) => !(link as any).kasirOnly);
-    return rawLinks.filter((link) => !link.adminOnly);
+    if (isAdminMode(user)) return ALL_LINKS.filter((link) => !(link as any).kasirOnly);
+    return ALL_LINKS.filter((link) => !link.adminOnly);
   }, [user]);
 
   const userInitial = user?.name?.charAt(0)?.toUpperCase() || "U";
@@ -219,6 +214,12 @@ export function Sidebar({ children, className }: SidebarProps) {
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 {link.href === "/pos" && cartCount > 0 && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                )}
+                {link.href === "/expenses" && pendingExpensesCount > 0 && isAdminMode(user) && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                )}
+                {link.href === "/customer-returns" && pendingReturnsCount > 0 && isAdminMode(user) && (
                   <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
                 )}
               </Link>

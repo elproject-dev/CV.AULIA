@@ -41,7 +41,7 @@ export function canAccessRoute(user: AuthUser | null, path: string): boolean {
   if (isAdminMode(user)) return true;
 
   // Kasir can only access POS, transactions, products, dashboard, customers, expenses, settings, and return-stock
-  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings", "/return-stock"];
+  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings", "/return-stock", "/customer-returns"];
   return kasirAllowed.some(
     (route) => path === route || (route !== "/" && path.startsWith(`${route}/`))
   );
@@ -177,7 +177,7 @@ export async function registerWithSupabase(
     email: normalizedEmail,
     phone,
     role: 'kasir',
-    status: 'active',
+    status: 'inactive',
     owner_id: authData.user.id
   }]);
 
@@ -187,7 +187,7 @@ export async function registerWithSupabase(
   }
 
   const user = buildAuthUser(authData.user, "kasir");
-  saveSession(user);
+  // Do not save session automatically because user is inactive and needs admin approval
 
   // We sign out to match the login architecture (using anon key for public RLS)
   await supabase.auth.signOut();

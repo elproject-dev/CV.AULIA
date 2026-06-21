@@ -27,9 +27,12 @@ function isMissingOwnerIdColumn(error: { code?: string; message?: string } | nul
 /** Cek apakah kolom owner_id sudah ada di database */
 export async function initTenantSupport(): Promise<boolean> {
   const cached = readCachedTenantReady();
-  if (cached !== null) {
-    ownerIdColumnReady = cached;
-    return cached;
+  if (cached === false) {
+    // Self-healing: clear false cache so we recheck if tenant support is actually ready
+    localStorage.removeItem(TENANT_READY_KEY);
+  } else if (cached === true) {
+    ownerIdColumnReady = true;
+    return true;
   }
 
   // Test pada tabel products (tabel utama)

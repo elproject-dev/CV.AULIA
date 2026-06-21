@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ interface Expense {
   created_at: string;
   owner_id?: string;
   outlet_id?: number;
+  status?: 'pending' | 'approved' | 'rejected';
 }
 
 interface UserOption {
@@ -61,6 +63,7 @@ const DEFAULT_CATEGORIES: ExpenseCategory[] = [
 ];
 
 export default function ExpensesPage() {
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const [categories, setCategories] = useState<ExpenseCategory[]>(DEFAULT_CATEGORIES);
@@ -351,7 +354,9 @@ export default function ExpensesPage() {
   }, [currentUserId, currentUser, allStaff, users]);
 
   useEffect(() => {
-    const total = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const total = expenses
+      .filter((exp) => exp.status !== 'pending' && exp.status !== 'rejected')
+      .reduce((sum, exp) => sum + exp.amount, 0);
     setTotalExpense(total);
   }, [expenses]);
 
@@ -513,6 +518,7 @@ export default function ExpensesPage() {
         date: formData.date,
         image_url: finalImageUrl || null,
         outlet_id: currentOutletId || undefined,
+        status: isAdmin ? 'approved' : 'pending',
       }, "expenses");
 
       if (editingExpense) {
@@ -541,6 +547,26 @@ export default function ExpensesPage() {
       toast({ title: "Error", description: error.message || "Gagal menyimpan pengeluaran", variant: "destructive" });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleUpdateStatus = async (id: number, newStatus: 'approved' | 'rejected') => {
+    try {
+      const query = applyTenantFilter(
+        supabase
+          .from("expenses")
+          .update({ status: newStatus })
+          .eq("id", id)
+      );
+      const { error } = await query;
+      if (error) throw error;
+      toast({ title: "Sukses", description: `Pengeluaran berhasil ${newStatus === 'approved' ? 'disetujui' : 'ditolak'}` });
+      fetchExpenses();
+      queryClient.invalidateQueries({ queryKey: ["pendingExpensesCount"] });
+    } catch (error: any) {
+      console.error("Error updating expense status:", error);
+      handleTenantError(error);
+      toast({ title: "Error", description: error.message || "Gagal mengubah status pengeluaran", variant: "destructive" });
     }
   };
 
@@ -604,11 +630,12 @@ export default function ExpensesPage() {
         return {
           "No": index + 1,
           "Tanggal": formatDate(exp.date),
+          "Sales": staffName,
           "Kategori": getCategoryLabel(exp.category),
           "Deskripsi": exp.description,
           "Suplier": exp.supplier || "-",
-          "Staff": staffName,
           "Outlet": outletName,
+          "Status": exp.status === 'pending' ? 'Pending' : exp.status === 'rejected' ? 'Ditolak' : 'Disetujui',
           "Jumlah": exp.amount
         };
       });
@@ -619,11 +646,12 @@ export default function ExpensesPage() {
       ws["!cols"] = [
         { wch: 5 },  // No
         { wch: 15 }, // Tanggal
+        { wch: 15 }, // Sales
         { wch: 20 }, // Kategori
         { wch: 40 }, // Deskripsi
         { wch: 20 }, // Suplier
-        { wch: 15 }, // Staff
         { wch: 20 }, // Outlet
+        { wch: 15 }, // Status
         { wch: 20 }, // Jumlah
       ];
 
@@ -804,6 +832,7 @@ export default function ExpensesPage() {
     let mCount = 0;
 
     expenses.forEach(e => {
+      if (e.status === 'pending' || e.status === 'rejected') return;
       if (e.date === todayLocal) {
         tTotal += e.amount;
         tCount++;
@@ -1039,16 +1068,16 @@ export default function ExpensesPage() {
                   {/* User Filter (Admin Only) */}
                   {isAdmin && (
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium text-slate-500">Staff / Kasir</Label>
+                      <Label className="text-xs font-medium text-slate-500">Sales</Label>
                       <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                         <SelectTrigger className="w-full h-9">
                           <div className="flex items-center gap-2">
                             <User className="w-4 h-4 text-slate-400 shrink-0" />
-                            <SelectValue placeholder="Semua Staff" />
+                            <SelectValue placeholder="Semua Sales" />
                           </div>
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Semua Staff</SelectItem>
+                          <SelectItem value="all">Semua Sales</SelectItem>
                           {users.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.name}
@@ -1129,16 +1158,38 @@ export default function ExpensesPage() {
                             Suplier: {expense.supplier}
                           </div>
                         )}
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <span className={`inline-flex px-2 py-1 text-[10px] sm:text-xs font-medium rounded-full ${getCategoryColor(expense.category)}`}>
+                            {getCategoryLabel(expense.category)}
+                          </span>
+                        </div>
                       </div>
                       <div className="shrink-0 flex flex-col items-end gap-2">
-                        <span className={`inline-flex px-2 py-1 text-[10px] sm:text-xs font-medium rounded-full ${getCategoryColor(expense.category)}`}>
-                          {getCategoryLabel(expense.category)}
-                        </span>
+                        {isAdmin && expense.status === 'pending' ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleUpdateStatus(expense.id, 'approved'); }}
+                            className="inline-flex px-2 py-1 text-[10px] sm:text-xs font-medium rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition-colors cursor-pointer shadow-sm"
+                          >
+                            Pending
+                          </button>
+                        ) : (
+                          <span
+                            className={`inline-flex px-2 py-1 text-[10px] sm:text-xs font-medium rounded-full text-white shadow-sm ${
+                              expense.status === 'pending'
+                                ? 'bg-yellow-500'
+                                : expense.status === 'rejected'
+                                ? 'bg-red-500'
+                                : 'bg-green-500'
+                            }`}
+                          >
+                            {expense.status === 'pending' ? 'Pending' : expense.status === 'rejected' ? 'Ditolak' : 'Disetujui'}
+                          </span>
+                        )}
                         {expense.image_url && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                            className="h-6 px-2 text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 mt-2"
                             onClick={(e) => { e.stopPropagation(); setViewImageUrl(expense.image_url || null); }}
                           >
                             <ImageIcon className="w-3 h-3 mr-1" /> Bukti
@@ -1156,7 +1207,7 @@ export default function ExpensesPage() {
 
                       </div>
                       {isAdmin && (
-                        <div className="flex justify-end gap-1">
+                        <div className="flex justify-end gap-1 flex-wrap">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -1192,14 +1243,14 @@ export default function ExpensesPage() {
                 <TableRow className="bg-slate-50/50 dark:bg-slate-800/50">
                   <TableHead className="w-12 font-semibold">No</TableHead>
                   <TableHead className="font-semibold">Tanggal</TableHead>
+                  <TableHead className="font-semibold">Sales</TableHead>
                   <TableHead className="text-center font-semibold">Kategori</TableHead>
                   <TableHead className="font-semibold">Deskripsi</TableHead>
                   <TableHead className="font-semibold text-center">Bukti</TableHead>
                   <TableHead className="font-semibold">Suplier</TableHead>
-                  <TableHead className="font-semibold">Staff</TableHead>
-
                   <TableHead className="text-right font-semibold">Jumlah</TableHead>
-                  {isAdmin && <TableHead className="text-right w-28 font-semibold">Aksi</TableHead>}
+                  <TableHead className="text-center font-semibold">Status</TableHead>
+                  {isAdmin && <TableHead className="text-right w-[140px] font-semibold">Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1237,6 +1288,9 @@ export default function ExpensesPage() {
                       <TableCell className="text-slate-600 dark:text-slate-400">
                         {formatDate(expense.date)}
                       </TableCell>
+                      <TableCell className="text-slate-600 dark:text-slate-400">
+                        {getStaffNameDisplay(expense.owner_id)}
+                      </TableCell>
                       <TableCell className="text-center">
                         <span
                           className={`inline-flex px-3 py-1.5 text-xs font-medium rounded-full ${getCategoryColor(
@@ -1269,16 +1323,36 @@ export default function ExpensesPage() {
                       <TableCell className="text-slate-600 dark:text-slate-400">
                         {expense.supplier || "-"}
                       </TableCell>
-                      <TableCell className="text-slate-600 dark:text-slate-400">
-                        {getStaffNameDisplay(expense.owner_id)}
-                      </TableCell>
 
                       <TableCell className="text-right font-bold text-red-600 dark:text-red-400">
                         {formatCurrency(expense.amount)}
                       </TableCell>
+
+                      <TableCell className="text-center">
+                        {isAdmin && expense.status === 'pending' ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleUpdateStatus(expense.id, 'approved'); }}
+                            className="inline-flex px-3 py-1.5 text-xs font-medium rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition-colors cursor-pointer shadow-sm"
+                          >
+                            Pending
+                          </button>
+                        ) : (
+                          <span
+                            className={`inline-flex px-3 py-1.5 text-xs font-medium rounded-full text-white shadow-sm ${
+                              expense.status === 'pending'
+                                ? 'bg-yellow-500'
+                                : expense.status === 'rejected'
+                                ? 'bg-red-500'
+                                : 'bg-green-500'
+                            }`}
+                          >
+                            {expense.status === 'pending' ? 'Pending' : expense.status === 'rejected' ? 'Ditolak' : 'Disetujui'}
+                          </span>
+                        )}
+                      </TableCell>
                       {isAdmin && (
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex justify-end gap-1 flex-wrap">
                             <Button
                               variant="ghost"
                               size="icon"
