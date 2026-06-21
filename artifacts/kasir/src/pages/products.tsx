@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle, Filter, ArrowUpDown, Clock, Layers, Archive, CheckCircle, Ruler } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -98,7 +98,7 @@ export default function ProductsPage() {
   const bulkSaveUoms = useBulkSaveProductUoms();
 
   // UOM State for Add/Edit Dialog
-  const [uomRows, setUomRows] = useState<{ unit_name: string; conversion_factor: number; price: string; is_default: boolean; discount_type: string; discount_value: string; label: string }[]>([]);
+  const [uomRows, setUomRows] = useState<{ unit_name: string; conversion_factor: number | string; price: string; is_default: boolean; discount_type: string; discount_value: string; label: string; min_qty: number | string }[]>([]);
   // Quick Restock UOM
   const [quickRestockUnit, setQuickRestockUnit] = useState<string>('pcs');
   const [quickRestockConversion, setQuickRestockConversion] = useState<number>(1);
@@ -112,12 +112,15 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
 
   // Tab & Stock Management States
-  const [activeTab, setActiveTab] = useState<'products' | 'stock'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'stock' | 'discounts' | 'history'>('products');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'out' | 'low' | 'available'>('all');
   const [quickRestockProduct, setQuickRestockProduct] = useState<any>(null);
   const [quickRestockQty, setQuickRestockQty] = useState<number>(10);
   const [quickRestockNote, setQuickRestockNote] = useState<string>("Restock Manual Cepat");
-  const [historyProduct, setHistoryProduct] = useState<any>(null);
+
+  // Discount Modal State
+  const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
+  const [discountProduct, setDiscountProduct] = useState<any>(null);
 
   // Stock stats calculation from currently loaded products list
   const stockStats = useMemo(() => {
@@ -203,17 +206,7 @@ export default function ProductsPage() {
         setImagePreview("");
       }
       setImageFile(null);
-      // Load existing UOMs
-      const existingUoms = (product.uoms || []).filter((u: any) => u.unit_name !== 'pcs');
-      setUomRows(existingUoms.map((u: any) => ({
-        unit_name: u.unit_name,
-        conversion_factor: u.conversion_factor,
-        price: u.price ? formatNumberWithDots(Math.round(Number(u.price)).toString()) : '',
-        is_default: u.is_default || false,
-        discount_type: u.discount_type || 'none',
-        discount_value: u.discount_value ? formatNumberWithDots(Math.round(Number(u.discount_value)).toString()) : '',
-        label: u.label || ''
-      })));
+      // UOM logic moved to discount dialog
     } else {
       setEditingProduct(null);
       setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "0" });
@@ -236,6 +229,59 @@ export default function ProductsPage() {
     setOriginalData(null);
     setHasChanges(false);
     setUomRows([]);
+  };
+
+  const handleOpenDiscountDialog = (product: any) => {
+    setDiscountProduct(product);
+    const existingUoms = (product.uoms || []).filter((u: any) => u.unit_name !== 'pcs');
+    setUomRows(existingUoms.map((u: any) => ({
+      unit_name: u.unit_name,
+      conversion_factor: u.conversion_factor,
+      price: u.price ? formatNumberWithDots(Math.round(Number(u.price)).toString()) : '',
+      is_default: u.is_default || false,
+      discount_type: u.discount_type || 'none',
+      discount_value: u.discount_value ? formatNumberWithDots(Math.round(Number(u.discount_value)).toString()) : '',
+      label: u.label || '',
+      min_qty: u.min_qty || 1
+    })));
+    setHasChanges(false);
+    setIsDiscountDialogOpen(true);
+  };
+
+  const handleCloseDiscountDialog = () => {
+    setIsDiscountDialogOpen(false);
+    setDiscountProduct(null);
+    setUomRows([]);
+    setHasChanges(false);
+  };
+
+  const handleSaveDiscounts = () => {
+    if (!discountProduct) return;
+    
+    const uomsToSave = [
+      { unit_name: 'pcs', conversion_factor: 1, price: null, is_default: uomRows.length === 0 },
+      ...uomRows.map(row => ({
+        unit_name: row.unit_name,
+        conversion_factor: Number(row.conversion_factor) || 1,
+        price: row.price ? parseNumberFromDots(row.price) : null,
+        is_default: row.is_default,
+        discount_type: row.discount_type,
+        discount_value: row.discount_value ? parseNumberFromDots(row.discount_value) : 0,
+        min_qty: Number(row.min_qty) || 1,
+        label: row.label || null
+      }))
+    ];
+
+    bulkSaveUoms.mutate({ productId: discountProduct.id, uoms: uomsToSave }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        toast({ title: "Sukses", description: "Pengaturan satuan & diskon disimpan" });
+        handleCloseDiscountDialog();
+      },
+      onError: (error: any) => {
+        toast({ title: "Error", description: error?.message || "Gagal menyimpan pengaturan", variant: "destructive" });
+      }
+    });
   };
 
   const handleFormChange = (field: string, value: any) => {
@@ -336,30 +382,11 @@ export default function ProductsPage() {
         stockQuantity: parseInt(formData.stockQuantity) || 0
       };
 
-      // Build UOM data: always include pcs as base unit + user-defined units
-      const uomsToSave = [
-        { unit_name: 'pcs', conversion_factor: 1, price: null, is_default: uomRows.length === 0 },
-        ...uomRows.map(row => ({
-          unit_name: row.unit_name,
-          conversion_factor: row.conversion_factor,
-          price: row.price ? parseNumberFromDots(row.price) : null,
-          is_default: row.is_default,
-          discount_type: row.discount_type,
-          discount_value: row.discount_value ? (row.discount_type === 'percent' ? parseFloat(row.discount_value) : parseNumberFromDots(row.discount_value)) : 0,
-          label: row.label || null
-        }))
-      ];
-
-      const saveUomsForProduct = (productId: number) => {
-        if (uomRows.length > 0) {
-          bulkSaveUoms.mutate({ productId, uoms: uomsToSave });
-        }
-      };
+      // UOM logic moved to its own dialog
 
       if (isUpdate) {
         updateProduct.mutate({ id: editingProduct.id, data: payload }, {
           onSuccess: () => {
-            saveUomsForProduct(editingProduct.id);
             queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
             toast({ title: "Sukses", description: "Produk diperbarui" });
             handleCloseDialog();
@@ -372,7 +399,6 @@ export default function ProductsPage() {
       } else {
         createProduct.mutate({ data: payload }, {
           onSuccess: (data: any) => {
-            if (data?.id) saveUomsForProduct(data.id);
             queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
             toast({ title: "Sukses", description: "Produk ditambahkan" });
             handleCloseDialog();
@@ -608,20 +634,46 @@ export default function ProductsPage() {
             <Package className="w-4 h-4" />
             Daftar Produk
           </button>
-          <button
-            onClick={() => setActiveTab('stock')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
-              activeTab === 'stock'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            Stok Barang
-            {stockStats.outOfStock > 0 && (
-              <span className="flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
-            )}
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => setActiveTab('stock')}
+                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
+                  activeTab === 'stock'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                Stok Barang
+                {stockStats.outOfStock > 0 && (
+                  <span className="flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('discounts')}
+                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
+                  activeTab === 'discounts'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Tag className="w-4 h-4" />
+                Pengaturan Diskon & Satuan
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
+                  activeTab === 'history'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Clock className="w-4 h-4" />
+                Riwayat Aksi
+              </button>
+            </>
+          )}
         </div>
 
         <div className="p-4 sm:p-6 flex-1 overflow-auto">
@@ -838,7 +890,7 @@ export default function ProductsPage() {
                 </div>
               </div>
             </>
-          ) : (
+          ) : activeTab === 'stock' ? (
             <>
               {/* Stock Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -999,14 +1051,6 @@ export default function ProductsPage() {
                             >
                               <Plus className="w-3.5 h-3.5 mr-1" /> Restock Cepat
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-1 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs py-1 h-8"
-                              onClick={() => setHistoryProduct(product)}
-                            >
-                              <Clock className="w-3.5 h-3.5 mr-1" /> Riwayat
-                            </Button>
                           </div>
                         )}
                       </div>
@@ -1091,15 +1135,7 @@ export default function ProductsPage() {
                                     >
                                       <Plus className="w-3.5 h-3.5 mr-1" /> Restock
                                     </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => setHistoryProduct(product)}
-                                      className="text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs py-1 h-8"
-                                    >
-                                      <Clock className="w-3.5 h-3.5 mr-1" /> Riwayat
-                                    </Button>
-                                  </div>
+                                    </div>
                                 </TableCell>
                               )}
                             </TableRow>
@@ -1111,7 +1147,103 @@ export default function ProductsPage() {
                 </div>
               </div>
             </>
-          )}
+          ) : activeTab === 'discounts' ? (
+            <>
+              <div className="mb-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Satuan & Diskon Grosir</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Kelola varian satuan (dus, pack) dan promo grosiran</p>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
+                  <Input
+                    placeholder="Cari produk..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[600px]">
+                    <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
+                      <TableRow className="border-slate-200 dark:border-slate-800">
+                        <TableHead className="font-semibold text-slate-700 dark:text-slate-300">Produk</TableHead>
+                        <TableHead className="text-center font-semibold text-slate-700 dark:text-slate-300">Harga Dasar (pcs)</TableHead>
+                        <TableHead className="text-center font-semibold text-slate-700 dark:text-slate-300">Varian Satuan</TableHead>
+                        <TableHead className="text-right font-semibold text-slate-700 dark:text-slate-300">Aksi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoading ? (
+                        <TableRow><TableCell colSpan={4} className="text-center py-8">Memuat data produk...</TableCell></TableRow>
+                      ) : sortedProducts?.length === 0 ? (
+                        <TableRow><TableCell colSpan={4} className="text-center py-8">Tidak ada produk ditemukan.</TableCell></TableRow>
+                      ) : (
+                        sortedProducts?.map((product: any) => {
+                          const uoms = product.uoms || [];
+                          const hasDiscount = uoms.some((u: any) => u.discount_type !== 'none' && (Number(u.discount_value) > 0));
+                          const additionalUoms = uoms.filter((u:any) => u.unit_name !== 'pcs');
+                          return (
+                            <TableRow key={product.id} className="border-slate-100 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                    {getProductImage(product) ? (
+                                      <img src={getProductImage(product)!} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                    ) : (
+                                      <ImageIcon className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                      {product.name}
+                                      {hasDiscount && (
+                                        <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20 dark:bg-green-500/20 dark:text-green-400 dark:hover:bg-green-500/30 border-0 px-1.5 py-0 h-4 text-[9px] leading-none">Promo Aktif</Badge>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500">{categories.find(c => c.id === product.category_id || c.id === product.categoryId)?.name || "Tanpa Kategori"}</div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center whitespace-nowrap">
+                                <span className="font-medium text-slate-700 dark:text-slate-300">{formatRupiah(product.price)}</span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex flex-wrap items-center justify-center gap-1">
+                                  <Badge variant="outline" className="text-[10px] bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700">pcs</Badge>
+                                  {additionalUoms.map((u: any, idx: number) => (
+                                    <Badge key={idx} variant="outline" className={`text-[10px] border-slate-200 dark:border-slate-700 ${u.discount_type !== 'none' && Number(u.discount_value) > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                                      {u.unit_name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button size="sm" onClick={() => handleOpenDiscountDialog(product)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 dark:text-indigo-400 h-8 text-xs font-medium border border-indigo-100 dark:border-indigo-800/50">
+                                  <Tag className="w-3.5 h-3.5 mr-1.5" /> Atur Satuan & Diskon
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </>
+          ) : activeTab === 'history' ? (
+            <div className="space-y-4">
+              <div className="mb-4 flex flex-col gap-1">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Riwayat Mutasi Stok</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Seluruh riwayat keluar-masuk barang, penjualan, dan penyesuaian stok.</p>
+              </div>
+              <HistoryTabContent />
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1189,174 +1321,6 @@ export default function ProductsPage() {
               />
             </div>
 
-
-
-            {/* Satuan / UOM */}
-            {isAdmin && (
-              <div className="space-y-3 border border-indigo-200 dark:border-indigo-900/50 p-3 rounded-lg bg-indigo-50/30 dark:bg-indigo-900/10">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <Ruler className="w-4 h-4 text-indigo-500" />
-                  Satuan Ukur (Multi UOM)
-                </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
-                  Satuan dasar (pcs) otomatis ditambahkan. Tambahkan satuan lain (box, dus, pack) jika diperlukan.
-                </p>
-
-                {uomRows.length > 0 && (
-                  <div className="space-y-2">
-                    {uomRows.map((row, idx) => (
-                      <div key={idx} className="flex flex-col gap-2 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                        <div className="flex items-end gap-2">
-                          <div className="flex-1 space-y-1">
-                            <label className="text-[10px] font-medium text-slate-500">Nama Satuan</label>
-                            <Input
-                              placeholder="box, dus, pack..."
-                              value={row.unit_name}
-                              onChange={(e) => {
-                                const newRows = [...uomRows];
-                                newRows[idx].unit_name = e.target.value.toLowerCase().trim();
-                                setUomRows(newRows);
-                                setHasChanges(true);
-                              }}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="w-20 space-y-1">
-                            <label className="text-[10px] font-medium text-slate-500">Isi (pcs)</label>
-                            <Input
-                              type="number"
-                              min={2}
-                              placeholder="12"
-                              value={row.conversion_factor}
-                              onChange={(e) => {
-                                const newRows = [...uomRows];
-                                newRows[idx].conversion_factor = parseInt(e.target.value) || 1;
-                                setUomRows(newRows);
-                                setHasChanges(true);
-                              }}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="w-28 space-y-1">
-                            <label className="text-[10px] font-medium text-slate-500">Harga Jual</label>
-                            <Input
-                              placeholder="Auto"
-                              value={row.price}
-                              onChange={(e) => {
-                                const newRows = [...uomRows];
-                                newRows[idx].price = formatNumberWithDots(e.target.value);
-                                setUomRows(newRows);
-                                setHasChanges(true);
-                              }}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
-                            onClick={() => {
-                              const newRows = [...uomRows];
-                              newRows.splice(idx, 1);
-                              setUomRows(newRows);
-                              setHasChanges(true);
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                        <div className="flex items-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-2 mt-1">
-                          <div className="w-32 space-y-1">
-                            <label className="text-[10px] font-medium text-slate-500">Tipe Diskon</label>
-                            <Select 
-                              value={row.discount_type} 
-                              onValueChange={(value) => {
-                                const newRows = [...uomRows];
-                                newRows[idx].discount_type = value;
-                                if (value === 'none') {
-                                  newRows[idx].discount_value = '';
-                                  newRows[idx].label = '';
-                                }
-                                setUomRows(newRows);
-                                setHasChanges(true);
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder="Pilih..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Tidak Ada</SelectItem>
-                                <SelectItem value="amount">Nominal (Rp)</SelectItem>
-                                <SelectItem value="percent">Persen (%)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {row.discount_type !== 'none' && (
-                            <>
-                              <div className="w-24 space-y-1">
-                                <label className="text-[10px] font-medium text-slate-500">Nilai</label>
-                                <Input
-                                  placeholder={row.discount_type === 'percent' ? "5" : "5.000"}
-                                  value={row.discount_value}
-                                  onChange={(e) => {
-                                    const newRows = [...uomRows];
-                                    if (row.discount_type === 'percent') {
-                                      // Allow decimals for percentage
-                                      newRows[idx].discount_value = e.target.value;
-                                    } else {
-                                      newRows[idx].discount_value = formatNumberWithDots(e.target.value);
-                                    }
-                                    setUomRows(newRows);
-                                    setHasChanges(true);
-                                  }}
-                                  className="h-8 text-sm"
-                                />
-                              </div>
-                              <div className="flex-1 space-y-1">
-                                <label className="text-[10px] font-medium text-slate-500">Label Struk/Promo</label>
-                                <Input
-                                  placeholder="Hemat 5%..."
-                                  value={row.label}
-                                  onChange={(e) => {
-                                    const newRows = [...uomRows];
-                                    newRows[idx].label = e.target.value;
-                                    setUomRows(newRows);
-                                    setHasChanges(true);
-                                  }}
-                                  className="h-8 text-sm"
-                                />
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:text-indigo-400 dark:border-indigo-800 dark:hover:bg-indigo-900/20"
-                  onClick={() => {
-                    setUomRows([...uomRows, { unit_name: '', conversion_factor: 12, price: '', is_default: false, discount_type: 'none', discount_value: '', label: '' }]);
-                    setHasChanges(true);
-                  }}
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Satuan
-                </Button>
-
-                {uomRows.length > 0 && (
-                  <div className="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 p-2 rounded border border-slate-100 dark:border-slate-800">
-                    <span className="font-medium">Preview:</span> 1 pcs = 1 pcs
-                    {uomRows.filter(r => r.unit_name).map((r, i) => (
-                      <span key={i}> • 1 {r.unit_name} = {r.conversion_factor} pcs</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Active */}
             <div className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-800 rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
               <label htmlFor="isActive" className="text-sm font-medium cursor-pointer">Produk Aktif</label>
@@ -1372,6 +1336,196 @@ export default function ProductsPage() {
             <Button variant="outline" onClick={handleCloseDialog}>Batal</Button>
             <Button onClick={handleSubmit} disabled={isUploading || createProduct.isPending || updateProduct.isPending}>
               {isUploading || createProduct.isPending || updateProduct.isPending ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Discount & UOM Dialog */}
+      <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>
+        <DialogContent className="sm:max-w-2xl sm:rounded-2xl max-h-[90vh] overflow-y-auto scrollbar-hide">
+          <DialogHeader>
+            <DialogTitle>Atur Satuan & Diskon Grosir</DialogTitle>
+            <DialogDescription className="text-lg font-bold text-slate-900 dark:text-white mt-1">
+              {discountProduct?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-3 border border-indigo-200 dark:border-indigo-900/50 p-3 rounded-lg bg-indigo-50/30 dark:bg-indigo-900/10">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Ruler className="w-4 h-4 text-indigo-500" />
+                Satuan Ukur & Diskon (Multi UOM)
+              </label>
+              <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
+                Satuan dasar (pcs) otomatis ditambahkan. Tambahkan satuan lain (box, dus, pack) dan atur diskon grosir di sini.
+              </p>
+
+              {uomRows.length > 0 && (
+                <div className="space-y-2">
+                  {uomRows.map((row, idx) => (
+                    <div key={idx} className="flex flex-col gap-2 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 sm:gap-3">
+                        <div className="w-full sm:flex-1 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Nama Satuan</label>
+                          <Input
+                            placeholder="box, dus, pack..."
+                            value={row.unit_name}
+                            onChange={(e) => {
+                              const newRows = [...uomRows];
+                              newRows[idx].unit_name = e.target.value.toLowerCase().trim();
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="flex-1 sm:w-20 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Isi (pcs)</label>
+                          <Input
+                            type="text"
+                            placeholder="12"
+                            value={row.conversion_factor}
+                            onChange={(e) => {
+                              const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                              const val = rawVal === '' ? '' : parseInt(rawVal);
+                              const newRows = [...uomRows];
+                              newRows[idx].conversion_factor = val;
+                              if (discountProduct?.price && val !== '') {
+                                newRows[idx].price = formatNumberWithDots(Math.round((val as number) * Number(discountProduct.price)).toString());
+                              } else if (val === '') {
+                                newRows[idx].price = '';
+                              }
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="flex-1 sm:w-28 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Harga Jual</label>
+                          <Input
+                            placeholder="Auto"
+                            value={row.price}
+                            onChange={(e) => {
+                              const newRows = [...uomRows];
+                              newRows[idx].price = formatNumberWithDots(e.target.value);
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0 mb-[1px]"
+                          onClick={() => {
+                            const newRows = [...uomRows];
+                            newRows.splice(idx, 1);
+                            setUomRows(newRows);
+                            setHasChanges(true);
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 sm:gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-2">
+                        <div className="w-full sm:w-32 space-y-1">
+                          <label className="text-[10px] font-medium text-slate-500">Tipe Diskon</label>
+                          <Select 
+                            value={row.discount_type} 
+                            onValueChange={(value) => {
+                              const newRows = [...uomRows];
+                              newRows[idx].discount_type = value;
+                              if (value === 'none') {
+                                newRows[idx].discount_value = '';
+                                newRows[idx].label = '';
+                              }
+                              setUomRows(newRows);
+                              setHasChanges(true);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Pilih..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Tidak Ada</SelectItem>
+                              <SelectItem value="amount">Nominal (Rp)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {row.discount_type !== 'none' && (
+                          <>
+                            <div className="flex-1 sm:w-16 space-y-1">
+                              <label className="text-[10px] font-medium text-slate-500">Min. Beli</label>
+                              <Input
+                                type="text"
+                                placeholder="1"
+                                value={row.min_qty}
+                                onChange={(e) => {
+                                  const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                                  const val = rawVal === '' ? '' : parseInt(rawVal);
+                                  const newRows = [...uomRows];
+                                  newRows[idx].min_qty = val;
+                                  setUomRows(newRows);
+                                  setHasChanges(true);
+                                }}
+                                className="h-8 text-sm text-center"
+                              />
+                            </div>
+                            <div className="flex-1 sm:w-24 space-y-1">
+                              <label className="text-[10px] font-medium text-slate-500">Nilai Diskon</label>
+                              <Input
+                                placeholder="5.000"
+                                value={row.discount_value}
+                                onChange={(e) => {
+                                  const newRows = [...uomRows];
+                                  newRows[idx].discount_value = formatNumberWithDots(e.target.value);
+                                  setUomRows(newRows);
+                                  setHasChanges(true);
+                                }}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:text-indigo-400 dark:border-indigo-800 dark:hover:bg-indigo-900/20"
+                onClick={() => {
+                  const defaultConv = 12;
+                  const defaultPrice = discountProduct?.price ? formatNumberWithDots(Math.round(defaultConv * Number(discountProduct.price)).toString()) : '';
+                  setUomRows([...uomRows, { unit_name: '', conversion_factor: defaultConv, price: defaultPrice, is_default: false, discount_type: 'none', discount_value: '', label: '', min_qty: 1 }]);
+                  setHasChanges(true);
+                }}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> Tambah Satuan
+              </Button>
+
+              {uomRows.length > 0 && (
+                <div className="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 p-2 rounded border border-slate-100 dark:border-slate-800">
+                  <span className="font-medium">Preview:</span> 1 pcs = 1 pcs
+                  {uomRows.filter(r => r.unit_name).map((r, i) => (
+                    <span key={i}> • 1 {r.unit_name} = {r.conversion_factor} pcs</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseDiscountDialog}>Batal</Button>
+            <Button onClick={handleSaveDiscounts} disabled={bulkSaveUoms.isPending || !hasChanges}>
+              {bulkSaveUoms.isPending ? "Menyimpan..." : "Simpan Pengaturan"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1682,26 +1836,13 @@ export default function ProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Stock History Dialog */}
-      <StockHistoryDialog
-        product={historyProduct}
-        open={!!historyProduct}
-        onOpenChange={(open) => !open && setHistoryProduct(null)}
-      />
+
     </Sidebar>
   );
 }
 
-function StockHistoryDialog({ 
-  product, 
-  open, 
-  onOpenChange 
-}: { 
-  product: any; 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { data: movements, isLoading } = useListStockMovements(product?.id);
+function HistoryTabContent() {
+  const { data: movements, isLoading } = useListStockMovements();
 
   const formatMovementType = (type: string) => {
     switch (type) {
@@ -1715,55 +1856,54 @@ function StockHistoryDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col p-0">
-        <DialogHeader className="p-6 pb-2">
-          <DialogTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-indigo-500" />
-            Riwayat Mutasi: {product?.name}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto p-6 pt-2 space-y-3">
-          {isLoading ? (
-            <div className="text-center py-8 text-slate-500">Memuat riwayat...</div>
-          ) : movements.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">Belum ada riwayat mutasi untuk produk ini.</div>
-          ) : (
-            <div className="border border-slate-100 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {movements.map((move: any) => {
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="overflow-x-auto">
+        <Table className="min-w-[800px]">
+          <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
+            <TableRow className="border-slate-200 dark:border-slate-800">
+              <TableHead>Waktu</TableHead>
+              <TableHead>Produk</TableHead>
+              <TableHead>Jenis Mutasi</TableHead>
+              <TableHead>Catatan</TableHead>
+              <TableHead className="text-right">Perubahan Qty</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-8">Memuat riwayat...</TableCell></TableRow>
+            ) : movements?.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-8">Belum ada riwayat mutasi.</TableCell></TableRow>
+            ) : (
+              movements?.map((move: any) => {
                 const isPositive = move.quantity > 0;
                 return (
-                  <div key={move.id} className="p-3 bg-white dark:bg-slate-900 flex items-center justify-between text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                    <div className="space-y-1">
-                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                  <TableRow key={move.id} className="border-slate-100 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                    <TableCell className="text-sm text-slate-500 whitespace-nowrap">
+                      {new Date(move.created_at).toLocaleString('id-ID', {
+                        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                      })}
+                    </TableCell>
+                    <TableCell className="font-medium text-slate-900 dark:text-slate-100">{move.products?.name || 'Produk Dihapus'}</TableCell>
+                    <TableCell>
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
                         {formatMovementType(move.type)}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        {new Date(move.created_at).toLocaleString('id-ID', {
-                          day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                        })}
-                      </div>
-                      {move.note && (
-                        <div className="text-xs text-slate-500 dark:text-slate-400 italic">
-                          Catatan: {move.note}
-                        </div>
-                      )}
-                    </div>
-                    <div className={`font-bold text-base ${isPositive ? 'text-green-600' : 'text-red-500'}`}>
-                      {isPositive ? `+${move.quantity}` : move.quantity}
-                    </div>
-                  </div>
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-500 italic max-w-[200px] truncate" title={move.note || '-'}>
+                      {move.note || '-'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={`font-bold inline-flex items-center justify-center px-2 py-1 rounded-md ${isPositive ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+                        {isPositive ? `+${move.quantity}` : move.quantity}
+                      </span>
+                    </TableCell>
+                  </TableRow>
                 );
-              })}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="p-6 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Tutup</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
   );
 }

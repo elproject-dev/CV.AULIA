@@ -1284,6 +1284,18 @@ export const useCreateProduct = () => {
           });
         }
 
+        // Add default 'pcs' UOM for the new product
+        await supabase.from('product_uoms').insert({
+          product_id: data.id,
+          unit_name: 'pcs',
+          conversion_factor: 1,
+          is_default: true,
+          price: null,
+          discount_type: 'none',
+          discount_value: 0,
+          min_qty: 1
+        });
+
         const formattedData = {
           ...data,
           isActive: data.is_active
@@ -2637,6 +2649,7 @@ export const useBulkSaveProductUoms = () => {
             is_default: uom.is_default || false,
             discount_type: uom.discount_type || 'none',
             discount_value: uom.discount_value || 0,
+            min_qty: uom.min_qty || 1,
             label: uom.label || null
           }));
 
@@ -2781,11 +2794,19 @@ export const useListLoadingItems = (sessionId?: string) => {
     try {
       const { data: result, error: fetchError } = await supabase
         .from('loading_items')
-        .select('*, products(*)')
+        .select('*, products(*, product_uoms(*))')
         .eq('loading_session_id', sessionId);
 
       if (fetchError) throw fetchError;
-      setData(result || []);
+      
+      const formattedResult = (result || []).map((item: any) => {
+        if (item.products) {
+          item.products.uoms = (item.products.product_uoms || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+        }
+        return item;
+      });
+      
+      setData(formattedResult);
     } catch (err) {
       setError(err);
       setData([]);

@@ -30,6 +30,7 @@ interface CartItem {
   unitPrice: number;
   uomDiscountType?: string;
   uomDiscountAmount?: number;
+  uomMinQty?: number;
   uomLabel?: string;
 }
 
@@ -126,6 +127,10 @@ export default function POSPage() {
 
   // UOM selector state
   const [uomSelectorProduct, setUomSelectorProduct] = useState<any>(null);
+  
+  // QTY selector state
+  const [qtySelector, setQtySelector] = useState<{ product: any, uom: any | null } | null>(null);
+  const [qtyInput, setQtyInput] = useState<number>(1);
 
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
@@ -171,12 +176,12 @@ export default function POSPage() {
   const { data: customers, isLoading: isLoadingCustomers, refetch: refetchCustomers } = useListCustomers();
 
   // FMCG: Fetch active loading session for Kasir
-  const { data: activeSessions } = useListLoadingSessions({
+  const { data: activeSessions, isLoading: isLoadingSessions } = useListLoadingSessions({
     salesId: user?.staffId,
     status: 'active'
   });
   const activeSession = activeSessions?.[0];
-  const { data: loadingItems } = useListLoadingItems(activeSession?.id);
+  const { data: loadingItems, isLoading: isLoadingItems } = useListLoadingItems(activeSession?.id);
 
   const posProducts = useMemo(() => {
     if (isAdmin) return products || [];
@@ -201,6 +206,8 @@ export default function POSPage() {
         return true;
       });
   }, [isAdmin, products, loadingItems, search, categoryId]);
+
+
 
   const createTransaction = useCreateTransaction();
 
@@ -345,7 +352,7 @@ export default function POSPage() {
 
 
 
-  const addToCart = (product: any, selectedUnit?: { unit_name: string; conversion_factor: number; price?: number; discount_type?: string; discount_value?: number; label?: string }) => {
+  const addToCart = (product: any, selectedUnit?: { unit_name: string; conversion_factor: number; price?: number; discount_type?: string; discount_value?: number; label?: string; min_qty?: number }, qtyToAdd: number = 1) => {
     const unitName = selectedUnit?.unit_name || 'pcs';
     const conversionFactor = selectedUnit?.conversion_factor || 1;
     const unitPrice = selectedUnit?.price ? Number(selectedUnit.price) : product.price * conversionFactor;
@@ -366,7 +373,7 @@ export default function POSPage() {
       const totalPcsInCart = cart
         .filter(item => item.productId === product.id)
         .reduce((sum, item) => sum + item.quantity * item.conversionFactor, 0);
-      if (totalPcsInCart + conversionFactor > product.stock_quantity) {
+      if (totalPcsInCart + (conversionFactor * qtyToAdd) > product.stock_quantity) {
         toast({ title: "Stok Tidak Mencukupi", description: "Tidak dapat melebihi stok di tangan (Loading).", variant: "destructive" });
         return;
       }
@@ -386,7 +393,7 @@ export default function POSPage() {
       if (existing) {
         return prev.map(item => 
           (item.productId === product.id && item.unitName === unitName)
-            ? { ...item, quantity: item.quantity + 1 } 
+            ? { ...item, quantity: item.quantity + qtyToAdd } 
             : item
         );
       }
@@ -394,13 +401,14 @@ export default function POSPage() {
         productId: product.id,
         productName: product.name,
         price: product.price,
-        quantity: 1,
+        quantity: qtyToAdd,
         imageUrl: imageUrl,
         unitName,
         conversionFactor,
         unitPrice,
         uomDiscountType: selectedUnit?.discount_type || 'none',
         uomDiscountAmount,
+        uomMinQty: selectedUnit?.min_qty || 1,
         uomLabel: selectedUnit?.label || ''
       }];
     });
@@ -415,8 +423,9 @@ export default function POSPage() {
       // Product has multiple units - show UOM selector
       setUomSelectorProduct(product);
     } else {
-      // Product only has pcs - add directly
-      addToCart(product);
+      // Product only has pcs - open qty selector
+      setQtyInput(1);
+      setQtySelector({ product, uom: null });
     }
   };
 
@@ -546,7 +555,10 @@ export default function POSPage() {
     }
   };
 
-  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + ((item.unitPrice - (item.uomDiscountAmount || 0)) * item.quantity), 0), [cart]);
+  const subtotal = useMemo(() => cart.reduce((sum, item) => {
+    const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+    return sum + ((item.unitPrice - activeDiscount) * item.quantity);
+  }, 0), [cart]);
 
   const tax = useMemo(() => {
     if (!enablePPN) return 0;
@@ -612,16 +624,21 @@ export default function POSPage() {
         pointsDiscount: 0,
         earnedPoints: 0,
         loadingSessionId: activeSession?.id,
-        items: cart.map(item => ({
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity * item.conversionFactor,
-          price: (item.unitPrice - (item.uomDiscountAmount || 0)) / item.conversionFactor,
-          unitName: item.unitName,
-          unitQty: item.quantity,
-          conversionFactor: item.conversionFactor,
-          loadingItemId: posProducts.find((p: any) => p.id === item.productId)?.loadingItemId
-        }))
+        items: cart.map(item => {
+          const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+          return {
+            product_id: item.productId,
+            productName: item.productName,
+            quantity: item.quantity * item.conversionFactor,
+            price: (item.unitPrice - activeDiscount) / item.conversionFactor,
+            cost_price: 0,
+            total: (item.unitPrice - activeDiscount) * item.quantity,
+            unitName: item.unitName,
+            unitQty: item.quantity,
+            conversionFactor: item.conversionFactor,
+            loadingItemId: posProducts.find((p: any) => p.id === item.productId)?.loadingItemId
+          };
+        })
       }
     }, {
       onSuccess: async (res: any) => {
@@ -729,7 +746,21 @@ export default function POSPage() {
     );
   });
 
-  if (!isAdmin && !activeSession) {
+  if (!isAdmin) {
+    if (isLoadingSessions || isLoadingItems) {
+      return (
+        <Sidebar>
+          <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-slate-600 dark:text-slate-400 font-medium">Memeriksa Sesi Loading...</p>
+            </div>
+          </div>
+        </Sidebar>
+      );
+    }
+
+    if (!activeSession) {
     return (
       <Sidebar>
         <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 h-full min-h-[calc(100vh-4rem)]">
@@ -746,6 +777,7 @@ export default function POSPage() {
       </Sidebar>
     );
   }
+}
 
   return (
     <Sidebar>
@@ -941,7 +973,7 @@ export default function POSPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-xs lg:text-sm leading-tight truncate text-slate-800">{item.productName}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          {item.uomDiscountAmount && item.uomDiscountAmount > 0 ? (
+                          {item.uomDiscountAmount && item.uomDiscountAmount > 0 && item.quantity >= (item.uomMinQty || 1) ? (
                             <div className="flex flex-col">
                               <p className="font-bold text-xs text-primary dark:text-primary-400">
                                 {formatRupiah(item.unitPrice - item.uomDiscountAmount)}
@@ -1274,19 +1306,22 @@ export default function POSPage() {
               )}
 
               {lastTransaction?.items?.map((item: any, idx: number) => {
-                const itemPrice = item.unitPrice - (item.uomDiscountAmount || 0);
+                const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+                const itemPrice = item.unitPrice - activeDiscount;
                 return (
-                  <div key={idx} className="flex justify-between text-xs mb-1">
-                    <div className="flex-1">
-                      <p className="text-slate-900 dark:text-slate-100">{item.productName} {item.unitName !== 'pcs' ? `(${item.unitName})` : ''}</p>
-                      <p className="text-slate-400 dark:text-slate-500">{item.quantity} x {formatRupiah(itemPrice)}</p>
-                      {item.uomDiscountAmount && item.uomDiscountAmount > 0 && (
-                        <p className="text-[10px] text-green-600 dark:text-green-400">
-                          Diskon: -{formatRupiah(item.uomDiscountAmount * item.quantity)} {item.uomLabel ? `(${item.uomLabel})` : ''}
-                        </p>
-                      )}
+                  <div key={idx} className="mb-2 break-inside-avoid">
+                    <div className="font-bold">{item.productName}</div>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div>{item.quantity} {item.unitName} x {formatRupiah(item.unitPrice)}</div>
+                        {activeDiscount > 0 && (
+                          <div className="text-[10px] text-slate-600 mt-0.5 italic">
+                            Diskon: -{formatRupiah(activeDiscount * item.quantity)} {item.uomLabel ? `(${item.uomLabel})` : ''}
+                          </div>
+                        )}
+                      </div>
+                      <p className="font-bold text-slate-900 dark:text-slate-100">{formatRupiah(item.quantity * itemPrice)}</p>
                     </div>
-                    <p className="font-bold text-slate-900 dark:text-slate-100">{formatRupiah(item.quantity * itemPrice)}</p>
                   </div>
                 );
               })}
@@ -1409,7 +1444,8 @@ export default function POSPage() {
                 <button
                   key={uom.unit_name}
                   onClick={() => {
-                    addToCart(uomSelectorProduct, uom);
+                    setQtyInput(1);
+                    setQtySelector({ product: uomSelectorProduct, uom });
                     setUomSelectorProduct(null);
                   }}
                   className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all duration-200 active:scale-[0.98] group"
@@ -1430,10 +1466,13 @@ export default function POSPage() {
                   </div>
                   <div className="text-right flex flex-col items-end">
                     {uomDiscountAmount > 0 ? (
-                      <>
+                      <div className="text-right">
                         <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice - uomDiscountAmount)}</div>
                         <div className="text-[10px] text-slate-400 line-through">{formatRupiah(unitPrice)}</div>
-                      </>
+                        {uom.min_qty > 1 && (
+                          <div className="text-[9px] font-semibold text-orange-500">Min. {uom.min_qty}</div>
+                        )}
+                      </div>
                     ) : (
                       <div className="font-bold text-sm text-primary group-hover:text-indigo-600">{formatRupiah(unitPrice)}</div>
                     )}
@@ -1442,6 +1481,73 @@ export default function POSPage() {
               );
             });
           })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* QTY Selector Dialog */}
+      <Dialog open={!!qtySelector} onOpenChange={(open) => !open && setQtySelector(null)}>
+        <DialogContent className="sm:max-w-xs sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              Masukkan Jumlah
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {qtySelector?.product?.name} ({qtySelector?.uom?.unit_name || 'pcs'})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex items-center justify-center gap-4">
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={() => setQtyInput(prev => Math.max(1, prev - 1))}
+              >
+                <Minus className="w-4 h-4" />
+              </Button>
+              <Input
+                type="number"
+                className="w-24 text-center font-bold text-lg"
+                value={qtyInput}
+                onChange={(e) => setQtyInput(parseInt(e.target.value) || 1)}
+                min={1}
+              />
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={() => setQtyInput(prev => prev + 1)}
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {/* Quick amount buttons */}
+            <div className="grid grid-cols-4 gap-2">
+              {[5, 10, 20, 50].map(amount => (
+                <Button
+                  key={amount}
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setQtyInput(amount)}
+                  className="text-xs"
+                >
+                  {amount}
+                </Button>
+              ))}
+            </div>
+            
+            <Button 
+              className="w-full mt-2"
+              onClick={() => {
+                if (qtySelector) {
+                  addToCart(qtySelector.product, qtySelector.uom, qtyInput);
+                  setQtySelector(null);
+                }
+              }}
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Tambah
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
