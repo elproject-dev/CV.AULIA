@@ -1686,6 +1686,31 @@ export const useListCustomers = () => {
   return { data, isLoading, error, refetch: fetchCustomers };
 };
 
+export const generateNextCustomerId = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('customer_id_manual')
+      .ilike('customer_id_manual', 'CTM-%')
+      .order('customer_id_manual', { ascending: false })
+      .limit(1);
+    
+    if (error || !data || data.length === 0) {
+      return 'CTM-00001';
+    }
+
+    const lastId = data[0].customer_id_manual;
+    const lastNumber = parseInt(lastId.replace('CTM-', ''), 10);
+    
+    if (isNaN(lastNumber)) return 'CTM-00001';
+    
+    const nextNumber = lastNumber + 1;
+    return `CTM-${nextNumber.toString().padStart(5, '0')}`;
+  } catch (err) {
+    return `CTM-${Math.floor(10000 + Math.random() * 90000)}`;
+  }
+};
+
 export const useCreateCustomer = () => {
   const [isPending, setIsPending] = useState(false);
 
@@ -1694,6 +1719,11 @@ export const useCreateCustomer = () => {
       setIsPending(true);
       try {
         // Pelanggan adalah data bersama - tidak pakai owner_id
+        let customerIdManual = params.data.customer_id_manual;
+        if (!customerIdManual) {
+          customerIdManual = await generateNextCustomerId();
+        }
+
         const { data, error } = await supabase
           .from('customers')
           .insert({
@@ -1701,6 +1731,10 @@ export const useCreateCustomer = () => {
             phone: params.data.phone || null,
             membership_type: params.data.membershipType || params.data.membership_type || 'non_member',
             sales_name: params.data.sales_name || null,
+            customer_id_manual: customerIdManual,
+            address: params.data.address || null,
+            district: params.data.district || null,
+            city: params.data.city || null,
             ...(params.data.outlet_id !== undefined ? { outlet_id: params.data.outlet_id } : {})
           })
           .select()
@@ -1732,8 +1766,20 @@ export const useUpdateCustomer = () => {
           phone: params.data.phone || null,
           membership_type: params.data.membershipType || params.data.membership_type || 'non_member',
         };
-        if (params.data.sales_name) {
+        if (params.data.sales_name !== undefined) {
           updateData.sales_name = params.data.sales_name;
+        }
+        if (params.data.customer_id_manual !== undefined) {
+          updateData.customer_id_manual = params.data.customer_id_manual;
+        }
+        if (params.data.address !== undefined) {
+          updateData.address = params.data.address;
+        }
+        if (params.data.district !== undefined) {
+          updateData.district = params.data.district;
+        }
+        if (params.data.city !== undefined) {
+          updateData.city = params.data.city;
         }
         if (params.data.outlet_id !== undefined) {
           updateData.outlet_id = params.data.outlet_id;
@@ -1822,6 +1868,9 @@ export const useCreateTransaction = () => {
           ...basePayload,
           discount_note: params.data.discountNote?.trim() || null,
           customer_type: customerType,
+          payment_status: params.data.paymentStatus || 'paid',
+          due_date: params.data.dueDate || null,
+          remaining_balance: params.data.remainingBalance || 0,
         };
 
         let { data, error } = await supabase
@@ -1874,12 +1923,20 @@ export const useCreateTransaction = () => {
             const productId = item.productId || item.product_id;
             const quantity = item.quantity;
             const conversionFactor = item.conversionFactor || item.conversion_factor || 1;
-            const totalPcs = quantity * conversionFactor;
+            const totalPcs = quantity; // Already in base pcs
             
             const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', productId).single();
             if (product && product.stock_quantity !== null) {
               const newStock = Math.max(0, product.stock_quantity - totalPcs);
               await supabase.from('products').update({ stock_quantity: newStock }).eq('id', productId);
+              
+              await supabase.from('stock_movements').insert({
+                product_id: productId,
+                quantity: -totalPcs,
+                type: 'sale',
+                reference_id: data.id.toString(),
+                note: `Penjualan POS (${item.unitQty || item.unit_qty || Math.round(totalPcs / conversionFactor)} ${item.unitName || item.unit_name || 'pcs'})`
+              });
             }
           }
         }
@@ -3179,7 +3236,7 @@ export const useListReturns = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sales_returns')
-        .select('*, customers(name, phone), sales_return_items(*, products(image_url))')
+        .select('*, customers(name, phone), sales_return_items(*, products(image_url), transaction_items(conversion_factor))')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -3203,7 +3260,7 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
       
       const { data: items, error: itemsError } = await supabase
         .from('transaction_items')
-        .select('*, products(image_url)')
+        .select('*, products(image_url, product_uoms(*))')
         .eq('transaction_id', transactionId);
         
       if (itemsError) throw itemsError;
@@ -3213,28 +3270,39 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
         .from('sales_returns')
         .select('id')
         .eq('transaction_id', transactionId);
-        
-      let returnedQuantities: Record<number, number> = {};
-      
+      let returnItemsData: any[] | null = null;
       if (returnsData && returnsData.length > 0) {
         const returnIds = returnsData.map(r => r.id);
-        const { data: returnItemsData } = await supabase
+        const { data: riData } = await supabase
           .from('sales_return_items')
-          .select('transaction_item_id, quantity')
+          .select('transaction_item_id, quantity, unit_name')
           .in('return_id', returnIds);
           
-        if (returnItemsData) {
-          returnItemsData.forEach(ri => {
-            returnedQuantities[ri.transaction_item_id] = (returnedQuantities[ri.transaction_item_id] || 0) + ri.quantity;
-          });
-        }
+        returnItemsData = riData;
       }
       
-      const itemsWithReturnData = items.map(item => ({
-        ...item,
-        already_returned_qty: returnedQuantities[item.id] || 0,
-        image_url: item.products?.image_url || null
-      }));
+      const itemsWithReturnData = items.map(item => {
+        const uoms = (item.products?.product_uoms || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
+        
+        let returnedBaseQty = 0;
+        if (returnItemsData) {
+          const itemReturns = returnItemsData.filter(ri => ri.transaction_item_id === item.id);
+          itemReturns.forEach(ri => {
+            const uom = uoms.find((u: any) => u.unit_name === ri.unit_name);
+            // If unit is not found, fallback to 1 (assume pcs)
+            const conv = uom ? uom.conversion_factor : 1;
+            returnedBaseQty += ri.quantity * conv;
+          });
+        }
+        
+        return {
+          ...item,
+          already_returned_base_qty: returnedBaseQty,
+          already_returned_qty: returnedBaseQty / (item.conversion_factor || 1), // Optional backward compatibility
+          image_url: item.products?.image_url || null,
+          uoms
+        };
+      });
       
       return { ...trx, items: itemsWithReturnData };
     },
@@ -3273,9 +3341,9 @@ export const useCreateReturn = () => {
           transaction_item_id: item.id, // using item.id from transaction_items
           product_id: item.product_id,
           product_name: item.product_name,
-          unit_name: item.unit_name || null,
+          unit_name: item.return_unit_name || item.unit_name || null,
           quantity: item.return_quantity,
-          refund_price: item.price,
+          refund_price: item.return_price || item.price,
           subtotal: item.return_subtotal
         }));
         
@@ -3286,15 +3354,27 @@ export const useCreateReturn = () => {
         if (itemsError) throw itemsError;
 
         const isCompleted = (params.status || 'completed') === 'completed';
+        const isDamagedOrExpired = params.reason === 'Barang Rusak/Cacat' || params.reason === 'Barang Kadaluarsa';
+        
         if (isCompleted) {
           for (const item of params.items) {
-            const conversionFactor = item.conversion_factor || 1;
+            const conversionFactor = item.return_conversion_factor || item.conversion_factor || 1;
             const totalPcsReturned = item.return_quantity * conversionFactor;
             
             const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
             if (product && product.stock_quantity !== null) {
-              const newStock = product.stock_quantity + totalPcsReturned;
-              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
+              if (!isDamagedOrExpired) {
+                const newStock = product.stock_quantity + totalPcsReturned;
+                await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
+              }
+              
+              await supabase.from('stock_movements').insert({
+                product_id: item.product_id,
+                quantity: isDamagedOrExpired ? 0 : totalPcsReturned,
+                type: isDamagedOrExpired ? 'damaged_return' : 'return_from_customer',
+                reference_id: returnData.id.toString(),
+                note: params.reason + (isDamagedOrExpired ? ` (Retur ${totalPcsReturned} pcs, Tidak masuk stok)` : '')
+              });
             }
           }
         }
@@ -3336,6 +3416,16 @@ export const useConfirmReturn = () => {
 
         if (itemsError) throw itemsError;
 
+        // Fetch return reason
+        const { data: salesReturn, error: returnError } = await supabase
+          .from('sales_returns')
+          .select('reason')
+          .eq('id', params.returnId)
+          .single();
+          
+        if (returnError) throw returnError;
+        const isDamagedOrExpired = salesReturn?.reason === 'Barang Rusak/Cacat' || salesReturn?.reason === 'Barang Kadaluarsa';
+
         if (returnItems) {
           for (const item of returnItems) {
             const { data: trxItem } = await supabase.from('transaction_items').select('conversion_factor').eq('id', item.transaction_item_id).single();
@@ -3344,8 +3434,18 @@ export const useConfirmReturn = () => {
 
             const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
             if (product && product.stock_quantity !== null) {
-              const newStock = product.stock_quantity + totalPcsReturned;
-              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
+              if (!isDamagedOrExpired) {
+                const newStock = product.stock_quantity + totalPcsReturned;
+                await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
+              }
+              
+              await supabase.from('stock_movements').insert({
+                product_id: item.product_id,
+                quantity: isDamagedOrExpired ? 0 : totalPcsReturned,
+                type: isDamagedOrExpired ? 'damaged_return' : 'return_from_customer',
+                reference_id: params.returnId.toString(),
+                note: (salesReturn?.reason || 'Retur penjualan dari pelanggan') + (isDamagedOrExpired ? ` (Retur ${totalPcsReturned} pcs, Tidak masuk stok)` : ' (Dikonfirmasi)')
+              });
             }
           }
         }
@@ -3390,4 +3490,129 @@ export const useDeleteReturn = () => {
     },
     isPending
   };
+};
+
+export const useCreateTransactionPayment = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async (params: any, options?: any) => {
+      setIsPending(true);
+      try {
+        const payload = {
+          transaction_id: params.transactionId,
+          amount: params.amount,
+          payment_method: params.paymentMethod,
+          cashier_name: params.cashierName,
+          notes: params.notes || null,
+        };
+
+        const { data: payment, error: paymentError } = await supabase
+          .from('transaction_payments')
+          .insert(withTenantOwner(payload))
+          .select()
+          .single();
+
+        if (paymentError) throw paymentError;
+
+        // Update transaction remaining balance and status
+        const { data: trx } = await supabase
+          .from('transactions')
+          .select('remaining_balance')
+          .eq('id', params.transactionId)
+          .single();
+
+        if (trx) {
+          const newBalance = Math.max(0, trx.remaining_balance - params.amount);
+          const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+
+          const { error: trxError } = await supabase
+            .from('transactions')
+            .update({
+              remaining_balance: newBalance,
+              payment_status: newStatus
+            })
+            .eq('id', params.transactionId);
+
+          if (trxError) throw trxError;
+        }
+
+        if (options?.onSuccess) options.onSuccess(payment);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending
+  };
+};
+
+export const useListReceivables = () => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchReceivables = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          customer:customers(id, name, phone)
+        `)
+        .not('due_date', 'is', null)
+        .order('due_date', { ascending: true });
+
+      if (error) throw error;
+      setData(data || []);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReceivables();
+  }, []);
+
+  return { data, isLoading, error, refetch: fetchReceivables };
+};
+
+export const useListTransactionPayments = (transactionId: number | null) => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchPayments = async () => {
+    if (!transactionId) {
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('transaction_payments')
+        .select('*')
+        .eq('transaction_id', transactionId)
+        .order('payment_date', { ascending: true });
+
+      if (error) throw error;
+      setData(data || []);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPayments();
+  }, [transactionId]);
+
+  return { data, isLoading, error, refetch: fetchPayments };
 };

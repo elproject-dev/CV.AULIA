@@ -61,3 +61,17 @@ export function formatPaymentMethod(method?: string): string {
       return method?.replace(/_/g, " ") || "-";
   }
 }
+
+export function formatSimpleDate(dateStr: string | Date | null | undefined): string {
+  try {
+    if (!dateStr) return '-';
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    if (isNaN(date.getTime())) return '-';
+    const day = date.getDate();
+    const month = new Intl.DateTimeFormat("id-ID", { month: "short" }).format(date);
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  } catch (error) {
+    return '-';
+  }
+}

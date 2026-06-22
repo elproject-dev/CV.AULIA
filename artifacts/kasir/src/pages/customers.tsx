@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { useListCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from "@workspace/api-client-react";
 import { formatRupiah } from "@/lib/formatters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Edit, Trash2, Phone, Award, Users, Download, Store, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Phone, Award, Users, Download, Store, AlertTriangle, Copy } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ export default function CustomersPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [search, setSearch] = useState("");
+  const [salesFilter, setSalesFilter] = useState<string>("all");
   const [lookupPhone, setLookupPhone] = useState("");
   const [lookupResult, setLookupResult] = useState<any>(null);
   const { data: customers, isLoading } = useListCustomers();
@@ -49,18 +50,18 @@ export default function CustomersPage() {
   const handleOpenDialog = (customer?: any) => {
     if (customer) {
       setEditingCustomer(customer);
-      setFormData({ 
-        name: customer.name, 
-        phone: customer.phone || "", 
+      setFormData({
+        name: customer.name,
+        phone: customer.phone || "",
         membershipType: getMembershipStatus(customer),
         outlet_id: customer.outlet_id ? customer.outlet_id.toString() : "all"
       });
     } else {
       setEditingCustomer(null);
       const currentOutletIdStr = localStorage.getItem('selectedOutletId') || "all";
-      setFormData({ 
-        name: "", 
-        phone: "", 
+      setFormData({
+        name: "",
+        phone: "",
         membershipType: "member",
         outlet_id: (!isAdmin && user?.outletId) ? user.outletId : currentOutletIdStr
       });
@@ -131,9 +132,13 @@ export default function CustomersPage() {
 
     const columns = [
       { header: "No", key: "No", width: 5 },
+      { header: "ID Pelanggan", key: "ID Pelanggan", width: 20 },
       { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 30 },
       { header: "No. Telepon", key: "No. Telepon", width: 15 },
       { header: "Status", key: "Status", width: 12 },
+      { header: "Alamat", key: "Alamat", width: 40 },
+      { header: "Kecamatan", key: "Kecamatan", width: 20 },
+      { header: "Kabupaten", key: "Kabupaten", width: 20 },
       { header: "Total Belanja", key: "Total Belanja", width: 20 },
       { header: "Bergabung Sejak", key: "Bergabung Sejak", width: 18 },
     ];
@@ -141,12 +146,16 @@ export default function CustomersPage() {
     const data = customers.map((c: any, index: number) => {
       const date = new Date(c.created_at);
       const formattedDate = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-      
+
       return {
         "No": index + 1,
+        "ID Pelanggan": c.customer_id_manual || "-",
         "Nama Pelanggan": c.name || "-",
         "No. Telepon": c.phone || "-",
         "Status": getMembershipStatus(c) === "member" ? "MEMBER" : "REGULER",
+        "Alamat": c.address || "-",
+        "Kecamatan": c.district || "-",
+        "Kabupaten": c.city || "-",
         "Total Belanja": c.total_spent || 0,
         "Bergabung Sejak": formattedDate
       };
@@ -171,7 +180,16 @@ export default function CustomersPage() {
 
   const activeOutletId = null;
 
+  const uniqueSalesNames = useMemo(() => {
+    if (!customers) return [];
+    const names = customers.map(c => c.sales_name).filter(Boolean);
+    return Array.from(new Set(names));
+  }, [customers]);
+
   const filteredCustomers = customers?.filter((customer: any) => {
+    if (salesFilter !== "all" && customer.sales_name !== salesFilter) {
+      return false;
+    }
     // Filter by outlet (Hide if customer belongs to a DIFFERENT specific outlet)
     if (activeOutletId !== null) {
       if (customer.outlet_id != null && customer.outlet_id !== activeOutletId) {
@@ -212,7 +230,19 @@ export default function CustomersPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
               <Input placeholder="Cari pelanggan..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
             </div>
-
+            <div className="w-full sm:w-[200px]">
+              <Select value={salesFilter} onValueChange={setSalesFilter}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Semua Sales" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Sales</SelectItem>
+                  {uniqueSalesNames.map((name: any) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Mobile Card List */}
@@ -225,8 +255,8 @@ export default function CustomersPage() {
               filteredCustomers?.map((customer: any) => {
                 const status = getMembershipStatus(customer);
                 return (
-                  <div 
-                    key={customer.id} 
+                  <div
+                    key={customer.id}
                     className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-primary/20 hover:shadow-md active:bg-primary/5 transition-all duration-200"
                     onClick={() => setSelectedCustomerDetail(customer)}
                   >
@@ -279,6 +309,7 @@ export default function CustomersPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50 dark:bg-slate-800/50">
+                  <TableHead className="w-[140px]">ID Pelanggan</TableHead>
                   <TableHead>Nama Pelanggan</TableHead>
                   <TableHead>Kontak</TableHead>
                   <TableHead className="text-center">Status</TableHead>
@@ -289,18 +320,19 @@ export default function CustomersPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
                 ) : filteredCustomers?.length === 0 ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                 ) : (
                   filteredCustomers?.map((customer: any) => {
                     const status = getMembershipStatus(customer);
                     return (
-                      <TableRow 
-                        key={customer.id} 
+                      <TableRow
+                        key={customer.id}
                         className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-sm relative hover:z-10 transition-all duration-200 cursor-pointer"
                         onClick={() => setSelectedCustomerDetail(customer)}
                       >
+                        <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">{customer.customer_id_manual || "-"}</TableCell>
                         <TableCell className="font-medium text-slate-900 dark:text-white whitespace-nowrap">{customer.name}</TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">{customer.phone || "-"}</TableCell>
                         <TableCell className="text-center whitespace-nowrap">
@@ -430,10 +462,30 @@ export default function CustomersPage() {
             <div className="space-y-4 py-4">
               <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800 space-y-4">
                 <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">ID Pelanggan</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-slate-900 dark:text-white text-lg">{selectedCustomerDetail.customer_id_manual || "-"}</p>
+                    {selectedCustomerDetail.customer_id_manual && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedCustomerDetail.customer_id_manual);
+                          toast({ title: "Tersalin", description: "ID Pelanggan berhasil disalin ke clipboard" });
+                        }}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Nama Lengkap</p>
                   <p className="font-semibold text-slate-900 dark:text-white text-lg">{selectedCustomerDetail.name}</p>
                 </div>
-                
+
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Telepon</p>
                   <p className="font-medium text-slate-700 dark:text-slate-300">{selectedCustomerDetail.phone || "-"}</p>
@@ -452,12 +504,38 @@ export default function CustomersPage() {
                   )}
                 </div>
 
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Belanja</p>
-                  <p className="font-semibold text-slate-700 dark:text-slate-300">
-                    {formatRupiah(selectedCustomerDetail.total_spent || 0)}
-                  </p>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Belanja</p>
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">
+                      {formatRupiah(selectedCustomerDetail.total_spent || 0)}
+                    </p>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Bergabung Sejak</p>
+                    <p className="font-medium text-slate-700 dark:text-slate-300">
+                      {selectedCustomerDetail.created_at
+                        ? new Date(selectedCustomerDetail.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : "-"}
+                    </p>
+                  </div>
                 </div>
+
+                {(selectedCustomerDetail.address || selectedCustomerDetail.district || selectedCustomerDetail.city) && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Alamat</p>
+                    <p className="font-medium text-slate-700 dark:text-slate-300">
+                      {selectedCustomerDetail.address ? `${selectedCustomerDetail.address}` : "-"}
+                    </p>
+                    {(selectedCustomerDetail.district || selectedCustomerDetail.city) && (
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                        {selectedCustomerDetail.district ? `Kec. ${selectedCustomerDetail.district}` : ""}
+                        {selectedCustomerDetail.district && selectedCustomerDetail.city ? ", " : ""}
+                        {selectedCustomerDetail.city ? `Kab. ${selectedCustomerDetail.city}` : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

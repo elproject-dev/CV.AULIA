@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw, Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ const ALL_LINKS = [
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
   { href: "/transactions", label: "Riwayat Transaksi", icon: History, adminOnly: false },
   { href: "/expenses", label: "Pengeluaran", icon: Wallet, adminOnly: false },
+  { href: "/receivables", label: "Piutang", icon: Banknote, adminOnly: false },
   { href: "#profile", label: "Profil", icon: User, adminOnly: false, kasirOnly: true },
   { href: "/promo", label: "Promo", icon: Megaphone, adminOnly: true },
   { href: "/settings", label: "Pengaturan", icon: Settings, adminOnly: false },

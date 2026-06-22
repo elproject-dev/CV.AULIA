@@ -22,7 +22,9 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  Trash2
+  Trash2,
+  Banknote,
+  TrendingDown
 } from "lucide-react";
 import {
   useListReturns,
@@ -46,6 +48,7 @@ export default function CustomerReturnsPage() {
 
   // Return Form State
   const [returnItems, setReturnItems] = useState<Record<number, number>>({}); // transaction_item_id -> return quantity
+  const [returnUnits, setReturnUnits] = useState<Record<number, any>>({}); // transaction_item_id -> selected uom object
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -59,6 +62,12 @@ export default function CustomerReturnsPage() {
   const pendingReturns = returnHistory?.filter((r: any) => r.status === 'pending') || [];
   const completedReturns = returnHistory?.filter((r: any) => r.status === 'completed') || [];
 
+  // Summary Metrics
+  const totalPermintaan = returnHistory?.length || 0;
+  const totalBarangDiretur = returnHistory?.reduce((sum: number, r: any) => sum + (r.sales_return_items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity * (item.transaction_items?.conversion_factor || 1)), 0) || 0), 0) || 0;
+  const totalBarangRusak = returnHistory?.filter((r: any) => r.reason === 'Barang Rusak/Cacat' || r.reason === 'Barang Kadaluarsa').reduce((sum: number, r: any) => sum + (r.sales_return_items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity * (item.transaction_items?.conversion_factor || 1)), 0) || 0), 0) || 0;
+  const totalNilaiRefund = returnHistory?.reduce((sum: number, r: any) => sum + Number(r.total_refund || 0), 0) || 0;
+
   // Handle Search
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +77,7 @@ export default function CustomerReturnsPage() {
     const id = idMatch ? parseInt(idMatch[0], 10).toString() : searchInvoice;
     setSearchedId(id);
     setReturnItems({});
+    setReturnUnits({});
     setReason("");
     setNotes("");
   };
@@ -80,13 +90,27 @@ export default function CustomerReturnsPage() {
     }));
   };
 
+  const handleReturnUnitChange = (item: any, uom: any, maxLimitInSelectedUnit: number) => {
+    setReturnUnits(prev => ({ ...prev, [item.id]: uom }));
+    // Clamp quantity to new max limit
+    if (returnItems[item.id] !== undefined) {
+      setReturnItems(prev => ({
+        ...prev,
+        [item.id]: Math.min(maxLimitInSelectedUnit, prev[item.id])
+      }));
+    }
+  };
+
   // Calculate totals
   const totalRefundItems = Object.values(returnItems).reduce((sum, qty) => sum + qty, 0);
   let totalRefundAmount = 0;
   if (transaction?.items) {
     totalRefundAmount = transaction.items.reduce((sum: number, item: any) => {
       const qty = returnItems[item.id] || 0;
-      return sum + (qty * Number(item.price));
+      const selectedUnit = returnUnits[item.id] || { unit_name: item.unit_name || 'PCS', conversion_factor: item.conversion_factor || 1 };
+      const basePrice = Number(item.price);
+      const refundPrice = basePrice * (selectedUnit.conversion_factor || 1);
+      return sum + (qty * refundPrice);
     }, 0);
   }
 
@@ -106,11 +130,20 @@ export default function CustomerReturnsPage() {
     // Filter items that have return quantity > 0
     const itemsToReturn = transaction.items
       .filter((item: any) => (returnItems[item.id] || 0) > 0)
-      .map((item: any) => ({
-        ...item,
-        return_quantity: returnItems[item.id],
-        return_subtotal: returnItems[item.id] * Number(item.price)
-      }));
+      .map((item: any) => {
+        const qty = returnItems[item.id] || 0;
+        const selectedUnit = returnUnits[item.id] || { unit_name: item.unit_name || 'PCS', conversion_factor: item.conversion_factor || 1 };
+        const basePrice = Number(item.price);
+        const refundPrice = basePrice * (selectedUnit.conversion_factor || 1);
+        return {
+          ...item,
+          return_unit_name: selectedUnit.unit_name,
+          return_conversion_factor: selectedUnit.conversion_factor,
+          return_quantity: qty,
+          return_price: refundPrice,
+          return_subtotal: qty * refundPrice
+        };
+      });
 
     createReturn.mutate({
       transactionId: transaction.id,
@@ -326,6 +359,78 @@ export default function CustomerReturnsPage() {
         <div className="p-4 sm:p-6 flex-1 overflow-auto">
           {activeTab === 'new' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 items-stretch">
+                <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-emerald-100 text-xs sm:text-sm font-medium">Total Permintaan</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
+                          {totalPermintaan} <span className="text-sm font-normal text-emerald-200">laporan</span>
+                        </p>
+                      </div>
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Receipt className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-xs mt-3 text-emerald-200">seluruh laporan retur terdata</p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-indigo-100 text-xs sm:text-sm font-medium">Total Barang Diretur</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
+                          {totalBarangDiretur} <span className="text-sm font-normal text-indigo-200">pcs</span>
+                        </p>
+                      </div>
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <PackageOpen className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-xs mt-3 text-indigo-200">kuantitas dari semua retur</p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-gradient-to-br from-red-500 to-red-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-red-100 text-xs sm:text-sm font-medium">Barang Rusak</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
+                          {totalBarangRusak} <span className="text-sm font-normal text-red-200">pcs</span>
+                        </p>
+                      </div>
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <TrendingDown className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-xs mt-3 text-red-200">kondisi buruk tidak masuk stok</p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-purple-100 text-xs sm:text-sm font-medium">Total Nilai Refund</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
+                          {formatRupiah(totalNilaiRefund)}
+                        </p>
+                      </div>
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Banknote className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                      </div>
+                    </div>
+                    <p className="text-xs mt-3 text-purple-200">nominal pengembalian dana</p>
+                  </div>
+                </div>
+              </div>
+
               <Card className="shadow-sm border-slate-200 dark:border-slate-800">
                 <CardHeader className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
                   <CardTitle className="text-lg">Cari Transaksi</CardTitle>
@@ -338,7 +443,7 @@ export default function CustomerReturnsPage() {
                       <Input
                         value={searchInvoice}
                         onChange={(e) => setSearchInvoice(e.target.value)}
-                        placeholder="Contoh: INV-00123 atau 123"
+                        placeholder="Contoh: TRX-ID00123 atau 123"
                         className="pl-9"
                         autoFocus
                       />
@@ -365,6 +470,21 @@ export default function CustomerReturnsPage() {
                 </div>
               ) : transaction ? (
                 <div className="flex flex-col gap-6 w-full">
+                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 flex items-center gap-4 shadow-sm">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <User className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <div className="text-sm text-slate-500 mb-0.5">Informasi Pelanggan</div>
+                      <div className="font-bold text-slate-900 dark:text-white text-lg">
+                        {transaction.customers?.name || 'Pelanggan Umum'}
+                      </div>
+                      {transaction.customers?.phone && (
+                        <div className="text-sm text-slate-500 mt-0.5">{transaction.customers.phone}</div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="space-y-6">
                     <Card className="shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden">
                       <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 p-4 sm:p-5">
@@ -375,29 +495,44 @@ export default function CustomerReturnsPage() {
                             </CardTitle>
                             <CardDescription>Pilih barang yang akan diretur</CardDescription>
                           </div>
-                          <Badge variant="outline" className="font-mono text-sm px-3 py-1 bg-white dark:bg-slate-950">
-                            INV-{transaction.id.toString().padStart(5, '0')}
-                          </Badge>
+                          <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center mt-2 sm:mt-0">
+                            {transaction.cashier_name && (
+                              <Badge variant="outline" className="text-xs sm:text-sm px-3 py-1 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-medium flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5" />
+                                {transaction.cashier_name}
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="font-mono text-sm px-3 py-1 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700">
+                              INV-{transaction.id.toString().padStart(5, '0')}
+                            </Badge>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="p-0">
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm text-left block sm:table">
-                            <thead className="hidden sm:table-header-group bg-slate-50/50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 uppercase text-xs">
+                          <table className="w-full text-sm text-left block sm:table border-collapse">
+                            <thead className="hidden sm:table-header-group bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 uppercase text-[11px] font-bold tracking-wider">
                               <tr>
-                                <th className="px-5 py-3.5">Produk</th>
-                                <th className="px-5 py-3.5 text-right">Harga</th>
-                                <th className="px-5 py-3.5 text-center">Dibeli</th>
-                                <th className="px-5 py-3.5 text-center bg-orange-50/50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-400">Jml Retur</th>
+                                <th className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">Produk</th>
+                                <th className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 text-right">Harga</th>
+                                <th className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 text-center">Dibeli</th>
+                                <th className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 text-center bg-orange-50/50 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 w-[280px]">Jumlah Retur</th>
                               </tr>
                             </thead>
-                            <tbody className="block sm:table-row-group divide-y sm:divide-y divide-slate-100 dark:divide-slate-800">
-                              {transaction.items?.map((item: any) => (
-                                <tr key={item.id} className="block sm:table-row hover:bg-slate-50/20 dark:hover:bg-slate-800/20 p-4 sm:p-0">
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-2 sm:py-4">
-                                    <div className="flex items-center gap-3">
+                            <tbody className="block sm:table-row-group divide-y sm:divide-y-0 divide-slate-100 dark:divide-slate-800">
+                              {transaction.items?.map((item: any) => {
+                                const selectedUnit = returnUnits[item.id] || { unit_name: item.unit_name || 'PCS', conversion_factor: item.conversion_factor || 1 };
+                                const baseRemaining = item.quantity - (item.already_returned_base_qty || 0);
+                                const maxInSelectedUnit = Math.floor(baseRemaining / (selectedUnit.conversion_factor || 1));
+                                const hasUoms = item.uoms && item.uoms.length > 0;
+                                const isLunas = baseRemaining <= 0;
+
+                                return (
+                                <tr key={item.id} className="block sm:table-row hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors p-4 sm:p-0 sm:border-b border-slate-100 dark:border-slate-800 last:border-0 relative">
+                                  <td className="block sm:table-cell px-0 sm:px-5 py-2 sm:py-5 align-middle">
+                                    <div className="flex items-center gap-4">
                                       {item.image_url ? (
-                                        <div className="w-12 h-12 sm:w-10 sm:h-10 rounded-md overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 border border-slate-200 dark:border-slate-700">
+                                        <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-white dark:bg-slate-800 flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80 shadow-sm">
                                           <img
                                             src={getProductImageUrl(item.image_url)}
                                             alt={item.product_name}
@@ -411,68 +546,99 @@ export default function CustomerReturnsPage() {
                                               }
                                             }}
                                           />
-                                          <div className="w-full h-full flex items-center justify-center hidden">
+                                          <div className="w-full h-full flex items-center justify-center hidden bg-slate-50 dark:bg-slate-800/50">
                                             <Package className="w-5 h-5 text-slate-400" />
                                           </div>
                                         </div>
                                       ) : (
-                                        <div className="w-12 h-12 sm:w-10 sm:h-10 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-200 dark:border-slate-700">
+                                        <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80 shadow-sm">
                                           <Package className="w-6 h-6 sm:w-5 sm:h-5 text-slate-400" />
                                         </div>
                                       )}
-                                      <div className="font-semibold text-slate-900 dark:text-white text-base sm:text-sm">{item.product_name}</div>
+                                      <div className="font-bold text-slate-900 dark:text-white text-[15px] leading-tight">{item.product_name}</div>
                                     </div>
                                   </td>
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-4 text-left sm:text-right font-medium">
+                                  <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-5 align-middle text-left sm:text-right">
                                     <div className="flex sm:block justify-between items-center">
-                                      <span className="sm:hidden text-slate-500">Harga:</span>
-                                      <span>{formatRupiah(item.price)}</span>
+                                      <span className="sm:hidden text-slate-500 font-medium text-xs uppercase tracking-wider">Harga:</span>
+                                      <span className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah(item.price)}</span>
                                     </div>
                                   </td>
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-4 text-left sm:text-center text-slate-600">
+                                  <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-5 align-middle text-left sm:text-center">
                                     <div className="flex sm:block justify-between items-center">
-                                      <span className="sm:hidden text-slate-500">Dibeli:</span>
-                                      <div className="text-right sm:text-center">
-                                        <div className="font-semibold">{item.quantity} <span className="text-xs font-normal text-slate-400">{item.unit_name || 'PCS'}</span></div>
+                                      <span className="sm:hidden text-slate-500 font-medium text-xs uppercase tracking-wider">Dibeli:</span>
+                                      <div className="text-right sm:text-center flex flex-col sm:items-center">
+                                        <div className="font-bold text-slate-900 dark:text-white text-base">
+                                          {item.unit_qty || (item.quantity / (item.conversion_factor || 1))} <span className="text-sm font-medium text-slate-500 dark:text-slate-400 ml-0.5">{item.unit_name || 'PCS'}</span>
+                                        </div>
                                         {item.already_returned_qty > 0 && (
-                                          <div className="text-[10px] text-orange-600 dark:text-orange-400 font-medium sm:mt-1 leading-tight">
-                                            Sudah Retur: <span className="sm:hidden">{item.already_returned_qty} {item.unit_name || 'PCS'}</span>
-                                            <br className="hidden sm:block" />
-                                            <span className="hidden sm:inline">{item.already_returned_qty} {item.unit_name || 'PCS'}</span>
-                                          </div>
+                                          <Badge variant="outline" className="mt-1.5 text-[10px] text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-900/20 font-medium flex items-center gap-1 px-1.5 py-0.5 w-fit sm:mx-auto">
+                                            Sudah Retur: {item.already_returned_qty} {item.unit_name || 'PCS'}
+                                          </Badge>
                                         )}
                                       </div>
                                     </div>
                                   </td>
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-3 sm:py-4 sm:bg-orange-50/20 sm:dark:bg-orange-900/10 mt-2 sm:mt-0 border-t sm:border-0 border-dashed border-slate-200 dark:border-slate-700">
-                                    <div className="flex justify-between sm:justify-center items-center h-full">
-                                      <span className="sm:hidden font-semibold text-orange-700 dark:text-orange-400">Jml Retur:</span>
-                                      {item.quantity - (item.already_returned_qty || 0) <= 0 ? (
-                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 whitespace-nowrap">
-                                          Sudah Lunas
+                                  <td className="block sm:table-cell px-0 sm:px-5 py-4 sm:py-5 sm:bg-orange-50/30 sm:dark:bg-orange-900/10 mt-3 sm:mt-0 border-t sm:border-0 border-dashed border-slate-200 dark:border-slate-800 align-middle">
+                                    <div className="flex flex-col items-start sm:items-center justify-center gap-2 w-full">
+                                      <span className="sm:hidden font-bold text-orange-700 dark:text-orange-400 text-xs uppercase tracking-wider mb-1">Jumlah Retur:</span>
+                                      
+                                      {isLunas ? (
+                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 whitespace-nowrap px-3 py-1 font-medium">
+                                          Sudah Maksimal
                                         </Badge>
                                       ) : (
-                                        <div className="flex items-center gap-2">
-                                          <Input
-                                            type="number"
-                                            min="0"
-                                            max={item.quantity - (item.already_returned_qty || 0)}
-                                            value={returnItems[item.id] || ''}
-                                            onChange={(e) => handleReturnQtyChange(item.id, e.target.value, item.quantity - (item.already_returned_qty || 0))}
-                                            className="w-20 text-center font-bold focus-visible:ring-orange-400"
-                                            placeholder="0"
-                                          />
-                                          {item.already_returned_qty > 0 && (
-                                            <span className="text-[10px] text-slate-500 hidden sm:inline">
-                                              (Maks: {item.quantity - (item.already_returned_qty || 0)})
-                                            </span>
+                                        <div className="flex flex-col sm:items-center gap-2 w-full">
+                                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                                            <Input
+                                              type="number"
+                                              min="0"
+                                              max={maxInSelectedUnit}
+                                              value={returnItems[item.id] || ''}
+                                              onChange={(e) => handleReturnQtyChange(item.id, e.target.value, maxInSelectedUnit)}
+                                              className="w-full sm:w-20 text-center font-bold text-lg h-10 border-slate-300 focus-visible:ring-orange-400 focus-visible:border-orange-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all shadow-sm"
+                                              placeholder="0"
+                                            />
+                                            {hasUoms ? (
+                                              <Select
+                                                value={selectedUnit.unit_name}
+                                                onValueChange={(val) => {
+                                                  const uom = item.uoms.find((u: any) => u.unit_name === val);
+                                                  if (uom) {
+                                                    const newMax = Math.floor(baseRemaining / (uom.conversion_factor || 1));
+                                                    handleReturnUnitChange(item, uom, newMax);
+                                                  }
+                                                }}
+                                              >
+                                                <SelectTrigger className="w-28 h-10 font-medium bg-white dark:bg-slate-950 border-slate-300 shadow-sm focus:ring-orange-400 focus:border-orange-400">
+                                                  <SelectValue placeholder="Satuan" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {Array.from(new Map(item.uoms.map((u: any) => [u.unit_name, u])).values()).map((u: any) => (
+                                                    <SelectItem key={u.id || u.unit_name} value={u.unit_name} className="font-medium">
+                                                      {u.unit_name}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            ) : (
+                                              <div className="h-10 px-3 flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md">
+                                                <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">{selectedUnit.unit_name}</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          {baseRemaining > 0 && (
+                                            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center justify-start sm:justify-center w-full gap-1">
+                                              Maksimal: <span className="font-bold text-slate-700 dark:text-slate-300">{maxInSelectedUnit} {selectedUnit.unit_name}</span>
+                                            </div>
                                           )}
                                         </div>
                                       )}
                                     </div>
                                   </td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -485,69 +651,73 @@ export default function CustomerReturnsPage() {
                       <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
                         <CardTitle className="text-base">Informasi Retur</CardTitle>
                       </CardHeader>
-                      <CardContent className="p-5 space-y-5 grid sm:grid-cols-2 gap-x-6 gap-y-5">
-                        <div className="sm:col-span-2 bg-slate-50 dark:bg-slate-900 rounded-lg p-4 border border-slate-100 dark:border-slate-800 flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <User className="w-5 h-5 text-primary" />
+                      <CardContent className="p-6 space-y-6">
+                        <div className="grid sm:grid-cols-2 gap-6">
+                          <div className="space-y-3 flex flex-col">
+                            <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                              Alasan Retur <span className="text-red-500">*</span>
+                            </label>
+                            <Select value={reason} onValueChange={setReason}>
+                              <SelectTrigger className="h-12 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm focus:ring-orange-400 focus:border-orange-400 transition-all font-medium">
+                                <SelectValue placeholder="Pilih alasan pengembalian..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Barang Rusak/Cacat" className="font-medium">Barang Rusak / Cacat</SelectItem>
+                                <SelectItem value="Barang Kadaluarsa" className="font-medium">Barang Kadaluarsa</SelectItem>
+                                <SelectItem value="Salah Produk/Varian" className="font-medium">Salah Produk / Varian</SelectItem>
+                                <SelectItem value="Tidak Sesuai Pesanan" className="font-medium">Tidak Sesuai Pesanan</SelectItem>
+                                <SelectItem value="Toko Tutup" className="font-medium">Toko Tutup</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
-                          <div>
-                            <div className="text-xs text-slate-500">Pelanggan</div>
-                            <div className="font-semibold text-slate-900 dark:text-white">
-                              {transaction.customers?.name || 'Pelanggan Umum'}
+
+                          <div className="space-y-3 flex flex-col">
+                            <label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                              Catatan Tambahan
+                            </label>
+                            <textarea
+                              className="w-full flex-1 min-h-[48px] p-3 text-sm rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:border-orange-400 transition-all resize-none font-medium text-slate-700 dark:text-slate-300 placeholder:text-slate-400"
+                              placeholder="Opsional: Tuliskan detail kendala di sini..."
+                              value={notes}
+                              onChange={(e) => setNotes(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900/50 rounded-xl p-5 sm:p-6 border border-slate-200/60 dark:border-slate-700/60 shadow-sm relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-bl-full pointer-events-none -mr-10 -mt-10"></div>
+                          
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700">
+                                <Receipt className="w-6 h-6 text-slate-400" />
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold text-slate-500 mb-1">Total Barang Diretur</div>
+                                <div className="font-bold text-slate-900 dark:text-white text-lg">{totalRefundItems} <span className="text-sm font-medium text-slate-500">items</span></div>
+                              </div>
                             </div>
-                            {transaction.customers?.phone && (
-                              <div className="text-xs text-slate-500 mt-0.5">{transaction.customers.phone}</div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <label className="text-sm font-semibold">Alasan Retur <span className="text-red-500">*</span></label>
-                          <Select value={reason} onValueChange={setReason}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Pilih alasan..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Barang Rusak/Cacat">Barang Rusak / Cacat</SelectItem>
-                              <SelectItem value="Barang Kadaluarsa">Barang Kadaluarsa</SelectItem>
-                              <SelectItem value="Salah Produk/Varian">Salah Produk / Varian</SelectItem>
-                              <SelectItem value="Tidak Sesuai Pesanan">Tidak Sesuai Pesanan</SelectItem>
-                              <SelectItem value="Toko Tutup">Toko Tutup</SelectItem>
-                              <SelectItem value="Lainnya">Lainnya</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                            
+                            <div className="w-full sm:w-auto h-px sm:h-12 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
+                            <div className="w-full sm:hidden h-px bg-slate-200 dark:bg-slate-700"></div>
 
-                        <div className="space-y-3">
-                          <label className="text-sm font-semibold">Catatan Tambahan</label>
-                          <textarea
-                            className="w-full min-h-[80px] p-3 text-sm rounded-md border border-input bg-transparent shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            placeholder="Catatan opsional..."
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                          />
-                        </div>
-
-                        <div className="sm:col-span-2 bg-slate-50 dark:bg-slate-900 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
-                          <div className="flex justify-between text-sm mb-2 text-slate-500">
-                            <span>Total Barang Diretur:</span>
-                            <span className="font-semibold text-slate-900 dark:text-white">{totalRefundItems} items</span>
-                          </div>
-                          <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                            <span className="font-bold text-slate-700 dark:text-slate-300">Total Refund:</span>
-                            <span className="text-xl font-extrabold text-orange-600 dark:text-orange-400">
-                              {formatRupiah(totalRefundAmount)}
-                            </span>
+                            <div className="flex flex-row sm:flex-col justify-between sm:justify-center items-center sm:items-end w-full sm:w-auto">
+                              <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Total Refund</div>
+                              <div className="text-2xl sm:text-3xl font-extrabold text-orange-600 dark:text-orange-400 tracking-tight">
+                                {formatRupiah(totalRefundAmount)}
+                              </div>
+                            </div>
                           </div>
                         </div>
 
                         <Button
-                          className="sm:col-span-2 w-full gap-2"
+                          className="w-full gap-2 h-14 text-base font-bold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none disabled:transform-none disabled:shadow-none"
                           size="lg"
                           onClick={handleSubmitReturn}
                           disabled={totalRefundItems === 0 || !reason || createReturn.isPending}
                         >
-                          <CheckCircle2 className="w-5 h-5" />
-                          {createReturn.isPending ? "Memproses..." : "Konfirmasi Retur"}
+                          <CheckCircle2 className="w-6 h-6" />
+                          {createReturn.isPending ? "Memproses Retur..." : "Konfirmasi & Proses Retur"}
                         </Button>
                       </CardContent>
                     </Card>
@@ -610,7 +780,7 @@ export default function CustomerReturnsPage() {
                   <div className="space-y-1">
                     <p className="text-xs text-slate-500 font-medium">Tanggal</p>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {new Date(selectedReturn.created_at).toLocaleDateString('id-ID')}
+                      {new Date(selectedReturn.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
                   <div className="space-y-1">

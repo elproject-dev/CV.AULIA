@@ -108,7 +108,8 @@ export function applyTenantFilterForTable(query: any, tableName: string, column 
 
 /** Sisipkan owner_id saat INSERT data tenant */
 export function withTenantOwner<T extends Record<string, unknown>>(payload: T, tableName?: string): T {
-  if (!isTenantFilterEnabled()) return payload;
+  const ownerId = getTenantOwnerId();
+  if (!ownerId) return payload;
 
   // Produk, kategori, dan customer adalah data bersama - tidak perlu owner_id
   const sharedTables = ['products', 'categories', 'customers', 'outlets'];
@@ -116,8 +117,6 @@ export function withTenantOwner<T extends Record<string, unknown>>(payload: T, t
     return payload;
   }
 
-  const ownerId = getTenantOwnerId();
-  if (!ownerId || isTenantSuperAdmin()) return payload;
   return { ...payload, owner_id: ownerId };
 }
 

@@ -337,14 +337,14 @@ export default function DashboardPage() {
                   {/* Filter Kasir (Khusus Admin) */}
                   {isAdminSuper && (
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium text-slate-500">Filter Kasir</Label>
+                      <Label className="text-xs font-medium text-slate-500">Filter Sales</Label>
                       <Select value={tempCashierFilter} onValueChange={setTempCashierFilter}>
                         <SelectTrigger className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1">
                           <UserCircle className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
-                          <SelectValue placeholder="Semua Kasir" />
+                          <SelectValue placeholder="Semua Sales" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Semua Kasir</SelectItem>
+                          <SelectItem value="all">Semua Sales</SelectItem>
                           {(filterStaffList ? filterStaffList.filter((s: any) => s.role?.toLowerCase() === 'kasir').map((s: any) => s.name) : (cashierNames || [])).map((name: string) => (
                             <SelectItem key={name} value={name}>
                               {name}

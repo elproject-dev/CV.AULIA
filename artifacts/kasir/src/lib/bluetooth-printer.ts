@@ -248,6 +248,10 @@ export function formatReceipt(transaction: any): string {
     footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
     footerMessage3 = 'Powered by Tembus Digital',
     createdAt,
+    payment_status,
+    paymentStatus,
+    remaining_balance,
+    remainingBalance,
   } = transaction || {};
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
@@ -351,7 +355,15 @@ export function formatReceipt(transaction: any): string {
   receipt += `\n`;
 
   // Info pembayaran
-  if (paymentMethod === 'cash') {
+  const status = paymentStatus || payment_status;
+  const balance = remainingBalance ?? remaining_balance ?? 0;
+
+  if (status === 'partial') {
+    receipt += formatLine('DP', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Sisa Hutang', formatPrice(balance), PAPER_WIDTH) + '\n';
+  } else if (status === 'unpaid') {
+    receipt += formatLine('Sisa Hutang', formatPrice(balance), PAPER_WIDTH) + '\n';
+  } else if (paymentMethod === 'cash') {
     receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
     receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
   }
@@ -778,6 +790,8 @@ export interface ReceiptData {
   amountPaid: number;
   change: number;
   paymentMethod?: string; // Tunai, Transfer, dll
+  paymentStatus?: string;
+  remainingBalance?: number;
 
 
 
@@ -818,6 +832,8 @@ export function generateReceiptRaw(data: ReceiptData): string {
     footerMessage = 'terima kasih sudah berbelanja',
     footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
     footerMessage3 = 'Powered by Tembus Digital',
+    paymentStatus,
+    remainingBalance,
   } = data;
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
@@ -904,8 +920,15 @@ export function generateReceiptRaw(data: ReceiptData): string {
   receipt += `\n`;
 
   // ==================== PAYMENT ====================
-  receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
-  receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
+  if (paymentStatus === 'partial') {
+    receipt += formatLine('DP', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Sisa Hutang', formatPrice(remainingBalance || 0), PAPER_WIDTH) + '\n';
+  } else if (paymentStatus === 'unpaid') {
+    receipt += formatLine('Sisa Hutang', formatPrice(remainingBalance || total), PAPER_WIDTH) + '\n';
+  } else {
+    receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
+  }
   receipt += formatLine('Metode', paymentMethod, PAPER_WIDTH) + '\n';
 
   if (customerType === 'member') {

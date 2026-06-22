@@ -22,6 +22,7 @@ import CustomersPage from "@/pages/customers";
 import TransactionsPage from "@/pages/transactions";
 import TransactionDetailPage from "@/pages/transaction-detail";
 import SettingsPage from "@/pages/settings";
+import ReceivablesPage from "@/pages/receivables";
 
 import ExpensesPage from "@/pages/expenses";
 import StaffPage from "@/pages/staff";
@@ -98,6 +99,11 @@ function AppRoutes() {
       <Route path="/settings">
         <ProtectedRoute>
           <SettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/receivables">
+        <ProtectedRoute>
+          <ReceivablesPage />
         </ProtectedRoute>
       </Route>
       <Route path="/expenses">
