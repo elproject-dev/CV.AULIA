@@ -170,7 +170,7 @@ export default function CustomerReturnsPage() {
                   <table style="border-collapse: collapse; border: none; margin: 0; padding: 0;">
                     <tr>
                       <td style="vertical-align: middle; padding-right: 12px; border: none;">
-                        <img src="/CV.AULIA.png" alt="Logo" style="height: 40px; width: auto; display: block; position: relative; top: -3px;" onerror="this.style.display='none'" />
+                        <img src="${import.meta.env.BASE_URL}CV.AULIA.png" alt="Logo" style="height: 40px; width: auto; display: block; position: relative; top: -3px;" onerror="this.style.display='none'" />
                       </td>
                       <td style="vertical-align: middle; border: none; padding: 0; text-align: left;">
                         <div class="company-name">${storeName}</div>
