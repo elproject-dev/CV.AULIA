@@ -12,6 +12,8 @@ import { Plus, Search, Edit, Trash2, Users, Store, Building2, UserCog, SquarePen
 import { isTenantSuperAdmin } from "@/lib/tenant";
 import { useListOutlets, useListStaff, useCreateStaff, useUpdateStaff, useDeleteStaff } from "@/mocks/api-client-react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { ADMIN_EMAIL } from "@/lib/auth";
 
 interface Staff {
   id: number;
@@ -27,6 +29,7 @@ interface Staff {
 
 export default function StaffPage() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
 
   // Data hooks
   const { data: outlets, refetch: refetchOutlets } = useListOutlets();
@@ -55,6 +58,27 @@ export default function StaffPage() {
 
   const isAdmin = useMemo(() => isTenantSuperAdmin(), []);
 
+  // Tambahkan akun admin root jika belum ada di tabel staff
+  const staffListWithAdmin = useMemo(() => {
+    const adminAlreadyInList = staffList.some(
+      (s) => s.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+    );
+    if (adminAlreadyInList) return staffList;
+
+    const virtualAdmin: Staff = {
+      id: -1, // virtual ID
+      name: currentUser?.name || "Admin",
+      email: ADMIN_EMAIL,
+      phone: "-",
+      role: "admin",
+      status: "active",
+      outlet_id: null,
+      outlets: null,
+      avatar_url: currentUser?.avatarUrl || null,
+    };
+    return [virtualAdmin, ...staffList];
+  }, [staffList, currentUser]);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -66,7 +90,7 @@ export default function StaffPage() {
 
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>("all");
 
-  const filteredStaff = staffList.filter((staff) => {
+  const filteredStaff = staffListWithAdmin.filter((staff) => {
     const matchesSearch = search === "" ||
       staff.name.toLowerCase().includes(search.toLowerCase()) ||
       staff.email.toLowerCase().includes(search.toLowerCase());
@@ -428,30 +452,34 @@ export default function StaffPage() {
 
                       {isAdmin && (
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenDialog(staff);
-                              }}
-                              className="h-8 w-8 sm:h-9 sm:w-9 text-slate-500 hover:text-slate-600 dark:hover:text-slate-400"
-                            >
-                              <SquarePen className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(staff.id);
-                              }}
-                              className="h-8 w-8 sm:h-9 sm:w-9 text-red-500 hover:text-red-600 dark:hover:text-red-400"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
+                          {staff.id !== -1 ? (
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenDialog(staff);
+                                }}
+                                className="h-8 w-8 sm:h-9 sm:w-9 text-slate-500 hover:text-slate-600 dark:hover:text-slate-400"
+                              >
+                                <SquarePen className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(staff.id);
+                                }}
+                                className="h-8 w-8 sm:h-9 sm:w-9 text-red-500 hover:text-red-600 dark:hover:text-red-400"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic pr-2">Root Admin</span>
+                          )}
                         </TableCell>
                       )}
                     </TableRow>
@@ -514,7 +542,7 @@ export default function StaffPage() {
                     </span>
                   </div>
 
-                  {isAdmin && (
+                  {isAdmin && staff.id !== -1 && (
                     <div className="flex items-center gap-2 mt-1">
                       <button
                         onClick={(e) => {

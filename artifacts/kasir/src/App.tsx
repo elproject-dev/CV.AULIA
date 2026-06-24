@@ -20,7 +20,6 @@ import DashboardPage from "@/pages/dashboard";
 import ProductsPage from "@/pages/products";
 import CustomersPage from "@/pages/customers";
 import TransactionsPage from "@/pages/transactions";
-import TransactionDetailPage from "@/pages/transaction-detail";
 import SettingsPage from "@/pages/settings";
 import ReceivablesPage from "@/pages/receivables";
 
@@ -87,11 +86,6 @@ function AppRoutes() {
       <Route path="/transactions">
         <ProtectedRoute>
           <TransactionsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/transactions/:id">
-        <ProtectedRoute>
-          <TransactionDetailPage />
         </ProtectedRoute>
       </Route>
 

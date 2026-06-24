@@ -9,8 +9,16 @@ const toNumber = (value: any) => {
   return Number.isFinite(numberValue) ? numberValue : 0;
 };
 
-// Get transaction total with points discount
+// Get transaction total with points discount, considering payment status (Tempo/DP)
 const getTransactionTotal = (transaction: any, pointsValue: number) => {
+  if (transaction.payment_status === 'unpaid') {
+    return 0; // Tempo penuh tidak dihitung sebagai pendapatan
+  }
+  
+  if (transaction.payment_status === 'partial') {
+    return toNumber(transaction.amount_paid); // DP hanya dihitung sebesar nominal DP-nya
+  }
+
   const pointsDiscount = 0;
   return Math.max(
     0,
@@ -93,7 +101,7 @@ export const useGetDashboardStats = (params?: any) => {
       let transactionsQuery = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('created_at, subtotal, tax, discount, cashier_name')
+          .select('created_at, subtotal, tax, discount, cashier_name, payment_status, amount_paid')
           .eq('status', 'completed')
           .gte('created_at', periodStartIso)
           .lt('created_at', periodEndIso)
@@ -377,7 +385,7 @@ export const useGetRecentTransactions = (params?: any) => {
           id: trx.id,
           createdAt: trx.created_at,
           total: total,
-          customerName: trx.customers?.name || 'Umum',
+          customerName: trx.customers?.name || '-',
           cashierName: trx.cashier_name || 'System',
           outletName: trx.outlet_id ? (outletMap.get(trx.outlet_id) || `Outlet ${trx.outlet_id}`) : '-'
         };
@@ -453,7 +461,7 @@ export const useGetRevenueChart = (params?: any) => {
       let query = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('created_at, subtotal, tax, discount')
+          .select('created_at, subtotal, tax, discount, payment_status, amount_paid')
           .eq('status', 'completed')
           .gte('created_at', chartStart.toISOString())
           .lte('created_at', chartEnd.toISOString())
@@ -557,23 +565,12 @@ export const useAdvancedAnalytics = (params?: any) => {
       const { data: productsData } = await applyTenantFilterForTable(supabase.from('products').select('id, image_url'), 'products');
       const productImagesMap = new Map((productsData || []).map((p: any) => [p.id, p.image_url]));
 
-      // Fetch Customers to calculate Member vs Reguler and Top Customers overall
-      const { data: allCustomers } = await applyTenantFilterForTable(supabase.from('customers').select('id, name, phone, membership_type, total_spent, outlet_id'), 'customers');
+      // Fetch Customers to calculate Top Customers overall
+      const { data: allCustomers } = await applyTenantFilterForTable(supabase.from('customers').select('id, name, phone, total_spent, outlet_id'), 'customers');
 
-      let memberCount = 0;
-      let regulerCount = 0;
-      (allCustomers || []).forEach((c: any) => {
-        const type = c.membership_type || c.membershipType || c.membership;
-        if (type === "member" || type === "Member" || type === "MEMBER") {
-          memberCount++;
-        } else {
-          regulerCount++;
-        }
-      });
-
-      const totalCustomers = memberCount + regulerCount;
-      const memberPercentage = totalCustomers > 0 ? Math.round((memberCount / totalCustomers) * 100) : 0;
-      const regulerPercentage = totalCustomers > 0 ? 100 - memberPercentage : 0;
+      const totalCustomers = allCustomers ? allCustomers.length : 0;
+      const memberPercentage = 0;
+      const regulerPercentage = 0;
 
       const topCustomersOutletFilterId = params?.topCustomersOutletFilter && params.topCustomersOutletFilter !== "all"
         ? parseInt(params.topCustomersOutletFilter)
@@ -596,7 +593,7 @@ export const useAdvancedAnalytics = (params?: any) => {
       let trxQuery = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('id, outlet_id, customer_id, subtotal, tax, discount, created_at, transaction_items(product_id, product_name, quantity, subtotal)')
+          .select('id, outlet_id, customer_id, subtotal, tax, discount, payment_status, amount_paid, created_at, transaction_items(product_id, product_name, quantity, subtotal)')
           .eq('status', 'completed')
       );
 
@@ -931,11 +928,11 @@ export const useAdvancedAnalytics = (params?: any) => {
         memberProductAnalytics,
         generalProductAnalytics,
         customerDemographics: {
-          totalCustomers,
-          memberCount,
-          regulerCount,
-          memberPercentage,
-          regulerPercentage
+          totalCustomers: allCustomersMap.size,
+          memberCount: 0,
+          regulerCount: 0,
+          memberPercentage: 0,
+          regulerPercentage: 0
         },
         generalCustomerAnalytics,
         memberCustomerAnalytics,
@@ -989,6 +986,10 @@ export const useListTransactions = (params?: any) => {
         countQuery = countQuery.eq('payment_method', params.paymentMethod);
       }
 
+      if (params?.paymentStatus) {
+        countQuery = countQuery.eq('payment_status', params.paymentStatus);
+      }
+
       if (params?.cashierFilter && params.cashierFilter !== 'all') {
         countQuery = countQuery.ilike('cashier_name', params.cashierFilter);
       }
@@ -1014,12 +1015,16 @@ export const useListTransactions = (params?: any) => {
       let query = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('*, transaction_items(*), customers(name, membership_type), outlets(name, store_name, address, phone)')
+          .select('*, transaction_items(*), customers(name, phone, address, district, city), outlets(name, store_name, address, phone)')
           .order('created_at', { ascending: false })
       );
 
       if (params?.paymentMethod) {
         query = query.eq('payment_method', params.paymentMethod);
+      }
+
+      if (params?.paymentStatus) {
+        query = query.eq('payment_status', params.paymentStatus);
       }
 
       if (params?.limit) {
@@ -1061,7 +1066,7 @@ export const useListTransactions = (params?: any) => {
 
   useEffect(() => {
     fetchTransactions();
-  }, [params?.paymentMethod, params?.limit, params?.offset, params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
+  }, [params?.paymentMethod, params?.paymentStatus, params?.limit, params?.offset, params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
 
   // Realtime subscription for new transactions
   useEffect(() => {
@@ -1085,7 +1090,7 @@ export const useListTransactions = (params?: any) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [params?.paymentMethod, params?.limit, params?.offset, params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
+  }, [params?.paymentMethod, params?.paymentStatus, params?.limit, params?.offset, params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
 
   return { data, totalCount, isLoading, error, refetch: fetchTransactions };
 };
@@ -1102,7 +1107,7 @@ export const useGetTransaction = (id: number) => {
         const { data: transaction, error } = await applyTenantFilter(
           supabase
             .from('transactions')
-            .select('*, transaction_items(*), customers(name, membership_type), outlets(name, store_name, address, phone)')
+            .select('*, transaction_items(*), customers(*), outlets(*)')
             .eq('id', id)
         ).single();
 
@@ -1729,7 +1734,6 @@ export const useCreateCustomer = () => {
           .insert({
             name: params.data.name,
             phone: params.data.phone || null,
-            membership_type: params.data.membershipType || params.data.membership_type || 'non_member',
             sales_name: params.data.sales_name || null,
             customer_id_manual: customerIdManual,
             address: params.data.address || null,
@@ -1764,7 +1768,6 @@ export const useUpdateCustomer = () => {
         const updateData: any = {
           name: params.data.name,
           phone: params.data.phone || null,
-          membership_type: params.data.membershipType || params.data.membership_type || 'non_member',
         };
         if (params.data.sales_name !== undefined) {
           updateData.sales_name = params.data.sales_name;
@@ -1849,7 +1852,7 @@ export const useCreateTransaction = () => {
     mutate: async (params: any, options?: any) => {
       setIsPending(true);
       try {
-        const customerType = params.data.customerType === 'member' ? 'member' : 'non_member';
+
         const selectedOutletId = localStorage.getItem('selectedOutletId');
         const basePayload = {
           customer_id: params.data.customerId || null,
@@ -1862,12 +1865,11 @@ export const useCreateTransaction = () => {
           change: params.data.change || 0,
           status: params.data.status || 'completed',
           outlet_id: selectedOutletId ? parseInt(selectedOutletId) : null,
-          loading_session_id: params.data.loadingSessionId || null,
+
         };
         const extendedPayload = {
           ...basePayload,
-          discount_note: params.data.discountNote?.trim() || null,
-          customer_type: customerType,
+          customer_id: params.data.customerId || params.customer_id || null,
           payment_status: params.data.paymentStatus || 'paid',
           due_date: params.data.dueDate || null,
           remaining_balance: params.data.remainingBalance || 0,
@@ -1882,9 +1884,7 @@ export const useCreateTransaction = () => {
         if (
           error &&
           (error.code === 'PGRST204' ||
-            error.message?.includes('discount_note') ||
-            error.message?.includes('customer_type') ||
-            error.message?.includes('outlet_id'))
+            error.message?.includes('customer_name'))
         ) {
           // Try without outlet_id if it's not supported yet
           const { outlet_id, ...payloadWithoutOutlet } = extendedPayload;
@@ -1970,12 +1970,12 @@ export const useListOutlets = () => {
 
       if (error) {
         // Fallback: use localStorage values if table doesn't exist
-        const storeName = localStorage.getItem('storeName') || 'Toko Utama';
+        const storeName = localStorage.getItem('storeName') || 'CV.AULIA USAHA';
         const storeAddress = localStorage.getItem('storeAddress') || '';
         const storePhone = localStorage.getItem('storePhone') || '';
-        const footerMessage = localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda';
-        const footerMessage2 = localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee';
-        const footerMessage3 = localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital';
+        const footerMessage = localStorage.getItem('footerMessage') || 'Terima Kasih Sudah Melakukan Order';
+        const footerMessage2 = localStorage.getItem('footerMessage2') || '';
+        const footerMessage3 = localStorage.getItem('footerMessage3') || '';
         setData([{
           id: 1,
           name: storeName,
@@ -1992,12 +1992,12 @@ export const useListOutlets = () => {
       setError(null);
     } catch (err) {
       // Fallback: use localStorage values on error
-      const storeName = localStorage.getItem('storeName') || 'Toko Utama';
+      const storeName = localStorage.getItem('storeName') || 'CV.AULIA USAHA';
       const storeAddress = localStorage.getItem('storeAddress') || '';
       const storePhone = localStorage.getItem('storePhone') || '';
-      const footerMessage = localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda';
-      const footerMessage2 = localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee';
-      const footerMessage3 = localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital';
+      const footerMessage = localStorage.getItem('footerMessage') || 'Terima Kasih Sudah Melakukan Order';
+      const footerMessage2 = localStorage.getItem('footerMessage2') || '';
+      const footerMessage3 = localStorage.getItem('footerMessage3') || '';
       setData([{
         id: 1,
         name: storeName,
@@ -2742,224 +2742,7 @@ export const useBulkSaveProductUoms = () => {
   };
 };
 
-// ============== FMCG DISTRIBUTION WORKFLOW ==============
 
-export const getListLoadingSessionsQueryKey = () => ['loading_sessions'];
-export const getListLoadingItemsQueryKey = (sessionId?: string) => ['loading_items', sessionId];
-export const getListStockMovementsQueryKey = (productId?: number) => ['stock_movements', productId];
-
-export const useListLoadingSessions = (params?: { salesId?: number, status?: string }) => {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<any>(null);
-
-  const fetchData = async () => {
-    // If salesId is explicitly -1 (guard for unknown/missing staffId), return empty immediately
-    if (params?.salesId === -1) {
-      setData([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      let query = supabase
-        .from('loading_sessions')
-        .select('*, staff(*)')
-        .order('created_at', { ascending: false });
-
-      // Always apply salesId filter when provided (prevents data leakage between sales staff)
-      if (params?.salesId !== undefined && params.salesId !== null) {
-        query = query.eq('sales_id', params.salesId);
-      }
-      if (params?.status) {
-        query = query.eq('status', params.status);
-      }
-
-      const { data: result, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
-      setData(result || []);
-    } catch (err) {
-      handleTenantError(err);
-      setError(err);
-      setData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [params?.salesId, params?.status]);
-
-  return { data, isLoading, error, refetch: fetchData };
-};
-
-export const useCreateLoadingSession = () => {
-  const [isPending, setIsPending] = useState(false);
-
-  return {
-    mutate: async ({ data }: { data: any }, options?: any) => {
-      setIsPending(true);
-      try {
-        const { error } = await supabase
-          .from('loading_sessions')
-          .insert([data]);
-
-        if (error) throw error;
-        if (options?.onSuccess) options.onSuccess();
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending,
-    error: null
-  };
-};
-
-export const useUpdateLoadingSession = () => {
-  const [isPending, setIsPending] = useState(false);
-
-  return {
-    mutate: async ({ id, data }: { id: string, data: any }, options?: any) => {
-      setIsPending(true);
-      try {
-        const { error } = await supabase
-          .from('loading_sessions')
-          .update(data)
-          .eq('id', id);
-
-        if (error) throw error;
-        if (options?.onSuccess) options.onSuccess();
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending,
-    error: null
-  };
-};
-
-export const useListLoadingItems = (sessionId?: string) => {
-  const [data, setData] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<any>(null);
-
-  const fetchData = async () => {
-    if (!sessionId) {
-      setData([]);
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const { data: result, error: fetchError } = await supabase
-        .from('loading_items')
-        .select('*, products(*, product_uoms(*))')
-        .eq('loading_session_id', sessionId);
-
-      if (fetchError) throw fetchError;
-      
-      const formattedResult = (result || []).map((item: any) => {
-        if (item.products) {
-          item.products.uoms = (item.products.product_uoms || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
-        }
-        return item;
-      });
-      
-      setData(formattedResult);
-    } catch (err) {
-      setError(err);
-      setData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [sessionId]);
-
-  return { data, isLoading, error, refetch: fetchData };
-};
-
-export const useCreateLoadingItem = () => {
-  const [isPending, setIsPending] = useState(false);
-
-  return {
-    mutate: async ({ data }: { data: any }, options?: any) => {
-      setIsPending(true);
-      try {
-        const { error } = await supabase
-          .from('loading_items')
-          .insert([data]);
-
-        if (error) throw error;
-        if (options?.onSuccess) options.onSuccess();
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending,
-    error: null
-  };
-};
-
-export const useUpdateLoadingItem = () => {
-  const [isPending, setIsPending] = useState(false);
-
-  return {
-    mutate: async ({ id, data }: { id: number, data: any }, options?: any) => {
-      setIsPending(true);
-      try {
-        const { error } = await supabase
-          .from('loading_items')
-          .update(data)
-          .eq('id', id);
-
-        if (error) throw error;
-        if (options?.onSuccess) options.onSuccess();
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending,
-    error: null
-  };
-};
-
-export const useDeleteLoadingItem = () => {
-  const [isPending, setIsPending] = useState(false);
-
-  return {
-    mutate: async ({ id }: { id: number }, options?: any) => {
-      setIsPending(true);
-      try {
-        const { error } = await supabase
-          .from('loading_items')
-          .delete()
-          .eq('id', id);
-
-        if (error) throw error;
-        if (options?.onSuccess) options.onSuccess();
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending,
-    error: null
-  };
-};
 
 export const useListStockMovements = (productId?: number) => {
   const [data, setData] = useState<any[]>([]);
@@ -3070,162 +2853,7 @@ export const useDeleteStockMovement = () => {
   };
 };
 
-export const useCloseLoadingSession = () => {
-  const [isPending, setIsPending] = useState(false);
-  const queryClient = useQueryClient();
 
-  return {
-    mutate: async (params: { sessionId: string; items: any[], notes?: string }, options?: any) => {
-      setIsPending(true);
-      try {
-        // 1. Update session status
-        const { error: sessionError } = await supabase
-          .from('loading_sessions')
-          .update({ status: 'closed', notes: params.notes })
-          .eq('id', params.sessionId);
-        if (sessionError) throw sessionError;
-
-        // 2. Process each item return
-        for (const item of params.items) {
-          // Update loading_items.quantity_returned
-          const { error: itemError } = await supabase
-            .from('loading_items')
-            .update({ quantity_returned: item.actual_return })
-            .eq('id', item.loading_item_id);
-          
-          if (itemError) console.error('Error updating loading item', itemError);
-
-          // Only create movement and update stock if actual_return > 0
-          if (item.actual_return > 0) {
-            // Create stock movement
-            await supabase.from('stock_movements').insert({
-              product_id: item.product_id,
-              quantity: item.actual_return,
-              type: 'return_from_sales',
-              reference_id: params.sessionId,
-              note: 'Sisa stok dikembalikan dari Sales'
-            });
-
-            // Update product stock in Gudang
-            const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
-            if (product) {
-              const newStock = (product.stock_quantity || 0) + item.actual_return;
-              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
-            }
-          }
-        }
-
-        queryClient.invalidateQueries({ queryKey: ['loading_sessions'] });
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        
-        if (options?.onSuccess) options.onSuccess(true);
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending
-  };
-};
-
-export const useRequestLoadingSessionReturn = () => {
-  const [isPending, setIsPending] = useState(false);
-  const queryClient = useQueryClient();
-
-  return {
-    mutate: async (params: { sessionId: string; items: any[], notes?: string }, options?: any) => {
-      setIsPending(true);
-      try {
-        // 1. Update session status to pending_return
-        const { error: sessionError } = await supabase
-          .from('loading_sessions')
-          .update({ status: 'pending_return', notes: params.notes })
-          .eq('id', params.sessionId);
-        if (sessionError) throw sessionError;
-
-        // 2. Process each item return (save quantity_returned, but NO stock movements or products stock update)
-        for (const item of params.items) {
-          const { error: itemError } = await supabase
-            .from('loading_items')
-            .update({ quantity_returned: item.actual_return })
-            .eq('id', item.loading_item_id);
-          
-          if (itemError) console.error('Error updating loading item', itemError);
-        }
-
-        queryClient.invalidateQueries({ queryKey: ['loading_sessions'] });
-        queryClient.invalidateQueries({ queryKey: ['loading_items', params.sessionId] });
-        
-        if (options?.onSuccess) options.onSuccess(true);
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending
-  };
-};
-
-export const useConfirmLoadingSessionReturn = () => {
-  const [isPending, setIsPending] = useState(false);
-  const queryClient = useQueryClient();
-
-  return {
-    mutate: async (params: { sessionId: string; items: any[], notes?: string }, options?: any) => {
-      setIsPending(true);
-      try {
-        // 1. Update session status to closed
-        const { error: sessionError } = await supabase
-          .from('loading_sessions')
-          .update({ status: 'closed', notes: params.notes })
-          .eq('id', params.sessionId);
-        if (sessionError) throw sessionError;
-
-        // 2. Process each item return (create stock movements and update products.stock_quantity)
-        for (const item of params.items) {
-          // Update loading_items.quantity_returned (in case admin modified it during confirmation)
-          const { error: itemError } = await supabase
-            .from('loading_items')
-            .update({ quantity_returned: item.actual_return })
-            .eq('id', item.loading_item_id);
-          
-          if (itemError) console.error('Error updating loading item', itemError);
-
-          // Only create movement and update stock if actual_return > 0
-          if (item.actual_return > 0) {
-            // Create stock movement
-            await supabase.from('stock_movements').insert({
-              product_id: item.product_id,
-              quantity: item.actual_return,
-              type: 'return_from_sales',
-              reference_id: params.sessionId,
-              note: 'Sisa stok dikembalikan dari Sales (Dikonfirmasi)'
-            });
-
-            // Update product stock in Gudang
-            const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
-            if (product) {
-              const newStock = (product.stock_quantity || 0) + item.actual_return;
-              await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
-            }
-          }
-        }
-
-        queryClient.invalidateQueries({ queryKey: ['loading_sessions'] });
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        
-        if (options?.onSuccess) options.onSuccess(true);
-      } catch (err) {
-        if (options?.onError) options.onError(err);
-      } finally {
-        setIsPending(false);
-      }
-    },
-    isPending
-  };
-};
 
 // ============== SALES RETURNS ==============
 
@@ -3236,7 +2864,7 @@ export const useListReturns = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sales_returns')
-        .select('*, customers(name, phone), sales_return_items(*, products(image_url), transaction_items(conversion_factor))')
+        .select('*, customers(name, phone, address, district, city), sales_return_items(*, products(image_url, product_uoms(*)), transaction_items(conversion_factor))')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -3252,7 +2880,7 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
       
       const { data: trx, error: trxError } = await supabase
         .from('transactions')
-        .select('*, customers(name, phone)')
+        .select('*, customers(name, phone, address, district, city)')
         .eq('id', transactionId)
         .single();
         
@@ -3411,7 +3039,7 @@ export const useConfirmReturn = () => {
         // Fetch return items
         const { data: returnItems, error: itemsError } = await supabase
           .from('sales_return_items')
-          .select('*')
+          .select('*, products(product_uoms(*))')
           .eq('return_id', params.returnId);
 
         if (itemsError) throw itemsError;
@@ -3428,8 +3056,9 @@ export const useConfirmReturn = () => {
 
         if (returnItems) {
           for (const item of returnItems) {
-            const { data: trxItem } = await supabase.from('transaction_items').select('conversion_factor').eq('id', item.transaction_item_id).single();
-            const conversionFactor = trxItem?.conversion_factor || 1;
+            const uoms = item.products?.product_uoms || [];
+            const uom = uoms.find((u: any) => u.unit_name === item.unit_name);
+            const conversionFactor = uom ? uom.conversion_factor : 1;
             const totalPcsReturned = item.quantity * conversionFactor;
 
             const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
@@ -3556,18 +3185,21 @@ export const useListReceivables = () => {
   const fetchReceivables = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          *,
-          customer:customers(id, name, phone)
-        `)
-        .not('due_date', 'is', null)
-        .order('due_date', { ascending: true });
+      const { data, error } = await applyTenantFilter(
+        supabase
+          .from('transactions')
+          .select(`
+            *,
+            customer:customers(id, name, phone),
+            transaction_items(*)
+          `)
+          .not('due_date', 'is', null)
+      ).order('due_date', { ascending: true });
 
       if (error) throw error;
       setData(data || []);
     } catch (err) {
+      handleTenantError(err);
       setError(err);
     } finally {
       setIsLoading(false);

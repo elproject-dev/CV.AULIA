@@ -53,7 +53,7 @@ export function getTenantOwnerId(): string | null {
   return loadSession()?.id ?? null;
 }
 
-/** Cek apakah user adalah admin super (hanya sbagiamu.pos@gmail.com) atau memiliki role admin
+/** Cek apakah user adalah admin super (hanya cvauliausaha@gmail.com) atau memiliki role admin
  * Admin super bisa lihat semua data
  * User lain hanya bisa lihat data miliknya sendiri */
 export function isTenantSuperAdmin(): boolean {

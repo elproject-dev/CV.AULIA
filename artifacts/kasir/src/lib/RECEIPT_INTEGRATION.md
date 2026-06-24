@@ -40,7 +40,7 @@ const handlePrintReceipt = async () => {
 
     // Prepare receipt data
     const receiptData = {
-      storeName: 'Sbagiamu',
+      storeName: 'CV.AULIA USAHA',
       storeAddress: 'jl.condong catur no 13 yk',
       invoiceNumber: transaction.invoice_number,
       date: new Date(transaction.created_at),
@@ -105,7 +105,7 @@ const handlePrintSingleReceipt = async (transaction: any) => {
     await connectToPrinter(printerMac);
 
     const receiptData = transactionToReceiptData(transaction, {
-      storeName: 'Sbagiamu',
+      storeName: 'CV.AULIA USAHA',
       storeAddress: 'jl.condong catur no 13 yk',
     });
 

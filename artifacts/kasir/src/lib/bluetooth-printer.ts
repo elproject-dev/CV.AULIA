@@ -172,7 +172,7 @@ export async function disconnectPrinter(): Promise<void> {
 }
 
 // Cetak data mentah
-async function printRaw(data: string): Promise<boolean> {
+export async function printRaw(data: string): Promise<boolean> {
   if (!printerDevice?.connected) {
     console.error('Printer tidak terhubung');
     return false;
@@ -243,10 +243,10 @@ export function formatReceipt(transaction: any): string {
     paymentMethod = 'cash',
     enablePPN = false,
     ppnPercentage = 11,
-    customerType = 'regular',
-    footerMessage = 'terima kasih sudah berbelanja',
-    footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
-    footerMessage3 = 'Powered by Tembus Digital',
+
+    footerMessage = 'Terima Kasih Sudah Melakukan Order',
+    footerMessage2 = '',
+    footerMessage3 = '',
     createdAt,
     payment_status,
     paymentStatus,
@@ -294,11 +294,7 @@ export function formatReceipt(transaction: any): string {
   receipt += formatLine('No.ID', id ? formatInvoiceNumber(id) : '-', PAPER_WIDTH) + '\n';
   receipt += formatLine('Waktu', waktuStr, PAPER_WIDTH) + '\n';
 
-  if (customerType === 'member' && customerName) {
-    receipt += formatLine('Pelanggan', `Member - ${customerName}`, PAPER_WIDTH) + '\n';
-  } else {
-    receipt += formatLine('Pelanggan', 'Umum', PAPER_WIDTH) + '\n';
-  }
+  receipt += formatLine('Pelanggan', customerName || '-', PAPER_WIDTH) + '\n';
   receipt += formatLine('Kasir', displayCashierName, PAPER_WIDTH) + '\n';
   receipt += `${SEPARATOR}\n`;
 
@@ -306,7 +302,13 @@ export function formatReceipt(transaction: any): string {
   items?.forEach((item: any) => {
     const name = item.productName || '-';
     const qty = item.quantity || 0;
-    const price = item.price || 0;
+    
+    let price = item.price || 0;
+    if (item.unitPrice !== undefined) {
+      const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
+      price = item.unitPrice - activeDiscount;
+    }
+    
     const itemTotal = qty * price;
 
     const qtyStr = `${qty}`;
@@ -359,21 +361,16 @@ export function formatReceipt(transaction: any): string {
   const balance = remainingBalance ?? remaining_balance ?? 0;
 
   if (status === 'partial') {
-    receipt += formatLine('DP', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Cicilan', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
     receipt += formatLine('Sisa Hutang', formatPrice(balance), PAPER_WIDTH) + '\n';
   } else if (status === 'unpaid') {
     receipt += formatLine('Sisa Hutang', formatPrice(balance), PAPER_WIDTH) + '\n';
-  } else if (paymentMethod === 'cash') {
-    receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
-    receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
   }
 
   receipt += formatLine('Metode Pembayaran', getPaymentMethodLabel(paymentMethod), PAPER_WIDTH) + '\n';
 
   // Poin yang didapat dan total poin (untuk member)
-  if (customerType === 'member') {
-    // Poin system removed
-  }
+
 
   receipt += `${SEPARATOR}\n`;
 
@@ -411,7 +408,7 @@ function getPaymentMethodLabel(method: string): string {
   switch (method) {
     case 'cash': return 'Tunai';
     case 'transfer': return 'Transfer';
-    case 'debit_card': return 'Debit';
+    case 'debit_card': return 'E-wallet';
     case 'credit_card': return 'Kredit';
     case 'qris': return 'QRIS';
     default: return method;
@@ -754,7 +751,7 @@ function formatWaktuReceipt(date: Date): string {
 
 /**
  * Generate receipt dalam format raw text untuk thermal printer
- * Sesuai dengan konsep nota Sbagiamu
+ * Sesuai dengan konsep nota CV.AULIA USAHA
  */
 export interface ReceiptItem {
   productName: string;
@@ -774,7 +771,7 @@ export interface ReceiptData {
   customerName: string;
   cashierName?: string;
   cashier_name?: string;
-  customerType?: 'member' | 'regular'; // member atau regular
+
 
   // Items
   items: ReceiptItem[];
@@ -804,7 +801,7 @@ export interface ReceiptData {
 /**
  * Generate raw receipt text
  * Format sesuai contoh:
- *          Sbagiamu
+ *          CV.AULIA USAHA
  *   jl.condong catur no 13 yk
  * ________________________________
  * No.ID :               INV-A00001
@@ -819,7 +816,7 @@ export function generateReceiptRaw(data: ReceiptData): string {
     customerName,
     cashierName,
     cashier_name,
-    customerType = 'regular',
+
     items,
     subtotal,
     tax = 0,
@@ -829,9 +826,9 @@ export function generateReceiptRaw(data: ReceiptData): string {
     amountPaid,
     change,
     paymentMethod = 'Tunai',
-    footerMessage = 'terima kasih sudah berbelanja',
-    footerMessage2 = 'Real Brew, Real Bean, Real Coffee',
-    footerMessage3 = 'Powered by Tembus Digital',
+    footerMessage = 'Terima Kasih Sudah Melakukan Order',
+    footerMessage2 = '',
+    footerMessage3 = '',
     paymentStatus,
     remainingBalance,
   } = data;
@@ -921,19 +918,14 @@ export function generateReceiptRaw(data: ReceiptData): string {
 
   // ==================== PAYMENT ====================
   if (paymentStatus === 'partial') {
-    receipt += formatLine('DP', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Cicilan', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
     receipt += formatLine('Sisa Hutang', formatPrice(remainingBalance || 0), PAPER_WIDTH) + '\n';
   } else if (paymentStatus === 'unpaid') {
     receipt += formatLine('Sisa Hutang', formatPrice(remainingBalance || total), PAPER_WIDTH) + '\n';
-  } else {
-    receipt += formatLine('Bayar', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
-    receipt += formatLine('Kembali', formatPrice(change), PAPER_WIDTH) + '\n';
   }
   receipt += formatLine('Metode', paymentMethod, PAPER_WIDTH) + '\n';
 
-  if (customerType === 'member') {
-    // Poin system removed
-  }
+
 
   receipt += `${SEPARATOR}\n`;
 

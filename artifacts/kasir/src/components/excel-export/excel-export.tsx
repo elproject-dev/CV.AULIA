@@ -10,7 +10,6 @@ import { Share } from "@capacitor/share";
 import { Capacitor } from "@capacitor/core";
 import {
   formatInvoiceNumber,
-  formatMembershipStatus,
   formatPaymentMethod,
   formatRupiahValue,
 } from "@/lib/formatters";
@@ -31,7 +30,6 @@ interface Transaction {
   createdAt: string;
   items: TransactionItem[];
   customerName?: string;
-  membershipStatus?: string;
   paymentMethod?: string;
   discount?: number;
   discountNote?: string;
@@ -58,16 +56,15 @@ interface ExportOptions {
 
 // Default column widths for transaction export
 const DEFAULT_COL_WIDTHS: ExportColumn[] = [
-  { header: "Tanggal", key: "Tanggal", width: 14 },
+  { header: "Tanggal", key: "Tanggal", width: 12 },
   { header: "Jam", key: "Jam", width: 8 },
-  { header: "No. ID", key: "No. ID", width: 14 },
-  { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 18 },
-  { header: "Status", key: "Status", width: 10 },
-  { header: "Penjualan Produk", key: "Penjualan Produk", width: 35 },
-  { header: "Total", key: "Total", width: 14 },
-  { header: "Metode", key: "Metode", width: 14 },
-  { header: "Kasir", key: "Kasir", width: 14 },
-  { header: "Outlet", key: "Outlet", width: 16 },
+  { header: "No. ID", key: "No. ID", width: 15 },
+  { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 20 },
+  { header: "Penjualan Produk", key: "Penjualan Produk", width: 40 },
+  { header: "Total", key: "Total", width: 15 },
+  { header: "Metode", key: "Metode", width: 10 },
+  { header: "Kasir", key: "Kasir", width: 15 },
+  { header: "Outlet", key: "Outlet", width: 20 },
 ];
 
 const CENTER_ALIGNED_KEYS = new Set([
@@ -377,7 +374,6 @@ function buildExportRow(
     Jam: formatTimeForExcel(trx.createdAt),
     "No. ID": Number.isFinite(transactionId) ? formatInvoiceNumber(transactionId) : "-",
     "Nama Pelanggan": trx.customerName || "Umum",
-    Status: trx.membershipStatus || "Reguler",
     "Penjualan Produk": penjualanProduk || "-",
     Total: formatExcelRupiah(totalBelanja),
     Metode: formatPaymentMethod(trx.paymentMethod),
@@ -436,15 +432,13 @@ export function mapApiTransactionsToExport(
     const total = subtotal;
 
     const rawItems = (trx.transaction_items || trx.items || []) as Record<string, unknown>[];
-    const customer = trx.customers as { name?: string; membership_type?: string } | null | undefined;
-    const customerType = String(trx.customer_type ?? "").trim() || undefined;
+    const customer = trx.customers as { name?: string } | null | undefined;
     const discountNote = String(trx.discount_note ?? trx.discountNote ?? "").trim() || undefined;
 
     return {
       id: String(trx.id ?? ""),
       createdAt: String(trx.created_at ?? trx.createdAt ?? ""),
       customerName: customer?.name || (trx.customerName as string | undefined) || "Umum",
-      membershipStatus: formatMembershipStatus(customerType, customer?.membership_type),
       paymentMethod: String(trx.payment_method ?? trx.paymentMethod ?? ""),
       items: rawItems.map((item) => ({
         productName: String(item.product_name ?? item.productName ?? "-"),

@@ -17,12 +17,12 @@ import {
 
 export function exampleBasicReceipt(): string {
   const receiptData: ReceiptData = {
-    storeName: 'Sbagiamu',
+    storeName: 'CV.AULIA USAHA',
     storeAddress: 'jl.condong catur no 13 yk',
     invoiceNumber: 'INV-A00001',
     date: new Date('2026-05-12T12:01:00'),
     customerName: 'Jokowi',
-    customerType: 'member',
+
     items: [
       {
         productName: 'Nasi Goreng',
@@ -64,7 +64,7 @@ export function exampleReceiptWithTax(): string {
     invoiceNumber: 'INV-B00234',
     date: new Date(),
     customerName: 'Pembeli Reguler',
-    customerType: 'regular',
+
     items,
     subtotal,
     discount: 0,
@@ -95,7 +95,7 @@ export function exampleReceiptMember(): string {
     invoiceNumber: 'INV-M12345',
     date: new Date(),
     customerName: 'Budi Santoso',
-    customerType: 'member',
+
     items,
     subtotal,
     discount: 0,
@@ -127,7 +127,7 @@ export function exampleLargeTransaction(): string {
     invoiceNumber: 'INV-APPLE-2026-001',
     date: new Date(),
     customerName: 'Corporate Buyer',
-    customerType: 'member',
+
     items,
     subtotal,
     discount: 0,
@@ -140,7 +140,7 @@ export function exampleLargeTransaction(): string {
   return generateReceiptRaw(receiptData);
 }
 
-// ==================== EXAMPLE 5: With Logo (Sbagiamu) ====================
+// ==================== EXAMPLE 5: With Logo (CV.AULIA USAHA) ====================
 
 export async function exampleReceiptWithLogo(): Promise<string> {
   const items: ReceiptItem[] = [
@@ -160,7 +160,7 @@ export async function exampleReceiptWithLogo(): Promise<string> {
     invoiceNumber: 'INV-SBG-2026-001',
     date: new Date(),
     customerName: 'Pelanggan Setia',
-    customerType: 'member',
+
     items,
     subtotal,
     discount,
@@ -168,7 +168,7 @@ export async function exampleReceiptWithLogo(): Promise<string> {
     amountPaid: 100000,
     change: 100000 - total,
     paymentMethod: 'Tunai',
-    footerMessage: 'terima kasih sudah berbelanja di Sbagiamu!',
+    footerMessage: 'terima kasih sudah berbelanja di CV.AULIA USAHA!',
   };
 
   // Gunakan generateReceiptRawWithLogo untuk include gambar
@@ -252,7 +252,7 @@ export function transactionToReceiptData(
     invoiceNumber: transaction.invoice_number,
     date: new Date(transaction.created_at),
     customerName: transaction.customer?.name || 'Pembeli',
-    customerType: transaction.customer?.type === 'member' ? 'member' : 'regular',
+
     items,
     subtotal,
     discount: transaction.discount || 0,

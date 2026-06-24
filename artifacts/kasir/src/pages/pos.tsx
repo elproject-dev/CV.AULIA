@@ -10,11 +10,13 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler, Clock, CalendarRange, CheckCircle2 } from "lucide-react";
+import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler, Clock, CalendarRange, CheckCircle2, Wallet } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthUserName, useAuth } from "@/contexts/AuthContext";
 import { ADMIN_EMAIL } from "@/lib/auth";
@@ -68,7 +70,7 @@ const getPaymentMethodLabel = (method: string) => {
   switch (method) {
     case 'cash': return 'Tunai';
     case 'transfer': return 'Transfer';
-    case 'debit_card': return 'Debit';
+    case 'debit_card': return 'E-wallet';
     case 'credit_card': return 'Kredit';
     case 'qris': return 'QRIS';
     default: return method;
@@ -110,7 +112,7 @@ export default function POSPage() {
   const [manualDistrict, setManualDistrict] = useState<string>("");
   const [manualCity, setManualCity] = useState<string>("");
   const [manualCustomerId, setManualCustomerId] = useState<string>("");
-  const [customerType, setCustomerType] = useState<string>("umum");
+
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [amountPaidDisplay, setAmountPaidDisplay] = useState<string>("");
   const [amountPaidStr, setAmountPaidStr] = useState<string>("");
@@ -131,10 +133,11 @@ export default function POSPage() {
 
   const [paymentType, setPaymentType] = useState<"lunas" | "dp" | "tempo">("lunas");
   const [dueDate, setDueDate] = useState<string>("");
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   // UOM selector state
   const [uomSelectorProduct, setUomSelectorProduct] = useState<any>(null);
-  
+
   // QTY selector state
   const [qtySelector, setQtySelector] = useState<{ product: any, uom: any | null } | null>(null);
   const [qtyInput, setQtyInput] = useState<number>(1);
@@ -258,12 +261,12 @@ export default function POSPage() {
       const showFooter = localStorage.getItem('showFooter') !== 'false';
       const printData = {
         ...transaction,
-        storeName: activeOutletObj?.store_name || activeOutletObj?.name || localStorage.getItem('storeName') || 'SBAGIAMU',
+        storeName: activeOutletObj?.store_name || activeOutletObj?.name || localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || 'SBAGIAMU',
         storeAddress: activeOutletObj?.address || localStorage.getItem('storeAddress') || '',
         storePhone: activeOutletObj?.phone || localStorage.getItem('storePhone') || '',
-        footerMessage: showFooter ? (activeOutletObj?.footer_message || localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
-        footerMessage2: showFooter ? (activeOutletObj?.footer_message2 || localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee') : '',
-        footerMessage3: showFooter ? (activeOutletObj?.footer_message3 || localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital') : '',
+        footerMessage: showFooter ? (activeOutletObj?.footer_message || localStorage.getItem('footerMessage') || '') : '',
+        footerMessage2: showFooter ? (activeOutletObj?.footer_message2 || localStorage.getItem('footerMessage2') || '') : '',
+        footerMessage3: showFooter ? (activeOutletObj?.footer_message3 || localStorage.getItem('footerMessage3') || '') : '',
       };
       console.log('Print data prepared:', printData);
 
@@ -323,11 +326,11 @@ export default function POSPage() {
   const getProductImageUrl = (product: any, size: 'small' | 'thumb' | 'full' = 'full'): string | null => {
     const imageUrl = product.image_url || product.imageUrl;
     if (!imageUrl) return null;
-    
+
     let options = undefined;
     if (size === 'small') options = { width: 200, height: 200 };
     if (size === 'thumb') options = { width: 100, height: 100 };
-    
+
     return getProductImageUrlFromStorage(imageUrl, options);
   };
 
@@ -346,7 +349,7 @@ export default function POSPage() {
     const unitName = selectedUnit?.unit_name || 'pcs';
     const conversionFactor = selectedUnit?.conversion_factor || 1;
     const unitPrice = selectedUnit?.price ? Number(selectedUnit.price) : product.price * conversionFactor;
-    
+
     let uomDiscountAmount = 0;
     if (selectedUnit?.discount_type === 'amount') {
       uomDiscountAmount = Number(selectedUnit.discount_value) || 0;
@@ -372,7 +375,7 @@ export default function POSPage() {
     }
 
     const imageUrl = getProductImageUrl(product, 'thumb');
-    
+
     toast({
       title: product.name,
       description: `Ditambahkan ke keranjang (${unitName})`,
@@ -383,9 +386,9 @@ export default function POSPage() {
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id && item.unitName === unitName);
       if (existing) {
-        return prev.map(item => 
+        return prev.map(item =>
           (item.productId === product.id && item.unitName === unitName)
-            ? { ...item, quantity: item.quantity + qtyToAdd } 
+            ? { ...item, quantity: item.quantity + qtyToAdd }
             : item
         );
       }
@@ -410,7 +413,7 @@ export default function POSPage() {
   const handleProductClick = (product: any) => {
     const uoms = product.uoms || [];
     const nonPcsUoms = uoms.filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1);
-    
+
     if (nonPcsUoms.length > 0) {
       // Product has multiple units - show UOM selector
       setUomSelectorProduct(product);
@@ -426,7 +429,7 @@ export default function POSPage() {
       const product = posProducts.find((p: any) => p.id === productId);
       const item = cart.find(i => i.productId === productId && i.unitName === unitName);
       const convFactor = item?.conversionFactor || 1;
-      
+
       if (product && product.stock_quantity !== undefined && product.stock_quantity !== null) {
         const totalPcsInCart = cart.reduce((acc, cartItem) => {
           if (cartItem.productId === product.id && !(cartItem.unitName === item?.unitName)) {
@@ -458,7 +461,7 @@ export default function POSPage() {
   };
 
   // Function untuk create pelanggan baru
-  const createNewCustomer = async (name: string, phone: string, membershipType: string, alamat: string, kecamatan: string, kabupaten: string) => {
+  const createNewCustomer = async (name: string, phone: string, alamat: string, kecamatan: string, kabupaten: string) => {
     try {
       const trimmedName = name.trim();
       const trimmedPhone = phone.trim();
@@ -479,7 +482,6 @@ export default function POSPage() {
         .insert({
           name: trimmedName,
           phone: trimmedPhone || null,
-          membership_type: membershipType,
           total_spent: 0,
           sales_name: cashierName,
           customer_id_manual: autoGeneratedId,
@@ -567,32 +569,101 @@ export default function POSPage() {
     }
 
     const uoms = product.uoms || [];
-    const matchingUoms = uoms.filter((u: any) => u.unit_name.toLowerCase() === item.unitName.toLowerCase());
-    
-    if (matchingUoms.length === 0) {
-      if (item.unitName.toLowerCase() === 'pcs') {
-        return { price: product.price, discount: 0, label: '' };
+
+    // Jika satuan adalah 'pcs', lakukan alokasi greedy ke UOM yang lebih besar (box/pack) yang memenuhi syarat diskon
+    if (item.unitName.toLowerCase() === 'pcs') {
+      const sortedUoms = [...uoms]
+        .filter((u: any) => u.conversion_factor > 1)
+        .sort((a, b) => {
+          if (b.conversion_factor !== a.conversion_factor) {
+            return b.conversion_factor - a.conversion_factor;
+          }
+          return (b.min_qty || 1) - (a.min_qty || 1);
+        });
+
+      let remainingPcs = item.quantity;
+      let totalPrice = 0;
+      let totalDiscount = 0;
+      let matchedLabel = '';
+
+      for (const u of sortedUoms) {
+        const numUnits = Math.floor(remainingPcs / u.conversion_factor);
+        if (numUnits >= (u.min_qty || 1)) {
+          const uomBasePrice = u.price ? Number(u.price) : product.price * u.conversion_factor;
+          const uomTotalBasePrice = uomBasePrice * numUnits;
+
+          let uomTotalDiscount = 0;
+          if (u.discount_type === 'amount') {
+            const discountPerUomUnit = (Number(u.discount_value) || 0) / (u.min_qty || 1);
+            uomTotalDiscount = discountPerUomUnit * numUnits;
+          } else if (u.discount_type === 'percent') {
+            uomTotalDiscount = uomBasePrice * ((Number(u.discount_value) || 0) / 100) * numUnits;
+          }
+
+          if (u.label && !matchedLabel) {
+            matchedLabel = u.label;
+          }
+
+          totalPrice += uomTotalBasePrice;
+          totalDiscount += uomTotalDiscount;
+          remainingPcs -= numUnits * u.conversion_factor;
+        }
       }
+
+      if (remainingPcs > 0) {
+        const pcsUom = uoms.find((u: any) => u.unit_name.toLowerCase() === 'pcs');
+        if (pcsUom) {
+          const pcsBasePrice = pcsUom.price ? Number(pcsUom.price) : product.price;
+          totalPrice += pcsBasePrice * remainingPcs;
+
+          if (remainingPcs >= (pcsUom.min_qty || 1)) {
+            let pcsDiscount = 0;
+            if (pcsUom.discount_type === 'amount') {
+              const discountPerPcs = (Number(pcsUom.discount_value) || 0) / (pcsUom.min_qty || 1);
+              pcsDiscount = discountPerPcs * remainingPcs;
+            } else if (pcsUom.discount_type === 'percent') {
+              pcsDiscount = pcsBasePrice * ((Number(pcsUom.discount_value) || 0) / 100) * remainingPcs;
+            }
+            totalDiscount += pcsDiscount;
+            if (pcsUom.label && !matchedLabel) {
+              matchedLabel = pcsUom.label;
+            }
+          }
+        } else {
+          totalPrice += product.price * remainingPcs;
+        }
+      }
+
+      const avgPrice = totalPrice / item.quantity;
+      const avgDiscount = totalDiscount / item.quantity;
+
+      return { price: avgPrice, discount: avgDiscount, label: matchedLabel };
+    }
+
+    const matchingUoms = uoms.filter((u: any) => u.unit_name.toLowerCase() === item.unitName.toLowerCase());
+
+    if (matchingUoms.length === 0) {
       const activeDiscount = item.quantity >= (item.uomMinQty || 1) ? (item.uomDiscountAmount || 0) : 0;
       return { price: item.unitPrice, discount: activeDiscount, label: item.uomLabel };
     }
 
     const eligibleUoms = matchingUoms.filter((u: any) => item.quantity >= (u.min_qty || 1));
-    const activeUom = eligibleUoms.length > 0 
+    const activeUom = eligibleUoms.length > 0
       ? eligibleUoms.reduce((max: any, u: any) => (u.min_qty || 1) > (max.min_qty || 1) ? u : max, eligibleUoms[0])
       : matchingUoms.reduce((min: any, u: any) => (u.min_qty || 1) < (min.min_qty || 1) ? u : min, matchingUoms[0]);
 
     const basePrice = activeUom.price ? Number(activeUom.price) : product.price * activeUom.conversion_factor;
-    let discountAmount = 0;
+    let discountAmountPerUnit = 0;
     if (item.quantity >= (activeUom.min_qty || 1)) {
       if (activeUom.discount_type === 'amount') {
-        discountAmount = Number(activeUom.discount_value) || 0;
+        const totalDiscount = (Number(activeUom.discount_value) || 0) * Math.floor(item.quantity / (activeUom.min_qty || 1));
+        discountAmountPerUnit = totalDiscount / item.quantity;
       } else if (activeUom.discount_type === 'percent') {
-        discountAmount = basePrice * ((Number(activeUom.discount_value) || 0) / 100);
+        discountAmountPerUnit = basePrice * ((Number(activeUom.discount_value) || 0) / 100);
       }
     }
 
-    return { price: basePrice, discount: discountAmount, label: activeUom.label || '' };
+    return { price: basePrice, discount: discountAmountPerUnit, label: activeUom.label || '' };
   };
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => {
@@ -622,28 +693,25 @@ export default function POSPage() {
       return;
     }
 
-    if (paymentType === "lunas" && paymentMethod === "cash" && amountPaid < total) {
-      toast({ title: "Error", description: "Uang diterima kurang dari total", variant: "destructive" });
+
+
+    if (paymentType === "dp" && amountPaid >= total) {
+      toast({ title: "Error", description: "Nominal cicilan harus kurang dari total tagihan", variant: "destructive" });
       return;
     }
 
-    if (paymentType === "dp" && amountPaid >= total) {
-      toast({ title: "Error", description: "Nominal DP harus kurang dari total tagihan", variant: "destructive" });
-      return;
-    }
-    
     if (paymentType === "dp" && amountPaid <= 0) {
-      toast({ title: "Error", description: "Nominal DP tidak boleh kosong", variant: "destructive" });
+      toast({ title: "Error", description: "Nominal cicilan tidak boleh kosong", variant: "destructive" });
       return;
     }
 
     if (paymentType !== "lunas" && !dueDate) {
-      toast({ title: "Error", description: "Tanggal jatuh tempo wajib diisi untuk transaksi DP / Tempo", variant: "destructive" });
+      toast({ title: "Error", description: "Tanggal jatuh tempo wajib diisi untuk transaksi Cicilan / Tempo", variant: "destructive" });
       return;
     }
 
     if (paymentType !== "lunas" && !customerId && !manualCustomerName.trim()) {
-      toast({ title: "Error", description: "Pelanggan wajib dipilih atau diisi untuk transaksi hutang (DP/Tempo)", variant: "destructive" });
+      toast({ title: "Error", description: "Pelanggan wajib dipilih atau diisi untuk transaksi hutang (Cicilan/Tempo)", variant: "destructive" });
       return;
     }
 
@@ -651,10 +719,8 @@ export default function POSPage() {
     let finalCustomerId = customerId;
     const manualName = manualCustomerName.trim();
     const manualPhone = manualCustomerPhone.trim();
-    const normalizedCustomerType = customerType === "member" ? "member" : "non_member";
-
     if (!customerId && manualName) {
-      const newCustomer = await createNewCustomer(manualName, manualPhone, normalizedCustomerType, manualAddress, manualDistrict, manualCity);
+      const newCustomer = await createNewCustomer(manualName, manualPhone, manualAddress, manualDistrict, manualCity);
       if (newCustomer) {
         finalCustomerId = newCustomer.id;
         toast({ title: "Sukses", description: `Pelanggan baru "${newCustomer.name}" berhasil dibuat`, variant: "default" });
@@ -663,10 +729,9 @@ export default function POSPage() {
       }
     }
 
-    const isMemberTransaction = selectedCustomer?.membership_type === "member" || customerType === "member";
     const receiptCustomerName = selectedCustomer?.name || manualCustomerName || "Umum";
 
-    let finalAmountPaid = paymentMethod === "cash" ? amountPaid : total;
+    let finalAmountPaid = total;
     let finalRemaining = 0;
     let paymentStatus = "paid";
 
@@ -696,7 +761,6 @@ export default function POSPage() {
         change: paymentType === "lunas" ? change : 0,
         customerName: receiptCustomerName !== "Umum" ? receiptCustomerName : undefined,
         customerPhone: selectedCustomer?.phone || manualCustomerPhone || undefined,
-        customerType: normalizedCustomerType,
         pointsRedeemed: 0,
         pointsDiscount: 0,
         earnedPoints: 0,
@@ -723,11 +787,22 @@ export default function POSPage() {
           await refetchCustomers?.();
         }
 
+        const mappedItems = cart.map(item => {
+          const { price, discount, label } = getCartItemPriceAndDiscount(item);
+          return {
+            ...item,
+            unitPrice: price,
+            uomDiscountAmount: discount,
+            uomMinQty: 1,
+            uomLabel: label
+          };
+        });
+
         setLastTransaction({
           ...res,
           cashierName,
           cashier_name: cashierName,
-          items: cart,
+          items: mappedItems,
           subtotal,
           tax,
           discount,
@@ -742,7 +817,6 @@ export default function POSPage() {
           ppnPercentage,
           customerName: receiptCustomerName,
           customerPhone: selectedCustomer?.phone || manualCustomerPhone,
-          customerType: isMemberTransaction ? "member" : customerType,
           pointsRedeemed: 0,
           pointsDiscount: 0,
           earnedPoints: 0,
@@ -757,7 +831,7 @@ export default function POSPage() {
             ...res,
             cashierName,
             cashier_name: cashierName,
-            items: cart,
+            items: mappedItems,
             subtotal,
             tax,
             discount,
@@ -772,7 +846,6 @@ export default function POSPage() {
             ppnPercentage,
             customerName: receiptCustomerName,
             customerPhone: selectedCustomer?.phone || manualCustomerPhone,
-            customerType: isMemberTransaction ? "member" : customerType,
             pointsRedeemed: 0,
             pointsDiscount: 0,
             earnedPoints: 0,
@@ -786,7 +859,7 @@ export default function POSPage() {
         setCustomerId(undefined);
         setManualCustomerName("");
         setManualCustomerPhone("");
-        setCustomerType("umum");
+        setManualCustomerPhone("");
         setPaymentMethod("cash");
         setAmountPaidDisplay("");
         setAmountPaidStr("");
@@ -910,24 +983,24 @@ export default function POSPage() {
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-4">
                   {posProducts?.map(product => {
-                   const imageUrl = getProductImageUrl(product, 'small');
-                   return (
-                     <div
-                       key={product.id}
-                       className="p-[3px] rounded-xl hover:scale-105 transition-transform duration-200 cursor-pointer"
-                       onClick={() => handleProductClick(product)}
-                     >
-                       <Card
-                         className="overflow-hidden active:scale-95 flex flex-col h-full"
-                       >
-                         <div className="aspect-square w-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center relative">
-                           {imageUrl ? (
-                             <img
-                               src={imageUrl}
-                               alt={product.name}
-                               className="w-full h-full object-cover"
-                               loading="lazy"
-                               onError={(e) => {
+                    const imageUrl = getProductImageUrl(product, 'small');
+                    return (
+                      <div
+                        key={product.id}
+                        className="p-[3px] rounded-xl hover:scale-105 transition-transform duration-200 cursor-pointer"
+                        onClick={() => handleProductClick(product)}
+                      >
+                        <Card
+                          className="overflow-hidden active:scale-95 flex flex-col h-full"
+                        >
+                          <div className="aspect-square w-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center relative">
+                            {imageUrl ? (
+                              <img
+                                src={imageUrl}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => {
                                   e.currentTarget.style.display = 'none';
                                   const parent = e.currentTarget.parentElement;
                                   if (parent) {
@@ -1018,35 +1091,31 @@ export default function POSPage() {
                         <Package className={`w-4 h-4 lg:w-5 lg:h-5 text-slate-400 dark:text-slate-500 ${item.imageUrl ? 'hidden' : ''} cart-item-icon`} />
                       </div>
 
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-xs lg:text-sm leading-tight truncate text-slate-800">{item.productName}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className="font-bold text-xs lg:text-sm leading-snug text-slate-800 dark:text-slate-200 break-words line-clamp-2">
+                          <span className="text-primary">{item.quantity} {item.unitName}</span> {item.productName}
+                        </p>
+                        <div className="flex flex-col mt-1">
                           {(() => {
                             const { price, discount, label } = getCartItemPriceAndDiscount(item);
+                            const finalPrice = price - discount;
+                            const totalItemPrice = finalPrice * item.quantity;
+
                             return (
                               <>
-                                {discount > 0 ? (
-                                  <div className="flex flex-col">
-                                    <p className="font-bold text-xs text-primary dark:text-primary-400">
-                                      {formatRupiah(price - discount)}
-                                    </p>
-                                    <p className="text-[9px] text-slate-400 line-through">
-                                      {formatRupiah(price)}
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <p className="font-bold text-xs text-primary dark:text-primary-400">{formatRupiah(price)}</p>
-                                )}
-                                {item.unitName !== 'pcs' && (
-                                  <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[9px] px-1 py-0 h-3.5 font-semibold border-0">
-                                    {item.unitName}
-                                  </Badge>
-                                )}
-                                {label && (
-                                  <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1 py-0 h-3.5 font-semibold border-0 whitespace-nowrap">
-                                    🏷️ {label}
-                                  </Badge>
-                                )}
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                  @ {formatRupiah(finalPrice)} {discount > 0 ? <span className="line-through opacity-70 ml-1">{formatRupiah(price)}</span> : null}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <p className="font-bold text-[13px] lg:text-sm text-emerald-600 dark:text-emerald-400">
+                                    {formatRupiah(totalItemPrice)}
+                                  </p>
+                                  {label && (
+                                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[9px] px-1.5 py-0 h-4 font-semibold border-0 whitespace-nowrap">
+                                      🏷️ {label}
+                                    </Badge>
+                                  )}
+                                </div>
                               </>
                             );
                           })()}
@@ -1118,16 +1187,13 @@ export default function POSPage() {
                                 setManualDistrict(c.district || "");
                                 setManualCity(c.city || "");
                                 setManualCustomerId(c.customer_id_manual || "");
-                                setCustomerType(c.membership_type === "member" ? "member" : "umum");
+                                setManualCustomerId(c.customer_id_manual || "");
                                 setCustomerSearchQuery("");
                                 setShowCustomerDropdown(false);
                               }}
                               className="flex items-center gap-2 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-b-0"
                             >
                               <span className="flex-1 truncate text-slate-900 dark:text-slate-100">{formatCustomerLabel(c)}</span>
-                              {c.membership_type === "member" && (
-                                <Badge className="bg-amber-500 hover:bg-amber-600 text-[10px] py-0 px-1.5 h-4 shrink-0">MEMBER</Badge>
-                              )}
                             </div>
                           ))}
                           {filteredCustomers?.length === 0 && (
@@ -1152,7 +1218,7 @@ export default function POSPage() {
                       setManualDistrict("");
                       setManualCity("");
                       setManualCustomerId("");
-                      setCustomerType("umum");
+                      setManualCustomerId("");
                     }}
                     className="text-xs text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 underline"
                   >
@@ -1171,9 +1237,7 @@ export default function POSPage() {
                     value={manualCustomerName}
                     onChange={(e) => {
                       setManualCustomerName(e.target.value);
-                      if (e.target.value.trim().length > 0 && customerType !== "member") {
-                        setCustomerType("member");
-                      }
+                      setManualCustomerName(e.target.value);
                     }}
                     placeholder="Masukkan nama pelanggan"
                     className="h-10 lg:h-9"
@@ -1188,18 +1252,7 @@ export default function POSPage() {
                     className="h-10 lg:h-9"
                   />
                 </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tipe Pelanggan</label>
-                  <Select value={customerType} onValueChange={setCustomerType}>
-                    <SelectTrigger className="w-full h-10">
-                      <SelectValue placeholder="Pilih tipe pelanggan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="umum">Umum</SelectItem>
-                      <SelectItem value="member">Member</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Alamat Lengkap</label>
                   <Input
@@ -1255,7 +1308,7 @@ export default function POSPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="lunas">Lunas</SelectItem>
-                    <SelectItem value="dp">DP / Cicilan</SelectItem>
+                    <SelectItem value="dp">Cicilan</SelectItem>
                     <SelectItem value="tempo">Tempo Penuh</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1285,8 +1338,8 @@ export default function POSPage() {
                     onClick={() => setPaymentMethod("debit_card")}
                     className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 transition-all ${paymentMethod === "debit_card" ? "border-primary bg-primary/5 text-primary dark:bg-primary-900/20 dark:border-primary-400 dark:text-primary-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"}`}
                   >
-                    <CreditCard className="w-4 h-4 lg:w-5 lg:h-5 mb-1" />
-                    <span className="text-[10px] font-medium">Debit</span>
+                    <Wallet className="w-4 h-4 lg:w-5 lg:h-5 mb-1" />
+                    <span className="text-[10px] font-medium">E-wallet</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod("qris")}
@@ -1300,12 +1353,12 @@ export default function POSPage() {
             </div>
 
             {/* Cash Input / DP Input */}
-            {((paymentMethod === "cash" && paymentType !== "tempo") || paymentType === "dp") && (
+            {paymentType === "dp" && (
               <div className="px-4 lg:px-3 pb-4 lg:pb-3">
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">
-                      {paymentType === "dp" ? "Nominal DP" : "Uang Diterima"}
+                      Nominal Cicilan
                     </label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 font-medium text-sm">Rp</span>
@@ -1318,22 +1371,12 @@ export default function POSPage() {
                       />
                     </div>
                   </div>
-                  {paymentType === "lunas" && (
-                    <div className="flex-1">
-                      <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Kembalian</label>
-                      <div className={`h-10 rounded-md border flex items-center px-3 font-bold text-sm ${change >= 0 ? "bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400" : "bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400"}`}>
-                        {formatRupiah(Math.max(0, change))}
-                      </div>
+                  <div className="flex-1">
+                    <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Sisa Hutang</label>
+                    <div className={`h-10 rounded-md border flex items-center px-3 font-bold text-sm bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400`}>
+                      {formatRupiah(Math.max(0, total - amountPaid))}
                     </div>
-                  )}
-                  {paymentType === "dp" && (
-                    <div className="flex-1">
-                      <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 block">Sisa Hutang</label>
-                      <div className={`h-10 rounded-md border flex items-center px-3 font-bold text-sm bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400`}>
-                        {formatRupiah(Math.max(0, total - amountPaid))}
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1343,13 +1386,41 @@ export default function POSPage() {
               <div className="px-4 lg:px-3 pb-4 lg:pb-3">
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tanggal Jatuh Tempo</label>
-                  <Input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="h-10 rounded-md border text-sm"
-                    min={new Date().toISOString().split('T')[0]}
-                  />
+                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={`w-full justify-between text-left font-medium h-10 px-3 border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 ${!dueDate ? "text-slate-400" : "text-slate-900 dark:text-slate-100"
+                          }`}
+                      >
+                        {dueDate ? (
+                          new Date(dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+                        ) : (
+                          <span>Pilih Tanggal</span>
+                        )}
+                        <CalendarRange className="w-4 h-4 text-slate-400" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dueDate ? new Date(dueDate) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            setDueDate(`${year}-${month}-${day}`);
+                          } else {
+                            setDueDate("");
+                          }
+                          setIsCalendarOpen(false);
+                        }}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             )}
@@ -1376,9 +1447,8 @@ export default function POSPage() {
                 className="w-full h-12 text-base font-medium shadow-lg"
                 size="lg"
                 disabled={
-                  cart.length === 0 || 
-                  createTransaction.isPending || 
-                  (paymentType === "lunas" && paymentMethod === "cash" && amountPaid < total) ||
+                  cart.length === 0 ||
+                  createTransaction.isPending ||
                   (paymentType === "dp" && (amountPaid <= 0 || amountPaid >= total))
                 }
                 onClick={handleCheckout}
@@ -1420,7 +1490,7 @@ export default function POSPage() {
               {/* Header - Store Name Centered */}
               <div className="text-center mb-3">
                 <p className="font-bold text-base text-slate-900 dark:text-slate-100">
-                  {localStorage.getItem('storeName') || 'SBAGIAMU'}
+                  {localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || 'SBAGIAMU'}
                 </p>
                 {(() => {
                   const address = localStorage.getItem('storeAddress');
@@ -1508,7 +1578,7 @@ export default function POSPage() {
                 {lastTransaction?.payment_status === 'partial' ? (
                   <>
                     <div className="flex justify-between text-xs pt-2">
-                      <span className="text-slate-500 dark:text-slate-400">DP ({getPaymentMethodLabel(lastTransaction?.paymentMethod || '')})</span>
+                      <span className="text-slate-500 dark:text-slate-400">Cicilan ({getPaymentMethodLabel(lastTransaction?.paymentMethod || '')})</span>
                       <span className="text-slate-700 dark:text-slate-300">{formatRupiah(lastTransaction?.amountPaid || lastTransaction?.amount_paid || 0)}</span>
                     </div>
                     <div className="flex justify-between text-xs font-bold text-amber-600 dark:text-amber-400">
@@ -1521,26 +1591,13 @@ export default function POSPage() {
                     <span>Sisa Hutang</span>
                     <span>{formatRupiah(lastTransaction?.remaining_balance || 0)}</span>
                   </div>
-                ) : lastTransaction?.paymentMethod === 'cash' && (
-                  <>
-                    <div className="flex justify-between text-xs pt-2">
-                      <span className="text-slate-500 dark:text-slate-400">Tunai</span>
-                      <span className="text-slate-700 dark:text-slate-300">{formatRupiah(lastTransaction?.amountPaid || lastTransaction?.amount_paid || 0)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                      <span>Kembali</span>
-                      <span>{formatRupiah(lastTransaction?.change || 0)}</span>
-                    </div>
-                  </>
-                )}
-                {lastTransaction?.customerType === "member" && (
-                  <div className="pt-2 border-t border-dashed border-slate-200 dark:border-slate-700 space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-500 dark:text-slate-400">Status</span>
-                      <span className="font-bold text-slate-900 dark:text-slate-100">Member</span>
-                    </div>
+                ) : (
+                  <div className="flex justify-between text-xs pt-2">
+                    <span className="text-slate-500 dark:text-slate-400">Metode Pembayaran</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-bold">{getPaymentMethodLabel(lastTransaction?.paymentMethod || '')}</span>
                   </div>
                 )}
+
               </div>
             </div>
 
@@ -1577,12 +1634,11 @@ export default function POSPage() {
       {/* UOM Selector Dialog */}
       <Dialog open={!!uomSelectorProduct} onOpenChange={(open) => !open && setUomSelectorProduct(null)}>
         <DialogContent className="sm:max-w-xs sm:rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Ruler className="w-4 h-4 text-slate-500" />
+          <DialogHeader className="flex flex-col items-center justify-center text-center sm:text-center">
+            <DialogTitle className="text-base font-bold">
               Pilih Satuan
             </DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-1">
               {uomSelectorProduct?.name}
             </DialogDescription>
           </DialogHeader>
@@ -1598,58 +1654,62 @@ export default function POSPage() {
                   discount_value: 0
                 });
               }
-              
+
               return uoms.map((uom: any, idx: number) => {
                 const unitPrice = uom.price ? Number(uom.price) : uomSelectorProduct.price * uom.conversion_factor;
+                const minQty = uom.min_qty || 1;
                 
-                let uomDiscountAmount = 0;
+                const totalBeforeDiscount = unitPrice * minQty;
+                let totalDiscount = 0;
+                
                 if (uom.discount_type === 'amount') {
-                  uomDiscountAmount = Number(uom.discount_value) || 0;
+                  totalDiscount = Number(uom.discount_value) || 0;
                 } else if (uom.discount_type === 'percent') {
-                  uomDiscountAmount = unitPrice * ((Number(uom.discount_value) || 0) / 100);
+                  totalDiscount = totalBeforeDiscount * ((Number(uom.discount_value) || 0) / 100);
                 }
+                
+                const totalAfterDiscount = Math.max(0, totalBeforeDiscount - totalDiscount);
 
                 return (
-                <button
-                  key={`${uom.unit_name}_${idx}`}
-                  onClick={() => {
-                    setQtyInput(1);
-                    setQtySelector({ product: uomSelectorProduct, uom });
-                    setUomSelectorProduct(null);
-                  }}
-                  className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 active:scale-[0.98] group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-xs font-bold uppercase">
-                      {uom.unit_name.slice(0, 3)}
-                    </div>
-                    <div className="text-left">
-                      <div className="font-semibold text-sm text-slate-800 dark:text-slate-200 capitalize">{uom.unit_name}</div>
-                      {uom.conversion_factor > 1 && (
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">1 {uom.unit_name} = {uom.conversion_factor} pcs</div>
-                      )}
-                      {uom.label && (
-                        <div className="text-[10px] font-medium text-green-600 dark:text-green-400 mt-0.5">🏷️ {uom.label}</div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right flex flex-col items-end">
-                    {uomDiscountAmount > 0 ? (
-                      <div className="text-right">
-                        <div className="font-bold text-sm text-primary group-hover:text-primary/80">{formatRupiah(unitPrice - uomDiscountAmount)}</div>
-                        <div className="text-[10px] text-slate-400 line-through">{formatRupiah(unitPrice)}</div>
-                        {uom.min_qty > 1 && (
-                          <div className="text-[9px] font-semibold text-orange-500">Min. {uom.min_qty}</div>
+                  <button
+                    key={`${uom.unit_name}_${idx}`}
+                    onClick={() => {
+                      setQtyInput(minQty);
+                      setQtySelector({ product: uomSelectorProduct, uom });
+                      setUomSelectorProduct(null);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 active:scale-[0.98] group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-xs font-bold uppercase">
+                        {uom.unit_name.slice(0, 3)}
+                      </div>
+                      <div className="text-left">
+                        <div className="font-semibold text-sm text-slate-800 dark:text-slate-200">
+                          {minQty} <span className="capitalize">{uom.unit_name}</span>
+                        </div>
+                        {uom.conversion_factor > 1 && (
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">1 {uom.unit_name} = {uom.conversion_factor} pcs</div>
+                        )}
+                        {uom.label && (
+                          <div className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">🏷️ {uom.label}</div>
                         )}
                       </div>
-                    ) : (
-                      <div className="font-bold text-sm text-primary group-hover:text-primary/80">{formatRupiah(unitPrice)}</div>
-                    )}
-                  </div>
-                </button>
-              );
-            });
-          })()}
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                      {totalDiscount > 0 ? (
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-400 line-through mb-0.5">{formatRupiah(totalBeforeDiscount)}</div>
+                          <div className="font-bold text-sm text-emerald-600 dark:text-emerald-400 group-hover:text-emerald-700">{formatRupiah(totalAfterDiscount)}</div>
+                        </div>
+                      ) : (
+                        <div className="font-bold text-sm text-slate-900 dark:text-slate-100">{formatRupiah(totalBeforeDiscount)}</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              });
+            })()}
           </div>
         </DialogContent>
       </Dialog>
@@ -1657,19 +1717,19 @@ export default function POSPage() {
       {/* QTY Selector Dialog */}
       <Dialog open={!!qtySelector} onOpenChange={(open) => !open && setQtySelector(null)}>
         <DialogContent className="sm:max-w-xs sm:rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
+          <DialogHeader className="flex flex-col items-center justify-center text-center sm:text-center">
+            <DialogTitle className="text-base font-bold">
               Masukkan Jumlah
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              {qtySelector?.product?.name} ({qtySelector?.uom?.unit_name || 'pcs'})
+            <DialogDescription className="text-lg font-bold text-slate-900 dark:text-slate-100 mt-1">
+              {qtySelector?.product?.name} <span className="text-sm font-normal text-slate-500 dark:text-slate-400">({qtySelector?.uom?.unit_name || 'pcs'})</span>
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
             <div className="flex items-center justify-center gap-4">
-              <Button 
-                variant="outline" 
-                size="icon" 
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={() => setQtyInput(prev => Math.max(1, prev - 1))}
               >
                 <Minus className="w-4 h-4" />
@@ -1681,15 +1741,15 @@ export default function POSPage() {
                 onChange={(e) => setQtyInput(parseInt(e.target.value) || 1)}
                 min={1}
               />
-              <Button 
-                variant="outline" 
-                size="icon" 
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={() => setQtyInput(prev => prev + 1)}
               >
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
-            
+
             {/* Quick amount buttons */}
             <div className="grid grid-cols-4 gap-2">
               {[5, 10, 20, 50].map(amount => (
@@ -1704,8 +1764,8 @@ export default function POSPage() {
                 </Button>
               ))}
             </div>
-            
-            <Button 
+
+            <Button
               className="w-full mt-2"
               onClick={() => {
                 if (qtySelector) {

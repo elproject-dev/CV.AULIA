@@ -644,6 +644,11 @@ aside,
   z-index: 10;
 }
 
+.no-date-icon::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
+
 /* Hide scrollbar but keep scrolling functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;

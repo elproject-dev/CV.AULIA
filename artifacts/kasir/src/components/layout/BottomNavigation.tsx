@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2, RefreshCcw, Banknote } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2, RefreshCcw } from "lucide-react";
+import { TbCoin } from "react-icons/tb";
 import { cn } from "@/lib/utils";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -61,10 +62,8 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
         { href: "/customers", label: "Pelanggan", icon: Users },
         { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
         { href: "/expenses", label: "Pengeluaran", icon: Wallet },
-        { href: "/receivables", label: "Piutang", icon: Banknote },
-        { href: "#profile", label: "Profil", icon: User },
+        { href: "/receivables", label: "Piutang", icon: TbCoin },
         { href: "/settings", label: "Pengaturan", icon: Settings },
-        { href: "#logout", label: "Keluar", icon: LogOut, isLogout: true },
       ];
     }
 
@@ -72,7 +71,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
       { href: "/staff", label: "Staff", icon: UserCog },
       { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
       { href: "/expenses", label: "Pengeluaran", icon: Wallet },
-      { href: "/receivables", label: "Piutang", icon: Banknote },
+      { href: "/receivables", label: "Piutang", icon: TbCoin },
       { href: "/promo", label: "Promo", icon: Megaphone },
       { href: "/settings", label: "Pengaturan", icon: Settings },
     ];

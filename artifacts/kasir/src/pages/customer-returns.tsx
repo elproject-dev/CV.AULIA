@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useAuthUserName } from "@/contexts/AuthContext";
 import { isAdminMode } from "@/lib/auth";
 import {
   PackageOpen,
@@ -24,7 +24,8 @@ import {
   Clock,
   Trash2,
   Banknote,
-  TrendingDown
+  TrendingDown,
+  Printer
 } from "lucide-react";
 import {
   useListReturns,
@@ -39,6 +40,7 @@ import { getProductImageUrl } from "@/lib/supabase-storage";
 export default function CustomerReturnsPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const cashierName = useAuthUserName();
   const isAdmin = isAdminMode(user);
 
   const [activeTab, setActiveTab] = useState<'new' | 'pending' | 'history'>('new');
@@ -53,7 +55,8 @@ export default function CustomerReturnsPage() {
   const [notes, setNotes] = useState("");
 
   // Queries
-  const { data: returnHistory, isLoading: isLoadingHistory } = useListReturns();
+  const { data: rawReturnHistory, isLoading: isLoadingHistory } = useListReturns();
+  const returnHistory = isAdmin ? rawReturnHistory : rawReturnHistory?.filter((r: any) => r.cashier_name === cashierName);
   const { data: transaction, isLoading: isLoadingTransaction, isError: isTransactionError } = useGetTransactionByInvoice(searchedId);
   const createReturn = useCreateReturn();
   const confirmReturn = useConfirmReturn();
@@ -62,11 +65,523 @@ export default function CustomerReturnsPage() {
   const pendingReturns = returnHistory?.filter((r: any) => r.status === 'pending') || [];
   const completedReturns = returnHistory?.filter((r: any) => r.status === 'completed') || [];
 
+  const [storeInfo, setStoreInfo] = useState(() => ({
+    name: localStorage.getItem('storeName') || 'CV.AULIA USAHA',
+    address: localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk',
+    phone: localStorage.getItem('storePhone') || '',
+    footer: localStorage.getItem('footerMessage') || 'Terima Kasih Sudah Melakukan Order',
+    bankName: localStorage.getItem('storeBankName') || 'BCA',
+    bankAccount: localStorage.getItem('storeBankAccount') || '4451377137',
+    bankAccountName: localStorage.getItem('storeBankAccountName') || 'AULIA USAHA'
+  }));
+
+  useEffect(() => {
+    const syncStoreInfo = () => {
+      setStoreInfo({
+        name: localStorage.getItem('storeName') || 'CV.AULIA USAHA',
+        address: localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk',
+        phone: localStorage.getItem('storePhone') || '',
+        footer: localStorage.getItem('footerMessage') || 'Terima Kasih Sudah Melakukan Order',
+        bankName: localStorage.getItem('storeBankName') || 'BCA',
+        bankAccount: localStorage.getItem('storeBankAccount') || '4451377137',
+        bankAccountName: localStorage.getItem('storeBankAccountName') || 'AULIA USAHA'
+      });
+    };
+    syncStoreInfo();
+    window.addEventListener('storage', syncStoreInfo);
+    window.addEventListener('storeSettingsChanged', syncStoreInfo);
+    window.addEventListener('storeNameChanged', syncStoreInfo);
+    return () => {
+      window.removeEventListener('storage', syncStoreInfo);
+      window.removeEventListener('storeSettingsChanged', syncStoreInfo);
+      window.removeEventListener('storeNameChanged', syncStoreInfo);
+    };
+  }, []);
+
+  const handlePrintReturnReceipt = (returnData: any) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      toast({
+        title: "Gagal mencetak",
+        description: "Popup diblokir. Izinkan popup untuk mencetak.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const storeName = storeInfo?.name || "CV AULIA USAHA";
+    const storeAddress = storeInfo?.address || "";
+    const storePhone = storeInfo?.phone || "";
+
+    let itemsHtml = returnData.sales_return_items?.map((item: any, index: number) => {
+      const productName = item.product_name || 'Unknown';
+      const quantity = item.quantity || 0;
+      const unit = item.unit_name || 'PCS';
+      const refundPrice = item.refund_price || 0;
+      const subtotal = item.subtotal || 0;
+      return `
+        <tr>
+          <td style="text-align: center; color: #64748b;">${index + 1}</td>
+          <td style="font-weight: 600; color: #0f172a;">${productName}</td>
+          <td style="text-align: center; font-weight: 600; color: #0f172a;">${quantity} ${unit}</td>
+          <td style="text-align: right; color: #475569;">${formatRupiah(refundPrice)}</td>
+          <td style="text-align: right; font-weight: 700; color: #0f172a;">${formatRupiah(subtotal)}</td>
+        </tr>`;
+    }).join('') || '';
+
+    // Always fill the table with at least 8 rows
+    const itemsCount = returnData.sales_return_items?.length || 0;
+    if (itemsCount < 8) {
+      for (let i = itemsCount; i < 8; i++) {
+        itemsHtml += `
+          <tr class="empty-row">
+            <td style="text-align: center; color: #cbd5e1;">${i + 1}</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+          </tr>`;
+      }
+    }
+
+    let returnDate = '-';
+    if (returnData.created_at) {
+      const dateObj = new Date(returnData.created_at);
+      const dateStr = dateObj.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+      const timeStr = dateObj.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).replace(':', '.');
+      returnDate = `${dateStr} ,${timeStr}`;
+    }
+
+    const getInvoiceContentHtml = (copyLabel: string) => {
+      return `
+        <div class="invoice-copy">
+          <div>
+            <table class="info-table">
+              <tr>
+                <td style="width: 60%; vertical-align: middle;">
+                  <table style="border-collapse: collapse; border: none; margin: 0; padding: 0;">
+                    <tr>
+                      <td style="vertical-align: middle; padding-right: 12px; border: none;">
+                        <img src="/CV.AULIA.png" alt="Logo" style="height: 40px; width: auto; display: block; position: relative; top: -3px;" onerror="this.style.display='none'" />
+                      </td>
+                      <td style="vertical-align: middle; border: none; padding: 0; text-align: left;">
+                        <div class="company-name">${storeName}</div>
+                        ${storeAddress ? `<div class="company-address">${storeAddress}</div>` : ''}
+                        ${storePhone ? `<div class="company-contact">Telp: ${storePhone}</div>` : ''}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="width: 40%; text-align: right; vertical-align: top;">
+                  <h1 class="invoice-title">FAKTUR RETUR PENJUALAN</h1>
+                  <div style="font-size: 10px; font-weight: 700; color: #475569; margin-top: 4px; display: inline-flex; gap: 6px; justify-content: flex-end; align-items: center; width: 100%;">
+                    <span class="invoice-copy-badge">${copyLabel}</span>
+                    <span class="invoice-status-badge ${returnData.status === 'completed' ? 'badge-completed' : 'badge-pending'}">${returnData.status === 'completed' ? 'SELESAI' : 'PENDING'}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <hr class="header-divider">
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+              <tr>
+                <td style="width: 70%; vertical-align: top;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Kepada Yth.</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; font-weight: 600; color: #0f172a;">${returnData.customers?.name || returnData.customer_name || 'Pelanggan Umum'}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">No. Telepon</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0;">${returnData.customers?.phone || returnData.customer_phone || '-'}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Alamat</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; font-size: 9.5px; line-height: 1.2;">
+                        ${returnData.customers?.address || returnData.customer_address || '-'}
+                        ${returnData.customers?.district || returnData.customer_district ? `, ${returnData.customers?.district || returnData.customer_district}` : ''}
+                        ${returnData.customers?.city || returnData.customer_city ? `, ${returnData.customers?.city || returnData.customer_city}` : ''}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="width: 2%;"></td> <!-- Spacer -->
+                <td style="width: 28%; vertical-align: top;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">No. Invoice</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; font-weight: 600; color: #0f172a; white-space: nowrap;">${formatInvoiceNumber(returnData.transaction_id)}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Tanggal Retur</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; white-space: nowrap;">${returnDate}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Salesman</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; white-space: nowrap;">${returnData.cashier_name || 'N/A'}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%; text-align: center;">No</th>
+                  <th style="width: 44%; text-align: left;">Nama Produk / Item</th>
+                  <th style="width: 15%; text-align: center;">Qty</th>
+                  <th style="width: 15%; text-align: right;">Harga Satuan</th>
+                  <th style="width: 20%; text-align: right;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+              <tr>
+                <td style="width: 55%; vertical-align: top;">
+                  <div class="reason-section">
+                    <strong>Alasan Retur:</strong> ${returnData.reason || '-'}<br>
+                    ${returnData.notes ? `<strong style="margin-top: 4px; display: inline-block;">Catatan:</strong> ${returnData.notes}` : ''}
+                  </div>
+                </td>
+                <td style="width: 45%; vertical-align: top; text-align: right;">
+                  <table style="width: 85%; border-collapse: collapse; float: right;">
+                    <tr>
+                      <td style="padding: 6px 10px; border: 2px solid #0f172a; background-color: #f8fafc; text-align: center; border-radius: 4px;">
+                        <div style="font-size: 8px; font-weight: 800; color: #475569; letter-spacing: 0.5px; text-transform: uppercase;">TOTAL REFUND</div>
+                        <div style="font-size: 14px; font-weight: 800; color: #ea580c; margin-top: 2px;">${formatRupiah(returnData.total_refund || 0)}</div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <div>
+            <table style="width: 100%; margin-top: 12px; border-collapse: collapse;">
+              <tr>
+                <td style="width: 50%; text-align: center; font-size: 10px; color: #334155; vertical-align: top;">
+                  <div>Penerima,</div>
+                  <div style="height: 32px;"></div>
+                  <div style="color: #0f172a; display: inline-block; min-width: 130px; padding-top: 2px; font-family: monospace;">
+                    ( _________________ )
+                  </div>
+                </td>
+                <td style="width: 50%; text-align: center; font-size: 10px; color: #334155; vertical-align: top;">
+                  <div>Hormat Kami,</div>
+                  <div style="height: 32px;"></div>
+                  <div style="color: #0f172a; display: inline-block; min-width: 130px; padding-top: 2px; font-family: monospace;">
+                    ( _________________ )
+                  </div>
+                </td>
+              </tr>
+            </table>
+            
+            <div style="text-align: left; font-size: 8px; font-style: italic; color: #475569; margin-top: 10px; line-height: 1.2; width: 100%;">
+              Pembayaran Transfer melalui Bank: <strong>${storeInfo?.bankName || 'BCA'} ${storeInfo?.bankAccount || '4451377137'}</strong> a/n <strong>${storeInfo?.bankAccountName || 'AULIA USAHA'}</strong>
+            </div>
+
+            <div class="footer-divider"></div>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="text-align: center; font-size: 8.5px; color: #64748b;">
+                  ${storeInfo?.footer || 'Terima Kasih Sudah Melakukan Order'}
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Faktur Retur - ${returnData.return_number || ''}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 0mm;
+          }
+          @media print {
+            body { margin: 0; padding: 8mm 10mm; }
+            .no-print { display: none !important; }
+            .invoice-copy { border: 1px solid transparent !important; }
+          }
+          * {
+            box-sizing: border-box;
+          }
+          body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            font-size: 10px;
+            line-height: 1.35;
+            margin: 0;
+            padding: 8mm 10mm;
+            color: #1e293b;
+            background-color: #ffffff;
+          }
+          .print-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: 270mm;
+            justify-content: space-between;
+          }
+          .invoice-copy {
+            height: 129mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            border: 1px dashed #cbd5e1;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: #ffffff;
+          }
+          .cut-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            margin: 1mm 0;
+            border-top: 1px dashed #cbd5e1;
+            position: relative;
+            height: 1px;
+          }
+          .cut-divider span {
+            background: #ffffff;
+            padding: 0 10px;
+            position: absolute;
+            top: -6px;
+            text-transform: uppercase;
+          }
+          .info-table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .company-name {
+            font-size: 13px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .company-address, .company-contact {
+            margin: 0;
+            font-size: 8.5px;
+            color: #475569;
+          }
+          .invoice-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+            letter-spacing: 0.02em;
+          }
+          .invoice-copy-badge {
+            display: inline-block;
+            font-size: 7.5px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background-color: #f1f5f9;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+            text-transform: uppercase;
+          }
+          .invoice-status-badge {
+            display: inline-block;
+            font-size: 7.5px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 1px 5px;
+            border-radius: 3px;
+            text-transform: uppercase;
+          }
+          .badge-completed {
+            background-color: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+          }
+          .badge-pending {
+            background-color: #fef9c3;
+            color: #854d0e;
+            border: 1px solid #fef08a;
+          }
+          .header-divider {
+            border: none;
+            border-top: 2px double #0f172a;
+            margin: 4px 0 6px 0;
+          }
+          .metadata-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+          }
+          .metadata-table td {
+            padding: 2px 0;
+            vertical-align: top;
+            font-size: 10px;
+          }
+          .metadata-table td:first-child, .metadata-table td:nth-child(4) {
+            color: #475569;
+            font-weight: 500;
+          }
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+          }
+          .items-table th {
+            background-color: #f8fafc;
+            color: #475569;
+            font-size: 8.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 4px 6px;
+            border-bottom: 1.5px solid #0f172a;
+            border-top: 1px solid #e2e8f0;
+          }
+          .items-table td {
+            padding: 4px 6px;
+            font-size: 10px;
+            border-bottom: 1px dashed #e2e8f0;
+            color: #0f172a;
+          }
+          .items-table tr:last-child td {
+            border-bottom: 1px solid #0f172a;
+          }
+          .items-table tr.empty-row td {
+            height: 15px;
+            padding: 2px 6px;
+          }
+
+          .text-center {
+            text-align: center;
+          }
+          .text-right {
+            text-align: right;
+          }
+          .reason-section {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 9.5px;
+            line-height: 1.35;
+          }
+          .footer-divider {
+            border: none;
+            border-top: 1px solid #cbd5e1;
+            margin: 6px 0 4px 0;
+          }
+          .no-print {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px dashed #e2e8f0;
+            page-break-inside: avoid;
+          }
+          .btn {
+            padding: 8px 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            text-decoration: none;
+          }
+          .btn-primary {
+            background-color: #0f172a;
+            color: white;
+          }
+          .btn-primary:hover {
+            background-color: #1e293b;
+          }
+          .btn-secondary {
+            background-color: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+          }
+          .btn-secondary:hover {
+            background-color: #e2e8f0;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-wrapper">
+          ${getInvoiceContentHtml('SALINAN PELANGGAN')}
+          
+          <div class="cut-divider">
+            <span>Gunting di sini untuk memotong dokumen</span>
+          </div>
+          
+          ${getInvoiceContentHtml('SALINAN TOKO')}
+        </div>
+
+        <div class="no-print">
+          <button class="btn btn-primary" onclick="window.print()">Cetak Faktur</button>
+          <button class="btn btn-secondary" onclick="window.close()">Tutup</button>
+        </div>
+
+        <script>
+          window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+        </script>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  };
+
   // Summary Metrics
   const totalPermintaan = returnHistory?.length || 0;
-  const totalBarangDiretur = returnHistory?.reduce((sum: number, r: any) => sum + (r.sales_return_items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity * (item.transaction_items?.conversion_factor || 1)), 0) || 0), 0) || 0;
-  const totalBarangRusak = returnHistory?.filter((r: any) => r.reason === 'Barang Rusak/Cacat' || r.reason === 'Barang Kadaluarsa').reduce((sum: number, r: any) => sum + (r.sales_return_items?.reduce((itemSum: number, item: any) => itemSum + (item.quantity * (item.transaction_items?.conversion_factor || 1)), 0) || 0), 0) || 0;
-  const totalNilaiRefund = returnHistory?.reduce((sum: number, r: any) => sum + Number(r.total_refund || 0), 0) || 0;
+  const getReturnItemBaseQty = (item: any) => {
+    const uoms = item.products?.product_uoms || [];
+    const uom = uoms.find((u: any) => u.unit_name === item.unit_name);
+    const conversionFactor = uom ? uom.conversion_factor : 1;
+    return item.quantity * conversionFactor;
+  };
+  const totalBarangDiretur = completedReturns.reduce((sum: number, r: any) => sum + (r.sales_return_items?.reduce((itemSum: number, item: any) => itemSum + getReturnItemBaseQty(item), 0) || 0), 0) || 0;
+  const totalBarangRusak = completedReturns.filter((r: any) => r.reason === 'Barang Rusak/Cacat' || r.reason === 'Barang Kadaluarsa').reduce((sum: number, r: any) => sum + (r.sales_return_items?.reduce((itemSum: number, item: any) => itemSum + getReturnItemBaseQty(item), 0) || 0), 0) || 0;
+  const totalNilaiRefund = completedReturns.reduce((sum: number, r: any) => sum + Number(r.total_refund || 0), 0) || 0;
 
   // Handle Search
   const handleSearch = (e: React.FormEvent) => {
@@ -148,7 +663,7 @@ export default function CustomerReturnsPage() {
     createReturn.mutate({
       transactionId: transaction.id,
       customerId: transaction.customer_id,
-      cashierName: user?.name || 'Kasir',
+      cashierName: cashierName,
       totalRefund: totalRefundAmount,
       reason,
       notes,
@@ -359,7 +874,7 @@ export default function CustomerReturnsPage() {
         <div className="p-4 sm:p-6 flex-1 overflow-auto">
           {activeTab === 'new' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              
+
               {/* Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 items-stretch">
                 <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-0 shadow-lg h-full">
@@ -528,115 +1043,115 @@ export default function CustomerReturnsPage() {
                                 const isLunas = baseRemaining <= 0;
 
                                 return (
-                                <tr key={item.id} className="block sm:table-row hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors p-4 sm:p-0 sm:border-b border-slate-100 dark:border-slate-800 last:border-0 relative">
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-2 sm:py-5 align-middle">
-                                    <div className="flex items-center gap-4">
-                                      {item.image_url ? (
-                                        <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-white dark:bg-slate-800 flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80 shadow-sm">
-                                          <img
-                                            src={getProductImageUrl(item.image_url)}
-                                            alt={item.product_name}
-                                            className="w-full h-full object-cover"
-                                            onError={(e) => {
-                                              e.currentTarget.style.display = 'none';
-                                              const parent = e.currentTarget.parentElement;
-                                              if (parent) {
-                                                const icon = parent.nextElementSibling;
-                                                if (icon) icon.classList.remove('hidden');
-                                              }
-                                            }}
-                                          />
-                                          <div className="w-full h-full flex items-center justify-center hidden bg-slate-50 dark:bg-slate-800/50">
-                                            <Package className="w-5 h-5 text-slate-400" />
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80 shadow-sm">
-                                          <Package className="w-6 h-6 sm:w-5 sm:h-5 text-slate-400" />
-                                        </div>
-                                      )}
-                                      <div className="font-bold text-slate-900 dark:text-white text-[15px] leading-tight">{item.product_name}</div>
-                                    </div>
-                                  </td>
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-5 align-middle text-left sm:text-right">
-                                    <div className="flex sm:block justify-between items-center">
-                                      <span className="sm:hidden text-slate-500 font-medium text-xs uppercase tracking-wider">Harga:</span>
-                                      <span className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah(item.price)}</span>
-                                    </div>
-                                  </td>
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-5 align-middle text-left sm:text-center">
-                                    <div className="flex sm:block justify-between items-center">
-                                      <span className="sm:hidden text-slate-500 font-medium text-xs uppercase tracking-wider">Dibeli:</span>
-                                      <div className="text-right sm:text-center flex flex-col sm:items-center">
-                                        <div className="font-bold text-slate-900 dark:text-white text-base">
-                                          {item.unit_qty || (item.quantity / (item.conversion_factor || 1))} <span className="text-sm font-medium text-slate-500 dark:text-slate-400 ml-0.5">{item.unit_name || 'PCS'}</span>
-                                        </div>
-                                        {item.already_returned_qty > 0 && (
-                                          <Badge variant="outline" className="mt-1.5 text-[10px] text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-900/20 font-medium flex items-center gap-1 px-1.5 py-0.5 w-fit sm:mx-auto">
-                                            Sudah Retur: {item.already_returned_qty} {item.unit_name || 'PCS'}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="block sm:table-cell px-0 sm:px-5 py-4 sm:py-5 sm:bg-orange-50/30 sm:dark:bg-orange-900/10 mt-3 sm:mt-0 border-t sm:border-0 border-dashed border-slate-200 dark:border-slate-800 align-middle">
-                                    <div className="flex flex-col items-start sm:items-center justify-center gap-2 w-full">
-                                      <span className="sm:hidden font-bold text-orange-700 dark:text-orange-400 text-xs uppercase tracking-wider mb-1">Jumlah Retur:</span>
-                                      
-                                      {isLunas ? (
-                                        <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 whitespace-nowrap px-3 py-1 font-medium">
-                                          Sudah Maksimal
-                                        </Badge>
-                                      ) : (
-                                        <div className="flex flex-col sm:items-center gap-2 w-full">
-                                          <div className="flex items-center gap-2 w-full sm:w-auto">
-                                            <Input
-                                              type="number"
-                                              min="0"
-                                              max={maxInSelectedUnit}
-                                              value={returnItems[item.id] || ''}
-                                              onChange={(e) => handleReturnQtyChange(item.id, e.target.value, maxInSelectedUnit)}
-                                              className="w-full sm:w-20 text-center font-bold text-lg h-10 border-slate-300 focus-visible:ring-orange-400 focus-visible:border-orange-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all shadow-sm"
-                                              placeholder="0"
+                                  <tr key={item.id} className="block sm:table-row hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors p-4 sm:p-0 sm:border-b border-slate-100 dark:border-slate-800 last:border-0 relative">
+                                    <td className="block sm:table-cell px-0 sm:px-5 py-2 sm:py-5 align-middle">
+                                      <div className="flex items-center gap-4">
+                                        {item.image_url ? (
+                                          <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-white dark:bg-slate-800 flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80 shadow-sm">
+                                            <img
+                                              src={getProductImageUrl(item.image_url)}
+                                              alt={item.product_name}
+                                              className="w-full h-full object-cover"
+                                              onError={(e) => {
+                                                e.currentTarget.style.display = 'none';
+                                                const parent = e.currentTarget.parentElement;
+                                                if (parent) {
+                                                  const icon = parent.nextElementSibling;
+                                                  if (icon) icon.classList.remove('hidden');
+                                                }
+                                              }}
                                             />
-                                            {hasUoms ? (
-                                              <Select
-                                                value={selectedUnit.unit_name}
-                                                onValueChange={(val) => {
-                                                  const uom = item.uoms.find((u: any) => u.unit_name === val);
-                                                  if (uom) {
-                                                    const newMax = Math.floor(baseRemaining / (uom.conversion_factor || 1));
-                                                    handleReturnUnitChange(item, uom, newMax);
-                                                  }
-                                                }}
-                                              >
-                                                <SelectTrigger className="w-28 h-10 font-medium bg-white dark:bg-slate-950 border-slate-300 shadow-sm focus:ring-orange-400 focus:border-orange-400">
-                                                  <SelectValue placeholder="Satuan" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                  {Array.from(new Map(item.uoms.map((u: any) => [u.unit_name, u])).values()).map((u: any) => (
-                                                    <SelectItem key={u.id || u.unit_name} value={u.unit_name} className="font-medium">
-                                                      {u.unit_name}
-                                                    </SelectItem>
-                                                  ))}
-                                                </SelectContent>
-                                              </Select>
-                                            ) : (
-                                              <div className="h-10 px-3 flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md">
-                                                <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">{selectedUnit.unit_name}</span>
+                                            <div className="w-full h-full flex items-center justify-center hidden bg-slate-50 dark:bg-slate-800/50">
+                                              <Package className="w-5 h-5 text-slate-400" />
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80 shadow-sm">
+                                            <Package className="w-6 h-6 sm:w-5 sm:h-5 text-slate-400" />
+                                          </div>
+                                        )}
+                                        <div className="font-bold text-slate-900 dark:text-white text-[15px] leading-tight">{item.product_name}</div>
+                                      </div>
+                                    </td>
+                                    <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-5 align-middle text-left sm:text-right">
+                                      <div className="flex sm:block justify-between items-center">
+                                        <span className="sm:hidden text-slate-500 font-medium text-xs uppercase tracking-wider">Harga:</span>
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah(item.price)}</span>
+                                      </div>
+                                    </td>
+                                    <td className="block sm:table-cell px-0 sm:px-5 py-1 sm:py-5 align-middle text-left sm:text-center">
+                                      <div className="flex sm:block justify-between items-center">
+                                        <span className="sm:hidden text-slate-500 font-medium text-xs uppercase tracking-wider">Dibeli:</span>
+                                        <div className="text-right sm:text-center flex flex-col sm:items-center">
+                                          <div className="font-bold text-slate-900 dark:text-white text-base">
+                                            {item.unit_qty || (item.quantity / (item.conversion_factor || 1))} <span className="text-sm font-medium text-slate-500 dark:text-slate-400 ml-0.5">{item.unit_name || 'PCS'}</span>
+                                          </div>
+                                          {item.already_returned_qty > 0 && (
+                                            <Badge variant="outline" className="mt-1.5 text-[10px] text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-900/50 bg-orange-50/50 dark:bg-orange-900/20 font-medium flex items-center gap-1 px-1.5 py-0.5 w-fit sm:mx-auto">
+                                              Sudah Retur: {item.already_returned_qty} {item.unit_name || 'PCS'}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="block sm:table-cell px-0 sm:px-5 py-4 sm:py-5 sm:bg-orange-50/30 sm:dark:bg-orange-900/10 mt-3 sm:mt-0 border-t sm:border-0 border-dashed border-slate-200 dark:border-slate-800 align-middle">
+                                      <div className="flex flex-col items-start sm:items-center justify-center gap-2 w-full">
+                                        <span className="sm:hidden font-bold text-orange-700 dark:text-orange-400 text-xs uppercase tracking-wider mb-1">Jumlah Retur:</span>
+
+                                        {isLunas ? (
+                                          <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 whitespace-nowrap px-3 py-1 font-medium">
+                                            Sudah Maksimal
+                                          </Badge>
+                                        ) : (
+                                          <div className="flex flex-col sm:items-center gap-2 w-full">
+                                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                              <Input
+                                                type="number"
+                                                min="0"
+                                                max={maxInSelectedUnit}
+                                                value={returnItems[item.id] || ''}
+                                                onChange={(e) => handleReturnQtyChange(item.id, e.target.value, maxInSelectedUnit)}
+                                                className="w-full sm:w-20 text-center font-bold text-lg h-10 border-slate-300 focus-visible:ring-orange-400 focus-visible:border-orange-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all shadow-sm"
+                                                placeholder="0"
+                                              />
+                                              {hasUoms ? (
+                                                <Select
+                                                  value={selectedUnit.unit_name}
+                                                  onValueChange={(val) => {
+                                                    const uom = item.uoms.find((u: any) => u.unit_name === val);
+                                                    if (uom) {
+                                                      const newMax = Math.floor(baseRemaining / (uom.conversion_factor || 1));
+                                                      handleReturnUnitChange(item, uom, newMax);
+                                                    }
+                                                  }}
+                                                >
+                                                  <SelectTrigger className="w-28 h-10 font-medium bg-white dark:bg-slate-950 border-slate-300 shadow-sm focus:ring-orange-400 focus:border-orange-400">
+                                                    <SelectValue placeholder="Satuan" />
+                                                  </SelectTrigger>
+                                                  <SelectContent>
+                                                    {Array.from(new Map(item.uoms.map((u: any) => [u.unit_name, u])).values()).map((u: any) => (
+                                                      <SelectItem key={u.id || u.unit_name} value={u.unit_name} className="font-medium">
+                                                        {u.unit_name}
+                                                      </SelectItem>
+                                                    ))}
+                                                  </SelectContent>
+                                                </Select>
+                                              ) : (
+                                                <div className="h-10 px-3 flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md">
+                                                  <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">{selectedUnit.unit_name}</span>
+                                                </div>
+                                              )}
+                                            </div>
+                                            {baseRemaining > 0 && (
+                                              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center justify-start sm:justify-center w-full gap-1">
+                                                Maksimal: <span className="font-bold text-slate-700 dark:text-slate-300">{maxInSelectedUnit} {selectedUnit.unit_name}</span>
                                               </div>
                                             )}
                                           </div>
-                                          {baseRemaining > 0 && (
-                                            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 flex items-center justify-start sm:justify-center w-full gap-1">
-                                              Maksimal: <span className="font-bold text-slate-700 dark:text-slate-300">{maxInSelectedUnit} {selectedUnit.unit_name}</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
                                 );
                               })}
                             </tbody>
@@ -686,7 +1201,7 @@ export default function CustomerReturnsPage() {
 
                         <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900/50 rounded-xl p-5 sm:p-6 border border-slate-200/60 dark:border-slate-700/60 shadow-sm relative overflow-hidden">
                           <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-bl-full pointer-events-none -mr-10 -mt-10"></div>
-                          
+
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
                             <div className="flex items-center gap-4">
                               <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center border border-slate-100 dark:border-slate-700">
@@ -697,7 +1212,7 @@ export default function CustomerReturnsPage() {
                                 <div className="font-bold text-slate-900 dark:text-white text-lg">{totalRefundItems} <span className="text-sm font-medium text-slate-500">items</span></div>
                               </div>
                             </div>
-                            
+
                             <div className="w-full sm:w-auto h-px sm:h-12 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block"></div>
                             <div className="w-full sm:hidden h-px bg-slate-200 dark:bg-slate-700"></div>
 
@@ -786,7 +1301,7 @@ export default function CustomerReturnsPage() {
                   <div className="space-y-1">
                     <p className="text-xs text-slate-500 font-medium">Pelanggan</p>
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {selectedReturn.customers?.name || 'Umum'}
+                      {selectedReturn.customers?.name || '-'}
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -873,26 +1388,37 @@ export default function CustomerReturnsPage() {
             )}
           </div>
 
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setSelectedReturn(null)}>Tutup</Button>
-            {selectedReturn?.status === 'pending' && isAdmin && (
-              <Button
-                onClick={() => {
-                  if (confirm(`Konfirmasi retur ini?`)) {
-                    confirmReturn.mutate({ returnId: selectedReturn.id }, {
-                      onSuccess: () => {
-                        toast({ title: "Dikonfirmasi", description: "Retur berhasil disetujui", variant: "success" });
-                        setSelectedReturn(null);
-                      },
-                      onError: (err: any) => toast({ title: "Gagal", description: err.message, variant: "destructive" })
-                    });
-                  }
-                }}
-                disabled={confirmReturn.isPending}
-              >
-                Konfirmasi Retur
-              </Button>
-            )}
+          <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+            <Button
+              variant="outline"
+              onClick={() => selectedReturn && handlePrintReturnReceipt(selectedReturn)}
+              disabled={!selectedReturn}
+              className="flex items-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              Cetak Faktur
+            </Button>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setSelectedReturn(null)}>Tutup</Button>
+              {selectedReturn?.status === 'pending' && isAdmin && (
+                <Button
+                  onClick={() => {
+                    if (confirm(`Konfirmasi retur ini?`)) {
+                      confirmReturn.mutate({ returnId: selectedReturn.id }, {
+                        onSuccess: () => {
+                          toast({ title: "Dikonfirmasi", description: "Retur berhasil disetujui", variant: "success" });
+                          setSelectedReturn(null);
+                        },
+                        onError: (err: any) => toast({ title: "Gagal", description: err.message, variant: "destructive" })
+                      });
+                    }
+                  }}
+                  disabled={confirmReturn.isPending}
+                >
+                  Konfirmasi Retur
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

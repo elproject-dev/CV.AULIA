@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useCountUp } from "@/hooks/useCountUp";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { useListReceivables, useListTransactionPayments, useCreateTransactionPayment, useGetTransaction } from "@workspace/api-client-react";
@@ -6,18 +6,494 @@ import { formatRupiah, formatInvoiceNumber, formatSimpleDate } from "@/lib/forma
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, FileText, Banknote, Calendar, User, ChevronRight, AlertCircle, CheckCircle2, Clock, History, TrendingDown, Receipt } from "lucide-react";
+import { Search, FileText, Calendar, User, ChevronRight, AlertCircle, CheckCircle2, Clock, History, TrendingDown, Receipt, Download, FileDown, Printer } from "lucide-react";
+import { TbCoin } from "react-icons/tb";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useAuthUserName } from "@/contexts/AuthContext";
+import { useAuth, useAuthUserName } from "@/contexts/AuthContext";
+import { ADMIN_EMAIL, isAdminMode } from "@/lib/auth";
+import * as XLSX from "xlsx-js-style";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+import { Capacitor } from "@capacitor/core";
+import { isTauri, tauriSaveFile } from "@/lib/tauri-file";
 
 export default function ReceivablesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const cashierName = useAuthUserName();
+  const isAdmin = isAdminMode(user) || user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [search, setSearch] = useState("");
+  const [storeInfo, setStoreInfo] = useState(() => ({
+    name: localStorage.getItem('storeName') || 'CV.AULIA USAHA',
+    address: localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk',
+    phone: localStorage.getItem('storePhone') || '',
+    footer: localStorage.getItem('footerMessage') || 'Terima Kasih Sudah Melakukan Order',
+    bankName: localStorage.getItem('storeBankName') || 'BCA',
+    bankAccount: localStorage.getItem('storeBankAccount') || '4451377137',
+    bankAccountName: localStorage.getItem('storeBankAccountName') || 'AULIA USAHA'
+  }));
+
+  useEffect(() => {
+    const syncStoreInfo = () => {
+      setStoreInfo({
+        name: localStorage.getItem('storeName') || 'CV.AULIA USAHA',
+        address: localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk',
+        phone: localStorage.getItem('storePhone') || '',
+        footer: localStorage.getItem('footerMessage') || 'Terima Kasih Sudah Melakukan Order',
+        bankName: localStorage.getItem('storeBankName') || 'BCA',
+        bankAccount: localStorage.getItem('storeBankAccount') || '4451377137',
+        bankAccountName: localStorage.getItem('storeBankAccountName') || 'AULIA USAHA'
+      });
+    };
+    syncStoreInfo();
+    window.addEventListener('storage', syncStoreInfo);
+    window.addEventListener('storeSettingsChanged', syncStoreInfo);
+    window.addEventListener('storeNameChanged', syncStoreInfo);
+    return () => {
+      window.removeEventListener('storage', syncStoreInfo);
+      window.removeEventListener('storeSettingsChanged', syncStoreInfo);
+      window.removeEventListener('storeNameChanged', syncStoreInfo);
+    };
+  }, []);
+
+  const handlePrintInvoice = (trx: any) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      toast({
+        title: "Gagal mencetak",
+        description: "Popup diblokir. Izinkan popup untuk mencetak.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const storeName = storeInfo?.name || "CV AULIA USAHA";
+    const storeAddress = storeInfo?.address || "";
+    const storePhone = storeInfo?.phone || "";
+
+    const totalTransaction = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0);
+    const totalPaid = totalTransaction - (trx.remaining_balance || 0);
+
+    let itemsHtml = trx.transaction_items?.map((item: any, index: number) => {
+      const productName = item.product_name || 'Unknown';
+      
+      // Sync quantity, unit name, and price based on UOM conversion factor
+      const isUom = item.conversion_factor > 1 && item.unit_name && item.unit_name.toLowerCase() !== 'pcs';
+      const displayQty = isUom ? (item.unit_qty || (item.quantity / item.conversion_factor)) : item.quantity;
+      const displayUnit = item.unit_name || 'PCS';
+      const displayPrice = isUom ? (item.price * item.conversion_factor) : item.price;
+      const subtotal = displayPrice * displayQty;
+
+      return `
+        <tr>
+          <td style="text-align: center; color: #64748b;">${index + 1}</td>
+          <td style="font-weight: 600; color: #0f172a;">${productName}</td>
+          <td style="text-align: center; font-weight: 600; color: #0f172a;">${displayQty} ${displayUnit}</td>
+          <td style="text-align: right; color: #475569;">${formatRupiah(displayPrice)}</td>
+          <td style="text-align: right; font-weight: 700; color: #0f172a;">${formatRupiah(subtotal)}</td>
+        </tr>`;
+    }).join('') || '';
+
+    const itemsCount = trx.transaction_items?.length || 0;
+    if (itemsCount < 8) {
+      for (let i = itemsCount; i < 8; i++) {
+        itemsHtml += `
+          <tr class="empty-row">
+            <td style="text-align: center; color: #cbd5e1;">${i + 1}</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+            <td>&nbsp;</td>
+          </tr>`;
+      }
+    }
+
+    let trxDate = '-';
+    if (trx.created_at) {
+      const dateObj = new Date(trx.created_at);
+      const dateStr = dateObj.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+      const timeStr = dateObj.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).replace(':', '.');
+      trxDate = `${dateStr} ,${timeStr}`;
+    }
+
+    const getInvoiceContentHtml = (copyLabel: string) => {
+      let statusLabel = 'BELUM BAYAR';
+      let badgeClass = 'badge-pending';
+      if (trx.payment_status === 'paid') {
+        statusLabel = 'LUNAS';
+        badgeClass = 'badge-completed';
+      } else if (trx.payment_status === 'partial') {
+        statusLabel = 'CICILAN';
+        badgeClass = 'badge-partial';
+      }
+
+      return `
+        <div class="invoice-copy">
+          <div>
+            <table class="info-table">
+              <tr>
+                <td style="width: 60%; vertical-align: middle;">
+                  <table style="border-collapse: collapse; border: none; margin: 0; padding: 0;">
+                    <tr>
+                      <td style="vertical-align: middle; padding-right: 12px; border: none;">
+                        <img src="/CV.AULIA.png" alt="Logo" style="height: 40px; width: auto; display: block; position: relative; top: -3px;" onerror="this.style.display='none'" />
+                      </td>
+                      <td style="vertical-align: middle; border: none; padding: 0; text-align: left;">
+                        <div class="company-name">${storeName}</div>
+                        ${storeAddress ? `<div class="company-address">${storeAddress}</div>` : ''}
+                        ${storePhone ? `<div class="company-contact">Telp: ${storePhone}</div>` : ''}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="width: 40%; text-align: right; vertical-align: top;">
+                  <h1 class="invoice-title">FAKTUR PENAGIHAN</h1>
+                  <div style="font-size: 10px; font-weight: 700; color: #475569; margin-top: 4px; display: inline-flex; gap: 6px; justify-content: flex-end; align-items: center; width: 100%;">
+                    <span class="invoice-copy-badge">${copyLabel}</span>
+                    <span class="invoice-status-badge ${badgeClass}">${statusLabel}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <hr class="header-divider">
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+              <tr>
+                <td style="width: 70%; vertical-align: top;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Kepada Yth.</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; font-weight: 600; color: #0f172a;">${trx.customers?.name || trx.customer?.name || trx.customer_name || 'Pelanggan Umum'}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">No. Telepon</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0;">${trx.customers?.phone || trx.customer?.phone || trx.customer_phone || '-'}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Alamat</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; font-size: 9.5px; line-height: 1.2;">
+                        ${trx.customers?.address || trx.customer?.address || trx.customer_address || '-'}
+                        ${trx.customers?.district || trx.customer?.district || trx.customer_district ? `, ${trx.customers?.district || trx.customer?.district || trx.customer_district}` : ''}
+                        ${trx.customers?.city || trx.customer?.city || trx.customer_city ? `, ${trx.customers?.city || trx.customer?.city || trx.customer_city}` : ''}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="width: 2%;"></td>
+                <td style="width: 28%; vertical-align: top;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">No. Invoice</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; font-weight: 600; color: #0f172a; white-space: nowrap;">${formatInvoiceNumber(trx.id)}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Tanggal</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; white-space: nowrap;">${trxDate}</td>
+                    </tr>
+                    <tr>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 0; color: #475569; font-weight: 500;">Salesman</td>
+                      <td style="width: 1%; white-space: nowrap; padding: 2px 8px 2px 4px; color: #475569;">:</td>
+                      <td style="padding: 2px 0; white-space: nowrap;">${trx.cashier_name || 'N/A'}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%; text-align: center;">No</th>
+                  <th style="width: 44%; text-align: left;">Nama Produk / Item</th>
+                  <th style="width: 15%; text-align: center;">Qty</th>
+                  <th style="width: 15%; text-align: right;">Harga Satuan</th>
+                  <th style="width: 20%; text-align: right;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+              <tr>
+                <td style="width: 70%; vertical-align: top;">
+                  <div class="reason-section" style="font-size: 8.5px; border: 1px solid #e2e8f0; padding: 10px 8px; border-radius: 4px; background-color: #f8fafc;">
+                    <strong>Jatuh Tempo: ${trx.due_date ? formatSimpleDate(trx.due_date) : '-'}</strong>
+                  </div>
+                </td>
+                <td style="width: 2%;"></td>
+                <td style="width: 28%; vertical-align: top;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 9.5px;">
+                    <tr>
+                      <td style="text-align: left; padding: 2px 0; color: #475569; white-space: nowrap;">Subtotal</td>
+                      <td style="text-align: right; padding: 2px 0; font-weight: 600;">${formatRupiah(trx.subtotal || 0)}</td>
+                    </tr>
+                    <tr>
+                      <td style="text-align: left; padding: 2px 0; color: #475569; white-space: nowrap;">Sudah Dibayar</td>
+                      <td style="text-align: right; padding: 2px 0; font-weight: 600; color: #16a34a;">${formatRupiah(totalPaid)}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #cbd5e1;">
+                      <td style="text-align: left; padding: 4px 0; font-weight: 700; color: #0f172a; white-space: nowrap;">SISA TAGIHAN</td>
+                      <td style="text-align: right; padding: 4px 0; font-weight: 800; color: #ea580c; font-size: 11px;">${formatRupiah(trx.remaining_balance || 0)}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </div>
+
+          <div>
+            <table style="width: 100%; margin-top: 12px; border-collapse: collapse;">
+              <tr>
+                <td style="width: 50%; text-align: center; font-size: 10px; color: #334155; vertical-align: top;">
+                  <div>Penerima,</div>
+                  <div style="height: 32px;"></div>
+                  <div style="color: #0f172a; display: inline-block; min-width: 130px; padding-top: 2px; font-family: monospace;">
+                    ( _________________ )
+                  </div>
+                </td>
+                <td style="width: 50%; text-align: center; font-size: 10px; color: #334155; vertical-align: top;">
+                  <div>Hormat Kami,</div>
+                  <div style="height: 32px;"></div>
+                  <div style="color: #0f172a; display: inline-block; min-width: 130px; padding-top: 2px; font-family: monospace;">
+                    ( _________________ )
+                  </div>
+                </td>
+              </tr>
+            </table>
+            
+            <div style="text-align: left; font-size: 8px; font-style: italic; color: #475569; margin-top: 10px; line-height: 1.2; width: 100%;">
+              Pembayaran Transfer melalui Bank: <strong>${storeInfo?.bankName || 'BCA'} ${storeInfo?.bankAccount || '4451377137'}</strong> a/n <strong>${storeInfo?.bankAccountName || 'AULIA USAHA'}</strong>
+            </div>
+            
+            <div class="footer-divider" style="border-top: 1px solid #cbd5e1; margin-top: 6px; margin-bottom: 2px;"></div>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="text-align: center; font-size: 8.5px; color: #64748b;">
+                  ${storeInfo?.footer || 'Terima Kasih Sudah Melakukan Order'}
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Faktur Penagihan - ${formatInvoiceNumber(trx.id)}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 0mm;
+          }
+          @media print {
+            body { margin: 0; padding: 8mm 10mm; }
+            .no-print { display: none !important; }
+            .invoice-copy { border: 1px solid transparent !important; }
+          }
+          * {
+            box-sizing: border-box;
+          }
+          body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            font-size: 10px;
+            line-height: 1.35;
+            margin: 0;
+            padding: 8mm 10mm;
+            color: #1e293b;
+            background-color: #ffffff;
+          }
+          .print-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: 270mm;
+            justify-content: space-between;
+          }
+          .invoice-copy {
+            height: 129mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            border: 1px dashed #cbd5e1;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: #ffffff;
+          }
+          .cut-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            margin: 1mm 0;
+            border-top: 1px dashed #cbd5e1;
+            position: relative;
+            height: 1px;
+          }
+          .cut-divider span {
+            background: #ffffff;
+            padding: 0 10px;
+            position: absolute;
+            top: -6px;
+            text-transform: uppercase;
+          }
+          .info-table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .company-name {
+            font-size: 13px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .company-address, .company-contact {
+            margin: 0;
+            font-size: 8.5px;
+            color: #475569;
+          }
+          .invoice-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+            letter-spacing: 0.02em;
+          }
+          .invoice-copy-badge {
+            display: inline-block;
+            font-size: 7.5px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background-color: #f1f5f9;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+            text-transform: uppercase;
+          }
+          .invoice-status-badge {
+            display: inline-block;
+            font-size: 7.5px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 1px 5px;
+            border-radius: 3px;
+            text-transform: uppercase;
+          }
+          .badge-completed {
+            background-color: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+          }
+          .badge-pending {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+          }
+          .badge-partial {
+            background-color: #fef9c3;
+            color: #854d0e;
+            border: 1px solid #fef08a;
+          }
+          .header-divider {
+            border: none;
+            border-top: 2px double #0f172a;
+            margin: 4px 0 6px 0;
+          }
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 4px 0;
+          }
+          .items-table th {
+            background-color: #f8fafc;
+            color: #475569;
+            font-size: 8.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 4px 6px;
+            border-bottom: 1.5px solid #0f172a;
+            border-top: 1px solid #e2e8f0;
+          }
+          .items-table td {
+            padding: 4px 6px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 9px;
+            vertical-align: middle;
+          }
+          .items-table tr.empty-row td {
+            border-bottom: 1px solid #f8fafc;
+            color: transparent;
+            user-select: none;
+          }
+          .reason-section {
+            font-size: 8px;
+            line-height: 1.3;
+            color: #475569;
+            margin-top: 2px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-wrapper">
+          ${getInvoiceContentHtml('KANTOR')}
+          
+          <div class="cut-divider">
+            <span>Gunting di sini</span>
+          </div>
+
+          ${getInvoiceContentHtml('PELANGGAN')}
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+              window.close();
+            }, 300);
+          }
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
   const [salesFilter, setSalesFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<'outstanding' | 'history'>('outstanding');
   const { data: receivables, isLoading, refetch } = useListReceivables();
 
@@ -47,7 +523,7 @@ export default function ReceivablesPage() {
     if (receivables) {
       receivables.forEach((r: any) => {
         const isOverdue = r.due_date ? new Date(r.due_date) < new Date() : false;
-        
+
         if (r.payment_status !== 'paid') {
           tPiutang += r.remaining_balance;
           tBerjalan += 1;
@@ -74,6 +550,9 @@ export default function ReceivablesPage() {
 
     // Filter by sales
     if (salesFilter !== 'all' && r.cashier_name !== salesFilter) return false;
+
+    // Filter by status
+    if (statusFilter !== 'all' && r.payment_status !== statusFilter) return false;
 
     // Filter by search:
     if (!search || search.length < 3) return true;
@@ -143,14 +622,29 @@ export default function ReceivablesPage() {
     return <Badge className="bg-emerald-500 hover:bg-emerald-600">Lunas</Badge>;
   };
 
+  const getStatusLabel = (status: string) => {
+    if (status === 'partial') return 'Cicilan';
+    if (status === 'unpaid') return 'Belum Bayar';
+    return 'Lunas';
+  };
+
   return (
     <Sidebar>
       <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950">
         <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-            <Banknote className="w-6 h-6 text-primary" />
+            <TbCoin className="w-6 h-6 text-primary" />
             Piutang Pelanggan
           </h1>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDownloadDialog(true)}
+            className="flex items-center gap-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-600"
+          >
+            <Download className="w-4 h-4" />
+            Download Excel
+          </Button>
         </div>
 
         {/* Tabs Switcher */}
@@ -196,7 +690,7 @@ export default function ReceivablesPage() {
                     </p>
                   </div>
                   <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                    <Banknote className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                    <TbCoin className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                   </div>
                 </div>
                 <p className="text-xs mt-3 text-blue-200">{receivables?.filter((r: any) => r.payment_status !== 'paid').length || 0} faktur aktif</p>
@@ -268,18 +762,35 @@ export default function ReceivablesPage() {
                 className="pl-9"
               />
             </div>
-            <div className="w-full sm:w-[200px]">
-              <Select value={salesFilter} onValueChange={setSalesFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Semua Sales" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Sales</SelectItem>
-                  {uniqueSales.map((sales: string) => (
-                    <SelectItem key={sales} value={sales}>{sales}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+              <div className="w-full sm:w-[180px]">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Semua Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Status</SelectItem>
+                    <SelectItem value="paid">Lunas</SelectItem>
+                    <SelectItem value="partial">Cicilan</SelectItem>
+                    <SelectItem value="unpaid">Belum Bayar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {isAdmin && (
+                <div className="w-full sm:w-[180px]">
+                  <Select value={salesFilter} onValueChange={setSalesFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Semua Sales" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Sales</SelectItem>
+                      {uniqueSales.map((sales: string) => (
+                        <SelectItem key={sales} value={sales}>{sales}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -329,7 +840,7 @@ export default function ReceivablesPage() {
                           {formatSimpleDate(trx.created_at)}
                         </TableCell>
                         <TableCell className="font-medium whitespace-nowrap truncate max-w-[200px]">
-                          {trx.customer?.name || trx.customer_name || 'Umum'}
+                          {trx.customer?.name || trx.customer_name || '-'}
                         </TableCell>
                         <TableCell className="whitespace-nowrap">
                           <div className={`flex items-center gap-1.5 text-sm ${isOverdue && trx.payment_status !== 'paid' ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>
@@ -342,9 +853,9 @@ export default function ReceivablesPage() {
                         <TableCell className="text-center font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap truncate max-w-[130px]">{trx.cashier_name || '-'}</TableCell>
                         <TableCell className="text-center whitespace-nowrap">{getStatusBadge(trx.payment_status)}</TableCell>
                         <TableCell className="text-right whitespace-nowrap">
-                          <Button 
-                            size="sm" 
-                            variant={activeTab === 'history' ? "outline" : "default"} 
+                          <Button
+                            size="sm"
+                            variant={activeTab === 'history' ? "outline" : "default"}
                             className={activeTab === 'outstanding' ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
                             onClick={(e) => { e.stopPropagation(); handleOpenPayment(trx); }}
                           >
@@ -479,7 +990,7 @@ export default function ReceivablesPage() {
                 <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-3 border border-slate-100 dark:border-slate-800 grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Pelanggan</p>
-                    <p className="font-medium text-slate-900 dark:text-white">{detailTransaction.customers?.name || detailTransaction.customer?.name || detailTransaction.customer_name || 'Umum'}</p>
+                    <p className="font-medium text-slate-900 dark:text-white">{detailTransaction.customers?.name || detailTransaction.customer?.name || detailTransaction.customer_name || '-'}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Sales</p>
@@ -536,12 +1047,499 @@ export default function ReceivablesPage() {
               </div>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="flex flex-row justify-between items-center w-full gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex items-center gap-2 border-primary text-primary hover:bg-primary/10"
+                onClick={() => handlePrintInvoice(detailTransaction)}
+              >
+                <Printer className="w-4 h-4" />
+                Cetak Faktur
+              </Button>
               <Button onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <DownloadReceivablesExcelDialog
+          open={showDownloadDialog}
+          onOpenChange={setShowDownloadDialog}
+          receivables={receivables || []}
+          uniqueSales={uniqueSales}
+        />
       </div>
     </Sidebar>
   );
 }
+
+async function exportReceivablesToExcel(
+  filteredList: any[],
+  filename: string,
+  toast: any
+) {
+  const headerStyle = {
+    font: { bold: true, color: { rgb: "FFFFFF" } },
+    fill: { patternType: "solid" as const, fgColor: { rgb: "000000" } },
+    border: {
+      top: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+      bottom: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+      left: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+      right: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+    },
+  };
+
+  const cellStyle = {
+    font: {},
+    border: {
+      top: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+      bottom: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+      left: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+      right: { style: "thin" as const, color: { rgb: "CCCCCC" } },
+    },
+  };
+
+  const currencyStyle = {
+    ...cellStyle,
+    numFmt: '#,##0',
+  };
+
+  function getColumnAlignment(colIdx: number): "left" | "center" | "right" {
+    switch (colIdx) {
+      case 2: // Pelanggan
+      case 3: // Nama Produk
+        return "left";
+      case 5: // Harga
+      case 6: // Total Transaksi
+      case 7: // Sisa Tagihan
+      case 8: // Sudah Dibayar
+        return "right";
+      case 0: // ID Transaksi
+      case 1: // Tgl Transaksi
+      case 4: // Qty
+      case 9: // Sales
+      case 10: // Jatuh Tempo
+      case 11: // Status
+      default:
+        return "center";
+    }
+  }
+
+  const headers = [
+    "ID Transaksi", "Tgl Transaksi", "Pelanggan", "Nama Produk", "Qty", "Harga", "Total Transaksi", "Sisa Tagihan", "Sudah Dibayar", "Sales", "Jatuh Tempo", "Status"
+  ];
+
+  const rows: any[] = [];
+  filteredList.forEach((r: any) => {
+    const total = (r.subtotal || 0) + (r.tax || 0) - (r.discount || 0);
+    const paid = total - r.remaining_balance;
+    const items = r.transaction_items || [];
+
+    if (items.length === 0) {
+      rows.push([
+        formatInvoiceNumber(r.id),
+        formatSimpleDate(r.created_at),
+        r.customer?.name || r.customer_name || '-',
+        '-',
+        0,
+        0,
+        total,
+        r.remaining_balance,
+        paid,
+        r.cashier_name || '-',
+        r.due_date ? formatSimpleDate(r.due_date) : '-',
+        r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Belum Bayar' : 'Lunas',
+      ]);
+    } else {
+      items.forEach((item: any, idx: number) => {
+        if (idx === 0) {
+          rows.push([
+            formatInvoiceNumber(r.id),
+            formatSimpleDate(r.created_at),
+            r.customer?.name || r.customer_name || '-',
+            item.product_name || '-',
+            item.quantity || 0,
+            item.price || 0,
+            total,
+            r.remaining_balance,
+            paid,
+            r.cashier_name || '-',
+            r.due_date ? formatSimpleDate(r.due_date) : '-',
+            r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Belum Bayar' : 'Lunas',
+          ]);
+        } else {
+          rows.push([
+            "",
+            "",
+            "",
+            item.product_name || '-',
+            item.quantity || 0,
+            item.price || 0,
+            0,
+            0,
+            0,
+            "",
+            "",
+            "",
+          ]);
+        }
+      });
+    }
+  });
+
+  const wsData = [
+    headers.map((h, colIdx) => ({
+      v: h,
+      s: {
+        ...headerStyle,
+        alignment: { horizontal: getColumnAlignment(colIdx), vertical: "center" as const, wrapText: true }
+      }
+    })),
+    ...rows.map((row: any[], rowIndex) =>
+      row.map((cell, colIdx) => {
+        const isCurrency = colIdx >= 5 && colIdx <= 8;
+        const isQty = colIdx === 4;
+        const isEven = rowIndex % 2 === 0;
+        const fillStyle = {
+          patternType: "solid" as const,
+          fgColor: isEven ? { rgb: "FFFFFF" } : { rgb: "F2F2F2" }
+        };
+        const align = getColumnAlignment(colIdx);
+        const cellS = isCurrency ? currencyStyle : cellStyle;
+        const currentStyle = {
+          ...cellS,
+          alignment: { horizontal: align, vertical: "center" as const, wrapText: false },
+          fill: fillStyle
+        };
+        const cellType = (isCurrency || isQty) ? 'n' : 's';
+        return { v: cell, t: cellType, s: currentStyle };
+      })
+    ),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [14, 14, 22, 26, 10, 14, 18, 18, 18, 16, 14, 12].map(w => ({ wch: w }));
+
+
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Piutang");
+
+  const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+
+  if (Capacitor.isNativePlatform()) {
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    await Filesystem.writeFile({
+      path: filename,
+      data: base64Data,
+      directory: Directory.Documents,
+      recursive: true,
+    });
+
+    const filePath = await Filesystem.getUri({
+      path: filename,
+      directory: Directory.Documents,
+    });
+
+    await Share.share({
+      title: "Download Laporan Piutang",
+      url: filePath.uri,
+    });
+  } else if (isTauri()) {
+    await tauriSaveFile(
+      excelBuffer,
+      filename,
+      [{ name: "Excel Files", extensions: ["xlsx"] }]
+    );
+  } else {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+}
+
+interface DownloadReceivablesExcelDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  receivables: any[];
+  uniqueSales: string[];
+}
+
+export function DownloadReceivablesExcelDialog({
+  open,
+  onOpenChange,
+  receivables = [],
+  uniqueSales = [],
+}: DownloadReceivablesExcelDialogProps) {
+  const { user } = useAuth();
+  const isAdmin = isAdminMode(user) || user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [selectedSales, setSelectedSales] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [startDate, setStartDate] = useState<string>("all");
+  const [endDate, setEndDate] = useState<string>("all");
+  const [tempStartDate, setTempStartDate] = useState<string>("");
+  const [tempEndDate, setTempEndDate] = useState<string>("");
+  const { toast } = useToast();
+
+  // Reset filter ketika dialog dibuka/ditutup
+  useEffect(() => {
+    if (!open) {
+      setTempStartDate("");
+      setTempEndDate("");
+      setStartDate("all");
+      setEndDate("all");
+      setSelectedSales("all");
+      setSelectedStatus("all");
+    }
+  }, [open]);
+
+  // Sync temp dates to state
+  useEffect(() => {
+    setStartDate(tempStartDate || "all");
+  }, [tempStartDate]);
+
+  useEffect(() => {
+    setEndDate(tempEndDate || "all");
+  }, [tempEndDate]);
+
+  // Filter receivables by selected filters
+  const getFilteredReceivables = () => {
+    let filtered = receivables;
+
+    // Filter by sales
+    if (selectedSales !== "all") {
+      filtered = filtered.filter((r: any) => r.cashier_name === selectedSales);
+    }
+
+    // Filter by status
+    if (selectedStatus !== "all") {
+      filtered = filtered.filter((r: any) => r.payment_status === selectedStatus);
+    }
+
+    // Filter by date range
+    if (startDate !== "all" && startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      filtered = filtered.filter((r: any) => new Date(r.created_at) >= start);
+    }
+
+    if (endDate !== "all" && endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((r: any) => new Date(r.created_at) <= end);
+    }
+
+    return filtered;
+  };
+
+  const filteredList = getFilteredReceivables();
+
+  const handleExport = async () => {
+    const dataToExport = getFilteredReceivables();
+
+    if (dataToExport.length === 0) {
+      toast({
+        title: "Info",
+        description: "Tidak ada data piutang dengan kriteria filter tersebut",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let filename = `Laporan_Piutang_${dateStr}.xlsx`;
+      if (startDate !== "all" && endDate !== "all" && startDate && endDate) {
+        filename = `Laporan_Piutang_${startDate}_sd_${endDate}.xlsx`;
+      } else if (startDate !== "all" && startDate) {
+        filename = `Laporan_Piutang_Mulai_${startDate}.xlsx`;
+      } else if (endDate !== "all" && endDate) {
+        filename = `Laporan_Piutang_Sampai_${endDate}.xlsx`;
+      }
+
+      await exportReceivablesToExcel(dataToExport, filename, toast);
+
+      toast({
+        title: "Sukses",
+        description: `Berhasil download ${dataToExport.length} data piutang`,
+      });
+      onOpenChange(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan saat mengunduh",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px] w-full mx-auto max-h-[90vh] overflow-y-auto scrollbar-slim">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-slate-900 dark:text-white">
+            <FileDown className="w-5 h-5 text-primary" />
+            Download Laporan Piutang
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            Pilih periode dan filter untuk download laporan Excel piutang
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 mt-2">
+          {/* Sales Filter */}
+          {isAdmin && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-slate-500 font-medium">Filter Sales</Label>
+              <Select value={selectedSales} onValueChange={setSelectedSales}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Semua Sales" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Sales</SelectItem>
+                  {uniqueSales.map((sales: string) => (
+                    <SelectItem key={sales} value={sales}>
+                      {sales}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Status Filter */}
+          <div className="space-y-1.5">
+            <Label className="text-xs text-slate-500 font-medium">Filter Status</Label>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="h-10">
+                <SelectValue placeholder="Semua Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Status</SelectItem>
+                <SelectItem value="paid">Lunas</SelectItem>
+                <SelectItem value="partial">Cicilan</SelectItem>
+                <SelectItem value="unpaid">Belum Bayar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Date Filter */}
+        <div className="space-y-3 mt-4 py-4 border-t border-slate-100 dark:border-slate-800">
+          <Label className="text-sm font-bold text-slate-700 dark:text-slate-300">Pilih Rentang Waktu</Label>
+          <div className="flex flex-col gap-3 w-full">
+            <div className="space-y-1.5 w-full">
+              <Label className="text-xs text-slate-500 font-medium">Dari Tanggal</Label>
+              <div className="relative w-full h-11">
+                <Input
+                  type="text"
+                  placeholder="Pilih Tanggal Mulai"
+                  value={tempStartDate ? tempStartDate.split('-').reverse().join('-') : ""}
+                  readOnly
+                  className="absolute inset-0 h-11 w-full rounded-lg text-sm text-center bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-medium cursor-pointer shadow-sm hover:border-primary transition-colors"
+                />
+                <input
+                  type="date"
+                  value={tempStartDate}
+                  onChange={(e) => setTempStartDate(e.target.value)}
+                  onClick={(e: any) => {
+                    try { e.target.showPicker?.(); } catch (err) { }
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  title="Tanggal Mulai"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5 w-full">
+              <Label className="text-xs text-slate-500 font-medium">Sampai Tanggal</Label>
+              <div className="relative w-full h-11">
+                <Input
+                  type="text"
+                  placeholder="Pilih Tanggal Akhir"
+                  value={tempEndDate ? tempEndDate.split('-').reverse().join('-') : ""}
+                  readOnly
+                  className="absolute inset-0 h-11 w-full rounded-lg text-sm text-center bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-medium cursor-pointer shadow-sm hover:border-primary transition-colors"
+                />
+                <input
+                  type="date"
+                  value={tempEndDate}
+                  onChange={(e) => setTempEndDate(e.target.value)}
+                  onClick={(e: any) => {
+                    try { e.target.showPicker?.(); } catch (err) { }
+                  }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  title="Tanggal Akhir"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleExport}
+            disabled={isDownloading}
+            className="w-full h-12 text-sm font-bold mt-2 shadow-sm"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {isDownloading ? "Mengunduh..." : "Download Laporan Excel"}
+          </Button>
+
+          {/* Records count info */}
+          {(() => {
+            if (tempStartDate && tempEndDate) {
+              const start = new Date(tempStartDate);
+              start.setHours(0, 0, 0, 0);
+              const end = new Date(tempEndDate);
+              end.setHours(23, 59, 59, 999);
+
+              if (start > end) {
+                return (
+                  <p className="text-xs text-red-500 font-medium text-center pt-2">
+                    Tanggal akhir harus lebih besar atau sama dengan tanggal mulai
+                  </p>
+                );
+              }
+            }
+
+            return (
+              <p className="text-xs text-slate-500 font-medium text-center pt-2">
+                <span className="font-bold text-slate-700 dark:text-slate-300">{filteredList.length}</span> data piutang ditemukan.
+              </p>
+            );
+          })()}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="w-full"
+          >
+            Batal
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useGetDashboardStats, useGetTopProducts, useGetRecentTransactions, useGetRevenueChart, useHealthCheck, useListTransactions, useGetCashierNames, useListOutlets, useListStaff, useAdvancedAnalytics } from "@workspace/api-client-react";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { ProfileDialog } from "@/components/layout/ProfileDialog";
 import { getProductImageUrl } from "@/lib/supabase-storage";
 import { formatRupiah } from "@/lib/formatters";
 import { Activity, CreditCard, DollarSign, Package, Users, BarChart3, ShieldCheck, FileDown, Download, ChevronRight, WifiOff, Building2, UserCircle, LayoutDashboard, Crown, Star, TrendingUp, History } from "lucide-react";
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Online/Offline state
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -367,8 +369,12 @@ export default function DashboardPage() {
               </PopoverContent>
             </Popover>
 
-            {/* Profile Photo - Static Display */}
-            <div className="relative inline-flex items-center justify-center shrink-0 border-0 bg-transparent p-0 cursor-default" title="Profil Pengguna">
+            {/* Profile Photo - Clickable Display */}
+            <div 
+              className="relative inline-flex items-center justify-center shrink-0 border-0 bg-transparent p-0 cursor-pointer transition-transform hover:scale-105 active:scale-95" 
+              title="Profil Pengguna"
+              onClick={() => setIsProfileOpen(true)}
+            >
               <div className={`absolute inset-0 rounded-full animate-ping opacity-40 ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
               <div className={`relative z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-base font-bold shadow-md border-2 animate-ring ${isOnline ? 'border-emerald-500 text-emerald-700 bg-emerald-50' : 'border-red-500 text-red-700 bg-red-50'}`}>
                 {user?.avatarUrl ? (
@@ -709,128 +715,14 @@ export default function DashboardPage() {
             </h2>
             <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
 
-              {/* General Customer (Umum) Insights */}
-              {advancedAnalytics.generalCustomerAnalytics && (
-                <Card className="shadow-lg border-0 bg-white dark:bg-slate-900">
-                  <CardHeader className="pb-3 px-4 pt-4">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                        <CardTitle className="text-slate-700 dark:text-slate-200 text-sm sm:text-base font-medium flex items-center gap-2">
-                          <Users className="w-4 h-4 text-slate-400" /> Analisa Produk (Umum)
-                        </CardTitle>
-                        <Badge variant="secondary" className="bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0 h-5 font-normal">
-                          {advancedAnalytics.generalCustomerAnalytics.percentageOfTotalRevenue.toFixed(1)}%
-                        </Badge>
-                      </div>
-                      <Popover open={isGeneralProductFilterOpen} onOpenChange={setIsGeneralProductFilterOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="shrink-0 w-9 h-9 sm:w-auto sm:h-9 rounded-full p-0 sm:px-3 border-2 flex items-center justify-center sm:gap-2">
-                            <SlidersHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary" />
-                            <span className="hidden sm:inline text-xs font-medium">Filter</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-[260px] p-4 sm:rounded-2xl shadow-xl">
-                          <div className="flex items-center gap-2 font-semibold text-sm mb-3 border-b pb-2">
-                            <SlidersHorizontal className="w-4 h-4 text-primary" />
-                            Filter Grafik
-                          </div>
-                           <div className="space-y-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs font-medium text-slate-500">Hari</Label>
-                              <Select value={generalProductDayFilter} onValueChange={setGeneralProductDayFilter}>
-                                <SelectTrigger className="h-9 text-xs">
-                                  <SelectValue placeholder="Semua Hari" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Semua Hari</SelectItem>
-                                  <SelectItem value="1">Senin</SelectItem>
-                                  <SelectItem value="2">Selasa</SelectItem>
-                                  <SelectItem value="3">Rabu</SelectItem>
-                                  <SelectItem value="4">Kamis</SelectItem>
-                                  <SelectItem value="5">Jumat</SelectItem>
-                                  <SelectItem value="6">Sabtu</SelectItem>
-                                  <SelectItem value="0">Minggu</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              className="w-full h-8 text-xs text-slate-500 hover:text-slate-700"
-                              onClick={() => { setGeneralProductDayFilter('all'); }}
-                            >
-                              Reset Filter
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 px-4 pb-4">
-                    <div className="space-y-2 mt-2 overflow-y-auto max-h-[430px] pr-2 scrollbar-slim">
-                      {(() => {
-                        const analyticsData = advancedAnalytics.generalProductAnalytics?.slice(0, 20) || [];
-                        const maxQty = analyticsData[0]?.qty || 1;
-
-                        return analyticsData.map((prod: any) => {
-                          const productImage = getProductImage(prod.imageUrl);
-                          const percentage = Math.max((prod.qty / maxQty) * 100, 2);
-
-                          return (
-                            <div key={prod.id} className="flex flex-col gap-2 p-2 sm:p-3 rounded-xl bg-white dark:bg-slate-800 border border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-100 dark:hover:border-slate-800 transition-all duration-200">
-                              <div className="flex items-center gap-3 w-full">
-                                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden shrink-0 border border-slate-50 dark:border-slate-800">
-                                  {productImage ? (
-                                    <img src={productImage} className="w-full h-full object-cover" alt={prod.name} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                                  ) : null}
-                                  <Package className={`w-5 h-5 text-slate-400 ${productImage ? 'hidden' : ''}`} />
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{prod.name}</p>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1 truncate" title="Pelanggan Umum">
-                                    <Users className="w-3 h-3 inline-block shrink-0" /> <span className="truncate">Umum</span>
-                                  </p>
-                                </div>
-
-                                <div className="text-right shrink-0">
-                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{prod.qty} Terjual</p>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-end gap-1">
-                                    <Building2 className="w-3 h-3 inline-block" /> {prod.topOutletName}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Progress bar line */}
-                              <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${percentage}%` }} />
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
-                      {(!advancedAnalytics.generalProductAnalytics || advancedAnalytics.generalProductAnalytics.length === 0) && (
-                        <div className="text-center py-6">
-                          <p className="text-xs text-slate-400">Belum ada data produk umum</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Product Analytics Deep Dive (Member) */}
+              {/* Product Analytics Deep Dive */}
               <Card className="shadow-lg border-0 bg-white dark:bg-slate-900">
                 <CardHeader className="pb-3 px-4 pt-4">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                       <CardTitle className="text-slate-700 dark:text-slate-200 text-sm sm:text-base font-medium flex items-center gap-2">
-                        <Package className="w-4 h-4 text-slate-400" /> Analisa Produk (Member)
+                        <Package className="w-4 h-4 text-slate-400" /> Analisa Produk
                       </CardTitle>
-                      {advancedAnalytics.memberCustomerAnalytics && (
-                        <Badge variant="secondary" className="bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0 h-5 font-normal">
-                          {advancedAnalytics.memberCustomerAnalytics.percentageOfTotalRevenue.toFixed(1)}%
-                        </Badge>
-                      )}
                     </div>
                     <Popover open={isMemberProductFilterOpen} onOpenChange={setIsMemberProductFilterOpen}>
                       <PopoverTrigger asChild>
@@ -1144,7 +1036,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Download Excel Dialog - using reusable component */}
       <DownloadExcelDialog
         open={showDownloadDialog}
         onOpenChange={setShowDownloadDialog}
@@ -1155,6 +1046,10 @@ export default function DashboardPage() {
         outlets={outlets || []}
         outletFilter={outletFilter}
         staffList={allStaff ? allStaff.filter((s: any) => s.role?.toLowerCase() === 'kasir') : []}
+      />
+      <ProfileDialog
+        open={isProfileOpen}
+        onOpenChange={setIsProfileOpen}
       />
     </Sidebar>
   );

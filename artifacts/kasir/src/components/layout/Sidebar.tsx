@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw, Banknote } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw } from "lucide-react";
+import { TbCoin } from "react-icons/tb";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,8 +21,7 @@ const ALL_LINKS = [
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
   { href: "/transactions", label: "Riwayat Transaksi", icon: History, adminOnly: false },
   { href: "/expenses", label: "Pengeluaran", icon: Wallet, adminOnly: false },
-  { href: "/receivables", label: "Piutang", icon: Banknote, adminOnly: false },
-  { href: "#profile", label: "Profil", icon: User, adminOnly: false, kasirOnly: true },
+  { href: "/receivables", label: "Piutang", icon: TbCoin, adminOnly: false },
   { href: "/promo", label: "Promo", icon: Megaphone, adminOnly: true },
   { href: "/settings", label: "Pengaturan", icon: Settings, adminOnly: false },
 ];
@@ -34,7 +34,7 @@ interface SidebarProps {
 export function Sidebar({ children, className }: SidebarProps) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const [, setStoreName] = useState(() => localStorage.getItem('storeName') || 'Sbagiamu');
+  const [, setStoreName] = useState(() => localStorage.getItem('storeName') || 'CV.AULIA USAHA');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Sync primary color to CSS variables on mount
@@ -71,7 +71,7 @@ export function Sidebar({ children, className }: SidebarProps) {
 
   useEffect(() => {
     const syncStoreName = () => {
-      setStoreName(localStorage.getItem('storeName') || 'Sbagiamu');
+      setStoreName(localStorage.getItem('storeName') || 'CV.AULIA USAHA');
     };
 
     syncStoreName();
@@ -87,14 +87,22 @@ export function Sidebar({ children, className }: SidebarProps) {
   const { data: outlets } = useListOutlets();
 
   useEffect(() => {
-    if (user?.outletId && user.outletId !== "all" && outlets && outlets.length > 0) {
-      const assignedOutlet = outlets.find((o: any) => o.id.toString() === user.outletId);
+    if (outlets && outlets.length > 0) {
+      // Find the outlet to sync. If user has an outletId and is not "all", find that specific outlet.
+      // Otherwise (for Admin/Owner), fallback to the first outlet in the list.
+      let assignedOutlet = null;
+      if (user?.outletId && user.outletId !== "all") {
+        assignedOutlet = outlets.find((o: any) => o.id.toString() === user.outletId);
+      } else {
+        assignedOutlet = outlets[0];
+      }
+
       if (assignedOutlet) {
         let changed = false;
         
         const currentName = localStorage.getItem('storeName');
         const expectedStoreName = assignedOutlet.store_name || assignedOutlet.name;
-        if (currentName !== expectedStoreName) {
+        if (expectedStoreName && currentName !== expectedStoreName) {
           localStorage.setItem('storeName', expectedStoreName);
           changed = true;
         }
@@ -114,23 +122,52 @@ export function Sidebar({ children, className }: SidebarProps) {
         }
 
         const currentFooter1 = localStorage.getItem('footerMessage');
-        const newFooter1 = assignedOutlet.footer_message || 'Terima kasih atas kunjungan Anda';
+        const newFooter1 = assignedOutlet.footer_message || 'Terima Kasih Sudah Melakukan Order';
         if (currentFooter1 !== newFooter1) {
           localStorage.setItem('footerMessage', newFooter1);
           changed = true;
         }
 
         const currentFooter2 = localStorage.getItem('footerMessage2');
-        const newFooter2 = assignedOutlet.footer_message2 || 'Real Brew, Real Bean, Real Coffee';
+        const newFooter2 = assignedOutlet.footer_message2 || '';
         if (currentFooter2 !== newFooter2) {
           localStorage.setItem('footerMessage2', newFooter2);
           changed = true;
         }
 
         const currentFooter3 = localStorage.getItem('footerMessage3');
-        const newFooter3 = assignedOutlet.footer_message3 || 'Powered by Tembus Digital';
+        const newFooter3 = assignedOutlet.footer_message3 || '';
         if (currentFooter3 !== newFooter3) {
           localStorage.setItem('footerMessage3', newFooter3);
+          changed = true;
+        }
+
+        // Synchronize bank account and bluetooth printer settings
+        const currentBankName = localStorage.getItem('storeBankName');
+        const newBankName = assignedOutlet.bank_name || 'BCA';
+        if (currentBankName !== newBankName) {
+          localStorage.setItem('storeBankName', newBankName);
+          changed = true;
+        }
+
+        const currentBankAccount = localStorage.getItem('storeBankAccount');
+        const newBankAccount = assignedOutlet.bank_account || '4451377137';
+        if (currentBankAccount !== newBankAccount) {
+          localStorage.setItem('storeBankAccount', newBankAccount);
+          changed = true;
+        }
+
+        const currentBankAccountName = localStorage.getItem('storeBankAccountName');
+        const newBankAccountName = assignedOutlet.bank_account_name || 'AULIA USAHA';
+        if (currentBankAccountName !== newBankAccountName) {
+          localStorage.setItem('storeBankAccountName', newBankAccountName);
+          changed = true;
+        }
+
+        const currentBluetoothStoreName = localStorage.getItem('bluetoothStoreName');
+        const newBluetoothStoreName = assignedOutlet.bluetooth_store_name || expectedStoreName || 'CV.AULIA USAHA';
+        if (currentBluetoothStoreName !== newBluetoothStoreName) {
+          localStorage.setItem('bluetoothStoreName', newBluetoothStoreName);
           changed = true;
         }
 
@@ -187,20 +224,6 @@ export function Sidebar({ children, className }: SidebarProps) {
           {links.map((link) => {
             const Icon = link.icon;
             const isActive = location === link.href || (link.href !== "/" && location.startsWith(link.href));
-            
-            if (link.href === "#profile") {
-              return (
-                <button
-                  key={link.href}
-                  onClick={() => setIsProfileOpen(true)}
-                  title={link.label}
-                  className="w-full flex items-center p-3 rounded-md text-sm font-medium transition-colors justify-center relative text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                </button>
-              );
-            }
-
             return (
               <Link
                 key={link.href}

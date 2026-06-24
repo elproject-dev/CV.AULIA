@@ -11,7 +11,7 @@ import { connectToPrinter, disconnectPrinter, listBluetoothDevices, isBluetoothA
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { ADMIN_EMAIL } from "@/lib/auth";
+import { ADMIN_EMAIL, isAdminMode } from "@/lib/auth";
 import { useListOutlets } from "@workspace/api-client-react";
 import { ProfileContent } from "@/components/layout/ProfileContent";
 import { canOpenAndroidAppSettings, openAndroidAppSettings } from "@/lib/android-app-settings";
@@ -89,6 +89,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { user, logout } = useAuth();
   const isAdminSuper = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isAdmin = isAdminMode(user);
   const { data: outlets } = useListOutlets();
   const assignedOutletName = outlets?.find(o => o.id.toString() === user?.outletId)?.name || 'Semua Outlet';
   const isOutletAssigned = false;
@@ -109,14 +110,18 @@ export default function SettingsPage() {
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('fontSize') || 'medium');
 
   // Store Settings
-  const [storeName, setStoreName] = useState(() => localStorage.getItem('storeName') || 'Sbagiamu');
+  const [storeName, setStoreName] = useState(() => localStorage.getItem('storeName') || 'CV.AULIA USAHA');
   const [storeAddress, setStoreAddress] = useState(() => localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk');
-  const [storePhone, setStorePhone] = useState(() => localStorage.getItem('storePhone') || '08123456789');
+  const [storePhone, setStorePhone] = useState(() => localStorage.getItem('storePhone') || '');
+  const [storeBankName, setStoreBankName] = useState(() => localStorage.getItem('storeBankName') || 'BCA');
+  const [storeBankAccount, setStoreBankAccount] = useState(() => localStorage.getItem('storeBankAccount') || '4451377137');
+  const [storeBankAccountName, setStoreBankAccountName] = useState(() => localStorage.getItem('storeBankAccountName') || 'AULIA USAHA');
+  const [bluetoothStoreName, setBluetoothStoreName] = useState(() => localStorage.getItem('bluetoothStoreName') || 'CV.AULIA USAHA');
   const [autoPrint, setAutoPrint] = useState(() => localStorage.getItem('autoPrint') !== 'false');
   const [showFooter, setShowFooter] = useState(() => localStorage.getItem('showFooter') !== 'false');
-  const [footerMessage, setFooterMessage] = useState(() => localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda');
-  const [footerMessage2, setFooterMessage2] = useState(() => localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee');
-  const [footerMessage3, setFooterMessage3] = useState(() => localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital');
+  const [footerMessage, setFooterMessage] = useState(() => localStorage.getItem('footerMessage') || '');
+  const [footerMessage2, setFooterMessage2] = useState(() => localStorage.getItem('footerMessage2') || '');
+  const [footerMessage3, setFooterMessage3] = useState(() => localStorage.getItem('footerMessage3') || '');
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
   const [notifyTransactionSuccess, setNotifyTransactionSuccess] = useState(
     () => localStorage.getItem('notifyTransactionSuccess') !== 'false'
@@ -125,16 +130,74 @@ export default function SettingsPage() {
     () => localStorage.getItem('notifyPrint') !== 'false'
   );
 
+  const isFirstLoad = useRef(true);
+  const isSyncingFromEvent = useRef(false);
+
   // Listen for sync events from Sidebar
   useEffect(() => {
     const handleStoreChange = () => {
-      setStoreName(localStorage.getItem('storeName') || 'Sbagiamu');
+      isSyncingFromEvent.current = true;
+      setStoreName(localStorage.getItem('storeName') || 'CV.AULIA USAHA');
       setStoreAddress(localStorage.getItem('storeAddress') || '');
       setStorePhone(localStorage.getItem('storePhone') || '');
+      setStoreBankName(localStorage.getItem('storeBankName') || 'BCA');
+      setStoreBankAccount(localStorage.getItem('storeBankAccount') || '4451377137');
+      setStoreBankAccountName(localStorage.getItem('storeBankAccountName') || 'AULIA USAHA');
+      setBluetoothStoreName(localStorage.getItem('bluetoothStoreName') || 'CV.AULIA USAHA');
+      setTimeout(() => {
+        isSyncingFromEvent.current = false;
+      }, 100);
     };
     window.addEventListener('storeNameChanged', handleStoreChange);
     return () => window.removeEventListener('storeNameChanged', handleStoreChange);
   }, []);
+
+  // Debounced auto-save store settings to Supabase
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false;
+      return;
+    }
+    if (isSyncingFromEvent.current) {
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        let targetOutletId = 1;
+        if (user?.outletId && user.outletId !== 'all') {
+          targetOutletId = parseInt(user.outletId);
+        } else if (outlets && outlets.length > 0) {
+          targetOutletId = outlets[0].id;
+        }
+
+        const { error } = await supabase
+          .from('outlets')
+          .update({
+            name: storeName,
+            store_name: storeName,
+            address: storeAddress,
+            phone: storePhone,
+            bank_name: storeBankName,
+            bank_account: storeBankAccount,
+            bank_account_name: storeBankAccountName,
+            bluetooth_store_name: bluetoothStoreName
+          })
+          .eq('id', targetOutletId);
+
+        if (error) throw error;
+
+        // Dispatch events so other local components know it changed
+        window.dispatchEvent(new Event('storeNameChanged'));
+        window.dispatchEvent(new Event('storeSettingsChanged'));
+      } catch (err) {
+        console.error("Auto-save to Supabase failed:", err);
+      }
+    }, 1500); // 1.5 seconds debounce
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [storeName, storeAddress, storePhone, storeBankName, storeBankAccount, storeBankAccountName, bluetoothStoreName, isAdmin, user?.outletId, outlets]);
 
   // Primary Color (HSL) - Default: hsl(200, 100%, 22%) - Blue
   const [primaryHue, setPrimaryHue] = useState(() => parseInt(localStorage.getItem('primaryHue') || '200'));
@@ -166,6 +229,10 @@ export default function SettingsPage() {
     localStorage.setItem('storeName', storeName);
     localStorage.setItem('storeAddress', storeAddress);
     localStorage.setItem('storePhone', storePhone);
+    localStorage.setItem('storeBankName', storeBankName);
+    localStorage.setItem('storeBankAccount', storeBankAccount);
+    localStorage.setItem('storeBankAccountName', storeBankAccountName);
+    localStorage.setItem('bluetoothStoreName', bluetoothStoreName);
     localStorage.setItem('autoPrint', autoPrint.toString());
     localStorage.setItem('showFooter', showFooter.toString());
     localStorage.setItem('footerMessage', footerMessage);
@@ -182,7 +249,7 @@ export default function SettingsPage() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, [storeName, storeAddress, storePhone, autoPrint, showFooter, footerMessage, footerMessage2, footerMessage3, darkMode, notifyTransactionSuccess, notifyPrint, bluetoothPrinterMac]);
+  }, [storeName, storeAddress, storePhone, storeBankName, storeBankAccount, storeBankAccountName, bluetoothStoreName, autoPrint, showFooter, footerMessage, footerMessage2, footerMessage3, darkMode, notifyTransactionSuccess, notifyPrint, bluetoothPrinterMac]);
 
   // Auto-save: Primary Color (HSL)
   useEffect(() => {
@@ -209,7 +276,6 @@ export default function SettingsPage() {
     // For dark mode sidebar
     root.style.setProperty('--sidebar-border', `${primaryHue} ${Math.max(primarySaturation - 50, 10)}% ${Math.max(primaryLightness - 60, 8)}%`);
   }, [primaryHue, primarySaturation, primaryLightness]);
-
   const handleTestConnection = async () => {
     if (!bluetoothPrinterMac?.trim()) {
       setConnectionStatus('disconnected');
@@ -332,25 +398,25 @@ export default function SettingsPage() {
             </CollapsibleCard>
 
             {/* Store Settings */}
-            <CollapsibleCard id="store" title="Informasi Toko" icon={Store} description="Konfigurasi informasi dasar toko" isOpen={openCard === 'store'} onToggle={toggleCard}>
+            <CollapsibleCard id="store" title="Informasi Perusahaan" icon={Building2} description="Konfigurasi informasi dasar perusahaan" isOpen={openCard === 'store'} onToggle={toggleCard}>
               {isOutletAssigned && (
                 <div className="mb-4 text-sm text-slate-500 dark:text-slate-400 flex items-start gap-2">
                   <div className="shrink-0 mt-0.5">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
                   </div>
-                  <p>Informasi toko diatur otomatis oleh Admin berdasarkan data Outlet Anda. Hubungi Admin jika ada perubahan.</p>
+                  <p>Informasi perusahaan diatur otomatis oleh Admin berdasarkan data Outlet Anda. Hubungi Admin jika ada perubahan.</p>
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="storeName" className="text-sm font-medium">Nama Toko</Label>
+                  <Label htmlFor="storeName" className="text-sm font-medium">Nama Perusahaan</Label>
                   <Input
                     id="storeName"
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
-                    placeholder="Masukkan nama toko"
+                    placeholder="Masukkan nama perusahaan"
                     className="h-10"
-                    disabled={isOutletAssigned}
+                    disabled={isOutletAssigned || !isAdmin}
                   />
                 </div>
                 <div className="space-y-2">
@@ -361,24 +427,55 @@ export default function SettingsPage() {
                     onChange={(e) => setStorePhone(e.target.value)}
                     placeholder="Masukkan nomor telepon"
                     className="h-10"
-                    disabled={isOutletAssigned}
+                    disabled={isOutletAssigned || !isAdmin}
                   />
                 </div>
               </div>
               <div className="mt-4 space-y-2">
-                <Label htmlFor="storeAddress" className="text-sm font-medium">Alamat Toko</Label>
+                <Label htmlFor="storeAddress" className="text-sm font-medium">Alamat Perusahaan</Label>
                 <Input
                   id="storeAddress"
                   value={storeAddress}
                   onChange={(e) => setStoreAddress(e.target.value)}
-                  placeholder="Masukkan alamat toko"
-                  maxLength={32}
+                  placeholder="Masukkan alamat perusahaan"
                   className="h-10"
-                  disabled={isOutletAssigned}
+                  disabled={isOutletAssigned || !isAdmin}
                 />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Maksimal 32 karakter untuk print 58mm
-                </p>
+              </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="storeBankName" className="text-sm font-medium">Nama Bank</Label>
+                  <Input
+                    id="storeBankName"
+                    value={storeBankName}
+                    onChange={(e) => setStoreBankName(e.target.value)}
+                    placeholder="Contoh: BCA, Mandiri"
+                    className="h-10"
+                    disabled={isOutletAssigned || !isAdmin}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="storeBankAccount" className="text-sm font-medium">Nomor Rekening</Label>
+                  <Input
+                    id="storeBankAccount"
+                    value={storeBankAccount}
+                    onChange={(e) => setStoreBankAccount(e.target.value)}
+                    placeholder="Masukkan nomor rekening"
+                    className="h-10"
+                    disabled={isOutletAssigned || !isAdmin}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="storeBankAccountName" className="text-sm font-medium">Atas Nama (A/N)</Label>
+                  <Input
+                    id="storeBankAccountName"
+                    value={storeBankAccountName}
+                    onChange={(e) => setStoreBankAccountName(e.target.value)}
+                    placeholder="Masukkan nama pemilik rekening"
+                    className="h-10"
+                    disabled={isOutletAssigned || !isAdmin}
+                  />
+                </div>
               </div>
             </CollapsibleCard>
 
@@ -416,6 +513,21 @@ export default function SettingsPage() {
                     Buka Pengaturan Izin Aplikasi
                   </Button>
                 )}
+              </div>
+
+              {/* Bluetooth Store Name Input */}
+              <div className="space-y-2 mb-5">
+                <Label htmlFor="bluetoothStoreName" className="text-sm font-medium">Nama Perusahaan (Khusus Print Bluetooth)</Label>
+                <Input
+                  id="bluetoothStoreName"
+                  value={bluetoothStoreName}
+                  onChange={(e) => setBluetoothStoreName(e.target.value)}
+                  placeholder="Masukkan nama perusahaan khusus untuk struk Bluetooth"
+                  className="h-10"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Nama ini akan dicantumkan di bagian atas struk thermal Bluetooth.
+                </p>
               </div>
 
               {/* Auto Print Switch */}
@@ -548,7 +660,7 @@ export default function SettingsPage() {
                       id="footerMessage2"
                       value={footerMessage2}
                       onChange={(e) => setFooterMessage2(e.target.value)}
-                      placeholder="Masukkan pesan footer ke-2 (default kosong)"
+                      placeholder="(kosong)"
                       className="h-10"
                       disabled={!isAdminSuper}
                     />
@@ -559,7 +671,7 @@ export default function SettingsPage() {
                       id="footerMessage3"
                       value={footerMessage3}
                       onChange={(e) => setFooterMessage3(e.target.value)}
-                      placeholder="Masukkan pesan footer ke-3 (default kosong)"
+                      placeholder="(kosong)"
                       className="h-10"
                       disabled={!isAdminSuper}
                     />

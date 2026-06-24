@@ -35,17 +35,13 @@ export default function CustomersPage() {
   const [isLookupDialogOpen, setIsLookupDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<any>(null);
-  const [formData, setFormData] = useState<any>({ name: "", phone: "", membershipType: "member", outlet_id: "all" });
+  const [formData, setFormData] = useState<any>({ name: "", phone: "", outlet_id: "all", address: "", district: "", city: "" });
   const [isLookupPending, setIsLookupPending] = useState(false);
 
-  // Check if user is admin (only sbagiamu.pos@gmail.com)
+  // Check if user is admin (only cvauliausaha@gmail.com)
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  const getMembershipStatus = (customer: any) => {
-    const membershipType = customer.membership_type || customer.membershipType || customer.membership;
-    if (membershipType === "member" || membershipType === "Member" || membershipType === "MEMBER") return "member";
-    return "non_member";
-  };
+
 
   const handleOpenDialog = (customer?: any) => {
     if (customer) {
@@ -53,8 +49,10 @@ export default function CustomersPage() {
       setFormData({
         name: customer.name,
         phone: customer.phone || "",
-        membershipType: getMembershipStatus(customer),
-        outlet_id: customer.outlet_id ? customer.outlet_id.toString() : "all"
+        outlet_id: customer.outlet_id ? customer.outlet_id.toString() : "all",
+        address: customer.address || "",
+        district: customer.district || "",
+        city: customer.city || ""
       });
     } else {
       setEditingCustomer(null);
@@ -62,15 +60,23 @@ export default function CustomersPage() {
       setFormData({
         name: "",
         phone: "",
-        membershipType: "member",
-        outlet_id: (!isAdmin && user?.outletId) ? user.outletId : currentOutletIdStr
+        outlet_id: (!isAdmin && user?.outletId) ? user.outletId : currentOutletIdStr,
+        address: "",
+        district: "",
+        city: ""
       });
     }
     setIsDialogOpen(true);
   };
 
   const handleSubmit = () => {
-    const payload: any = { name: formData.name, phone: formData.phone || null, membership_type: formData.membershipType };
+    const payload: any = {
+      name: formData.name,
+      phone: formData.phone || null,
+      address: formData.address || null,
+      district: formData.district || null,
+      city: formData.city || null
+    };
 
     if (isAdmin && formData.outlet_id && formData.outlet_id !== "all") {
       payload.outlet_id = parseInt(formData.outlet_id);
@@ -135,7 +141,6 @@ export default function CustomersPage() {
       { header: "ID Pelanggan", key: "ID Pelanggan", width: 20 },
       { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 30 },
       { header: "No. Telepon", key: "No. Telepon", width: 15 },
-      { header: "Status", key: "Status", width: 12 },
       { header: "Alamat", key: "Alamat", width: 40 },
       { header: "Kecamatan", key: "Kecamatan", width: 20 },
       { header: "Kabupaten", key: "Kabupaten", width: 20 },
@@ -152,7 +157,6 @@ export default function CustomersPage() {
         "ID Pelanggan": c.customer_id_manual || "-",
         "Nama Pelanggan": c.name || "-",
         "No. Telepon": c.phone || "-",
-        "Status": getMembershipStatus(c) === "member" ? "MEMBER" : "REGULER",
         "Alamat": c.address || "-",
         "Kecamatan": c.district || "-",
         "Kabupaten": c.city || "-",
@@ -252,14 +256,8 @@ export default function CustomersPage() {
             ) : filteredCustomers?.length === 0 ? (
               <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data</div>
             ) : (
-              filteredCustomers?.map((customer: any) => {
-                const status = getMembershipStatus(customer);
-                return (
-                  <div
-                    key={customer.id}
-                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-primary/20 hover:shadow-md active:bg-primary/5 transition-all duration-200"
-                    onClick={() => setSelectedCustomerDetail(customer)}
-                  >
+              filteredCustomers?.map((customer: any) => (
+                  <div key={customer.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm relative hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedCustomerDetail(customer)}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="font-semibold text-slate-900 dark:text-white mb-1.5">{customer.name}</div>
@@ -268,17 +266,20 @@ export default function CustomersPage() {
                             <Phone className="w-3.5 h-3.5 text-slate-400" />
                             {customer.phone || "-"}
                           </div>
+                          {(customer.address || customer.district || customer.city) && (
+                            <div className="text-slate-400 mt-1 flex flex-col gap-0.5">
+                              <div>📍 {customer.address || "-"}</div>
+                              {(customer.district || customer.city) && (
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 ml-4">
+                                  {customer.district ? `Kec. ${customer.district}` : ""}
+                                  {customer.district && customer.city ? ", " : ""}
+                                  {customer.city ? `Kab. ${customer.city}` : ""}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      {status === "member" ? (
-                        <Badge className="bg-amber-500 dark:bg-amber-600 flex items-center gap-1 whitespace-nowrap">
-                          <Award className="w-3 h-3" /> MEMBER
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                          REGULER
-                        </Badge>
-                      )}
                     </div>
                     <div className="flex justify-between text-sm pt-2 border-t border-slate-100 dark:border-slate-800">
                       <div className="text-left">
@@ -299,20 +300,19 @@ export default function CustomersPage() {
                       )}
                     </div>
                   </div>
-                );
-              })
+              ))
             )}
           </div>
 
           {/* Desktop Table */}
           <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <Table>
+             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50 dark:bg-slate-800/50">
                   <TableHead className="w-[140px]">ID Pelanggan</TableHead>
                   <TableHead>Nama Pelanggan</TableHead>
                   <TableHead>Kontak</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead>Alamat</TableHead>
                   <TableHead>Pelanggan dari</TableHead>
                   <TableHead className="text-right">Total Belanja</TableHead>
                   {isAdmin && <TableHead className="text-right">Aksi</TableHead>}
@@ -325,7 +325,6 @@ export default function CustomersPage() {
                   <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                 ) : (
                   filteredCustomers?.map((customer: any) => {
-                    const status = getMembershipStatus(customer);
                     return (
                       <TableRow
                         key={customer.id}
@@ -335,14 +334,19 @@ export default function CustomersPage() {
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">{customer.customer_id_manual || "-"}</TableCell>
                         <TableCell className="font-medium text-slate-900 dark:text-white whitespace-nowrap">{customer.name}</TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">{customer.phone || "-"}</TableCell>
-                        <TableCell className="text-center whitespace-nowrap">
-                          {status === "member" ? (
-                            <Badge className="bg-amber-500 dark:bg-amber-600">
-                              <Award className="w-3 h-3 mr-1" /> MEMBER
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">REGULER</Badge>
-                          )}
+                        <TableCell className="text-slate-600 dark:text-slate-400">
+                          {customer.address ? (
+                            <div className="max-w-[200px] truncate">
+                              <div>{customer.address}</div>
+                              {(customer.district || customer.city) && (
+                                <div className="text-[10px] text-slate-400 truncate">
+                                  {customer.district ? `Kec. ${customer.district}` : ""}
+                                  {customer.district && customer.city ? ", " : ""}
+                                  {customer.city ? `Kab. ${customer.city}` : ""}
+                                </div>
+                              )}
+                            </div>
+                          ) : "-"}
                         </TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {customer.sales_name || "-"}
@@ -384,20 +388,20 @@ export default function CustomersPage() {
               <p className="text-xs text-slate-500 dark:text-slate-400">Digunakan untuk login di kasir</p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tipe Keanggotaan</label>
-              <Select value={formData.membershipType} onValueChange={(v: any) => setFormData({ ...formData, membershipType: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="non_member">Reguler (Non-Member)</SelectItem>
-                  <SelectItem value="member">Member</SelectItem>
-                </SelectContent>
-              </Select>
-              {formData.membershipType === "member" && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <Award className="w-3 h-3" /> Pelanggan setia dengan tingkat keanggotaan Member
-                </p>
-              )}
+              <label className="text-sm font-medium">Alamat Lengkap</label>
+              <Input value={formData.address || ""} onChange={(e) => setFormData({ ...formData, address: e.target.value })} placeholder="Jl. Raya No. 123" />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Kecamatan</label>
+                <Input value={formData.district || ""} onChange={(e) => setFormData({ ...formData, district: e.target.value })} placeholder="Kecamatan" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Kabupaten</label>
+                <Input value={formData.city || ""} onChange={(e) => setFormData({ ...formData, city: e.target.value })} placeholder="Kabupaten" />
+              </div>
+            </div>
+
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Batal</Button>
@@ -427,11 +431,6 @@ export default function CustomersPage() {
                     <div className="font-bold text-lg text-slate-900 dark:text-white">{lookupResult.name}</div>
                     <div className="text-sm text-slate-500 dark:text-slate-400">{lookupResult.phone}</div>
                   </div>
-                  {getMembershipStatus(lookupResult) === "member" ? (
-                    <Badge className="bg-amber-500 dark:bg-amber-600"><Award className="w-3 h-3 mr-1" /> MEMBER</Badge>
-                  ) : (
-                    <Badge variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">REGULER</Badge>
-                  )}
                 </div>
                 <div className="flex gap-4 pt-2 border-t border-amber-200 dark:border-amber-800">
                   <div className="text-slate-500 dark:text-slate-400">Total: {formatRupiah(lookupResult.total_spent || 0)}</div>
@@ -491,18 +490,7 @@ export default function CustomersPage() {
                   <p className="font-medium text-slate-700 dark:text-slate-300">{selectedCustomerDetail.phone || "-"}</p>
                 </div>
 
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Tipe Member</p>
-                  {getMembershipStatus(selectedCustomerDetail) === "member" ? (
-                    <Badge className="bg-amber-500 dark:bg-amber-600 flex w-fit items-center gap-1">
-                      <Award className="w-3 h-3" /> MEMBER
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                      REGULER
-                    </Badge>
-                  )}
-                </div>
+
 
                 <div className="flex gap-4">
                   <div className="flex-1">

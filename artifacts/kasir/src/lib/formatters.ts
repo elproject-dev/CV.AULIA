@@ -35,13 +35,6 @@ export function formatInvoiceNumber(id: number): string {
   return `TRX-ID${String(id).padStart(5, '0')}`;
 }
 
-export function formatMembershipStatus(
-  customerType?: string | null,
-  membershipType?: string | null
-): string {
-  const type = (customerType || membershipType || "non_member").toLowerCase();
-  return type === "member" ? "Member" : "Reguler";
-}
 
 export function formatPaymentMethod(method?: string): string {
   switch (method) {

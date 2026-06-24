@@ -34,7 +34,7 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
-  // Check if user is admin (only sbagiamu.pos@gmail.com)
+  // Check if user is admin (only cvauliausaha@gmail.com)
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const [search, setSearch] = useState("");
@@ -296,8 +296,8 @@ export default function ProductsPage() {
           conversion_factor: Number(group.conversion_factor) || 1,
           price: group.price ? parseNumberFromDots(group.price) : null,
           is_default: group.is_default,
-          discount_type: tier.discount_type,
-          discount_value: tier.discount_type === 'none' ? 0 : (tier.discount_value ? parseNumberFromDots(tier.discount_value) : 0),
+          discount_type: (tier.discount_value && parseNumberFromDots(tier.discount_value) > 0) ? 'amount' : 'none',
+          discount_value: tier.discount_value ? parseNumberFromDots(tier.discount_value) : 0,
           min_qty: Number(tier.min_qty) || 1,
           label: tier.discount_type === 'none' ? null : (tier.label || null)
         });
@@ -1472,110 +1472,101 @@ export default function ProductsPage() {
                       </div>
 
                       {/* Tiers List */}
-                      {row.tiers && row.tiers.map((tier: any, tierIdx: number) => (
-                        <div key={tierIdx} className="flex flex-wrap sm:flex-nowrap items-end gap-2 sm:gap-3 border-t border-slate-100 dark:border-slate-800 pt-3 mt-2">
-                          <div className="w-full sm:w-32 space-y-1">
-                            <label className="text-[10px] font-medium text-slate-500">Tipe Diskon</label>
-                            <Select
-                              value={tier.discount_type}
-                              onValueChange={(value) => {
-                                const newRows = [...uomRows];
-                                const updatedTiers = [...newRows[idx].tiers];
-                                updatedTiers[tierIdx] = {
-                                  ...updatedTiers[tierIdx],
-                                  discount_type: value,
-                                  ...(value === 'none' ? { discount_value: '', label: '' } : {})
-                                };
-                                newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
-                                setUomRows(newRows);
-                                setHasChanges(true);
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue placeholder="Pilih..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Tidak Ada</SelectItem>
-                                <SelectItem value="amount">Nominal (Rp)</SelectItem>
-                              </SelectContent>
-                            </Select>
+                      {row.tiers && row.tiers.map((tier: any, tierIdx: number) => {
+                        const unitPrice = parseNumberFromDots(row.price || "0");
+                        const minQty = tier.min_qty || 1;
+                        const discVal = parseNumberFromDots(tier.discount_value || "0");
+                        const totalBeforeDisc = unitPrice * minQty;
+                        const totalAfterDisc = Math.max(0, totalBeforeDisc - discVal);
+
+                        return (
+                        <div key={tierIdx} className="flex flex-col border-t border-slate-100 dark:border-slate-800 pt-3 mt-2">
+                          <div className="flex flex-wrap sm:flex-nowrap items-end gap-2 sm:gap-3">
+                            <div className="flex-1 sm:w-16 space-y-1">
+                              <label className="text-[10px] font-medium text-slate-500">Min. Beli</label>
+                              <Input
+                                type="text"
+                                placeholder="1"
+                                value={tier.min_qty}
+                                onChange={(e) => {
+                                  const rawVal = e.target.value.replace(/[^0-9]/g, '');
+                                  const val = rawVal === '' ? '' : parseInt(rawVal);
+                                  const newRows = [...uomRows];
+                                  const updatedTiers = [...newRows[idx].tiers];
+                                  updatedTiers[tierIdx] = { ...updatedTiers[tierIdx], min_qty: val };
+                                  newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
+                                  setUomRows(newRows);
+                                  setHasChanges(true);
+                                }}
+                                className="h-8 text-sm text-center"
+                              />
+                            </div>
+                            <div className="flex-1 sm:w-24 space-y-1">
+                              <label className="text-[10px] font-medium text-slate-500">Nilai Diskon (Rp)</label>
+                              <Input
+                                placeholder="5.000"
+                                value={tier.discount_value}
+                                onChange={(e) => {
+                                  const newRows = [...uomRows];
+                                  const updatedTiers = [...newRows[idx].tiers];
+                                  updatedTiers[tierIdx] = { ...updatedTiers[tierIdx], discount_value: formatNumberWithDots(e.target.value) };
+                                  newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
+                                  setUomRows(newRows);
+                                  setHasChanges(true);
+                                }}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                            <div className="w-full sm:flex-1 space-y-1">
+                              <label className="text-[10px] font-medium text-slate-500">Label Keterangan</label>
+                              <Input
+                                placeholder="Grosir 5 box..."
+                                value={tier.label}
+                                onChange={(e) => {
+                                  const newRows = [...uomRows];
+                                  const updatedTiers = [...newRows[idx].tiers];
+                                  updatedTiers[tierIdx] = { ...updatedTiers[tierIdx], label: e.target.value };
+                                  newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
+                                  setUomRows(newRows);
+                                  setHasChanges(true);
+                                }}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+
+                            {row.tiers.length > 1 && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0 mb-[1px]"
+                                onClick={() => {
+                                  const newRows = [...uomRows];
+                                  const updatedTiers = [...newRows[idx].tiers];
+                                  updatedTiers.splice(tierIdx, 1);
+                                  newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
+                                  setUomRows(newRows);
+                                  setHasChanges(true);
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
                           </div>
-
-                          {tier.discount_type !== 'none' && (
-                            <>
-                              <div className="flex-1 sm:w-16 space-y-1">
-                                <label className="text-[10px] font-medium text-slate-500">Min. Beli</label>
-                                <Input
-                                  type="text"
-                                  placeholder="1"
-                                  value={tier.min_qty}
-                                  onChange={(e) => {
-                                    const rawVal = e.target.value.replace(/[^0-9]/g, '');
-                                    const val = rawVal === '' ? '' : parseInt(rawVal);
-                                    const newRows = [...uomRows];
-                                    const updatedTiers = [...newRows[idx].tiers];
-                                    updatedTiers[tierIdx] = { ...updatedTiers[tierIdx], min_qty: val };
-                                    newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
-                                    setUomRows(newRows);
-                                    setHasChanges(true);
-                                  }}
-                                  className="h-8 text-sm text-center"
-                                />
-                              </div>
-                              <div className="flex-1 sm:w-24 space-y-1">
-                                <label className="text-[10px] font-medium text-slate-500">Nilai Diskon</label>
-                                <Input
-                                  placeholder="5.000"
-                                  value={tier.discount_value}
-                                  onChange={(e) => {
-                                    const newRows = [...uomRows];
-                                    const updatedTiers = [...newRows[idx].tiers];
-                                    updatedTiers[tierIdx] = { ...updatedTiers[tierIdx], discount_value: formatNumberWithDots(e.target.value) };
-                                    newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
-                                    setUomRows(newRows);
-                                    setHasChanges(true);
-                                  }}
-                                  className="h-8 text-sm"
-                                />
-                              </div>
-                              <div className="w-full sm:flex-1 space-y-1">
-                                <label className="text-[10px] font-medium text-slate-500">Label Keterangan</label>
-                                <Input
-                                  placeholder="Grosir 5 box..."
-                                  value={tier.label}
-                                  onChange={(e) => {
-                                    const newRows = [...uomRows];
-                                    const updatedTiers = [...newRows[idx].tiers];
-                                    updatedTiers[tierIdx] = { ...updatedTiers[tierIdx], label: e.target.value };
-                                    newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
-                                    setUomRows(newRows);
-                                    setHasChanges(true);
-                                  }}
-                                  className="h-8 text-sm"
-                                />
-                              </div>
-                            </>
-                          )}
-
-                          {row.tiers.length > 1 && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0 mb-[1px]"
-                              onClick={() => {
-                                const newRows = [...uomRows];
-                                const updatedTiers = [...newRows[idx].tiers];
-                                updatedTiers.splice(tierIdx, 1);
-                                newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
-                                setUomRows(newRows);
-                                setHasChanges(true);
-                              }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                          
+                          {/* Summary Display */}
+                          {discVal > 0 && minQty > 0 && (
+                            <div className="mt-2 px-2 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded text-xs flex items-center flex-wrap gap-1">
+                              <span className="text-slate-600 dark:text-slate-400">
+                                Total ({minQty} {row.unit_name || 'satuan'}): <span className="line-through">{formatRupiah(totalBeforeDisc)}</span>
+                              </span>
+                              <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                {formatRupiah(totalAfterDisc)}
+                              </span>
+                            </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
 
                       {/* Add Tier Button */}
                       <div className="flex justify-start mt-2">
@@ -1585,7 +1576,7 @@ export default function ProductsPage() {
                           className="text-xs h-7"
                           onClick={() => {
                             const newRows = [...uomRows];
-                            const updatedTiers = [...newRows[idx].tiers, { discount_type: 'none', discount_value: '', min_qty: 1, label: '' }];
+                            const updatedTiers = [...newRows[idx].tiers, { discount_type: 'amount', discount_value: '', min_qty: 1, label: '' }];
                             newRows[idx] = { ...newRows[idx], tiers: updatedTiers };
                             setUomRows(newRows);
                             setHasChanges(true);

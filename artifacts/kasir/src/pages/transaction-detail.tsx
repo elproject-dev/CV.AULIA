@@ -31,23 +31,32 @@ export default function TransactionDetailPage() {
   const { user } = useAuth();
   const id = parseInt(params.id || "0");
   const [storeInfo, setStoreInfo] = useState(() => ({
-    name: localStorage.getItem('storeName') || 'Sbagiamu',
-    address: localStorage.getItem('storeAddress') || 'Jl. Contoh Outlet No. 123, Jakarta'
+    name: localStorage.getItem('storeName') || 'CV.AULIA USAHA',
+    address: localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk',
+    phone: localStorage.getItem('storePhone') || '',
+    showFooter: localStorage.getItem('showFooter') !== 'false',
+    footerMessage: localStorage.getItem('footerMessage') || '',
+    footerMessage2: localStorage.getItem('footerMessage2') || '',
+    footerMessage3: localStorage.getItem('footerMessage3') || ''
   }));
   const [enablePPN, setEnablePPN] = useState(() => {
     return localStorage.getItem('enablePPN') === 'true';
   });
 
-  // Check if user is admin (only sbagiamu.pos@gmail.com)
+  // Check if user is admin (only cvauliausaha@gmail.com)
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
   
   const { data: trx, isLoading } = useGetTransaction(id);
   const deleteTransaction = useDeleteTransaction();
   const [isPrinting, setIsPrinting] = useState(false);
 
-  const displayedStoreName = trx?.outlets?.store_name || trx?.outlets?.name || storeInfo.name;
-  const displayedAddress = trx?.outlets?.address || storeInfo.address;
-  const displayedPhone = trx?.outlets?.phone || '';
+  const displayedStoreName = localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || trx?.outlets?.store_name || trx?.outlets?.name || storeInfo.name;
+  const displayedAddress = storeInfo.address || trx?.outlets?.address;
+  const displayedPhone = storeInfo.phone || trx?.outlets?.phone || '';
+
+  const displayedFooter1 = trx?.outlets?.footer_message || storeInfo.footerMessage;
+  const displayedFooter2 = trx?.outlets?.footer_message2 || storeInfo.footerMessage2;
+  const displayedFooter3 = trx?.outlets?.footer_message3 || storeInfo.footerMessage3;
 
   const handlePrintReceipt = async () => {
     if (!trx) return;
@@ -67,7 +76,7 @@ export default function TransactionDetailPage() {
 
     setIsPrinting(true);
     try {
-      const isMemberTransaction = trx.customers?.membership_type === "member" || trx.customer_type === "member";
+
       const receiptCustomerName = trx.customers?.name || trx.customerName || trx.customer_name || "Umum";
 
       const items = trx.transaction_items?.map((item: any) => ({
@@ -89,7 +98,6 @@ export default function TransactionDetailPage() {
         discount: trx.discount || 0,
         discountNote: trx.discount_note || '',
         customerName: receiptCustomerName,
-        customerType: trx.customer_type || (isMemberTransaction ? "member" : "regular"),
         total: total,
         amountPaid: trx.amount_paid || 0,
         change: trx.change || 0,
@@ -97,9 +105,9 @@ export default function TransactionDetailPage() {
         storeName: displayedStoreName,
         storeAddress: displayedAddress,
         storePhone: displayedPhone,
-        footerMessage: showFooter ? (trx?.outlets?.footer_message || localStorage.getItem('footerMessage') || 'Terima kasih atas kunjungan Anda') : '',
-        footerMessage2: showFooter ? (trx?.outlets?.footer_message2 || localStorage.getItem('footerMessage2') || 'Real Brew, Real Bean, Real Coffee') : '',
-        footerMessage3: showFooter ? (trx?.outlets?.footer_message3 || localStorage.getItem('footerMessage3') || 'Powered by Tembus Digital') : '',
+        footerMessage: showFooter ? (trx?.outlets?.footer_message || localStorage.getItem('footerMessage') || '') : '',
+        footerMessage2: showFooter ? (trx?.outlets?.footer_message2 || localStorage.getItem('footerMessage2') || '') : '',
+        footerMessage3: showFooter ? (trx?.outlets?.footer_message3 || localStorage.getItem('footerMessage3') || '') : '',
       };
 
       console.log('Connecting to printer...', printerMac);
@@ -142,8 +150,13 @@ export default function TransactionDetailPage() {
   useEffect(() => {
     const syncStoreInfo = () => {
       setStoreInfo({
-        name: localStorage.getItem('storeName') || 'Sbagiamu',
-        address: localStorage.getItem('storeAddress') || 'Jl. Contoh Outlet No. 123, Jakarta'
+        name: localStorage.getItem('storeName') || 'CV.AULIA USAHA',
+        address: localStorage.getItem('storeAddress') || 'Jl. Condongcatur No.123 Yk',
+        phone: localStorage.getItem('storePhone') || '',
+        showFooter: localStorage.getItem('showFooter') !== 'false',
+        footerMessage: localStorage.getItem('footerMessage') || '',
+        footerMessage2: localStorage.getItem('footerMessage2') || '',
+        footerMessage3: localStorage.getItem('footerMessage3') || ''
       });
       setEnablePPN(localStorage.getItem('enablePPN') === 'true');
     };
@@ -284,13 +297,17 @@ export default function TransactionDetailPage() {
                 {/* Status - Above Customer */}
                 <div className="flex justify-between items-center">
                   <span className="text-xs sm:text-sm text-slate-500">Status</span>
-                  <Badge variant={trx.status === "completed" ? "default" : "destructive"} className="text-xs">
-                    {trx.status.toUpperCase()}
-                  </Badge>
+                  {trx.payment_status === 'partial' ? (
+                    <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-medium">DP</Badge>
+                  ) : trx.payment_status === 'unpaid' ? (
+                    <Badge variant="destructive" className="font-medium">TEMPO</Badge>
+                  ) : (
+                    <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white font-medium">LUNAS</Badge>
+                  )}
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-500">Pelanggan</span>
-                  <span className="font-medium text-right">{trx.customers?.name || "Umum"}</span>
+                  <span className="font-medium text-right">{trx.customers?.name || "-"}</span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-slate-500">Metode</span>
@@ -336,9 +353,9 @@ export default function TransactionDetailPage() {
                 </div>
               </div>
 
-              {/* Cash Payment */}
-              {trx.payment_method === 'cash' && (
-                <div className="space-y-2 py-4 sm:py-6 font-mono text-xs sm:text-sm">
+              {/* Payment Details */}
+              {trx.payment_status === 'paid' && trx.payment_method === 'cash' && (
+                <div className="space-y-2 py-4 sm:py-6 font-mono text-xs sm:text-sm border-b-2 border-dashed border-slate-200">
                   <div className="flex justify-between text-slate-600">
                     <span>Tunai</span>
                     <span>{formatRupiah(trx.amount_paid || 0)}</span>
@@ -350,22 +367,46 @@ export default function TransactionDetailPage() {
                 </div>
               )}
 
-              {/* Member Info */}
-              {trx.customers?.membership_type === "member" && (
-                <div className="py-4 sm:py-6 border-t-2 border-dashed border-slate-200 font-mono text-xs sm:text-sm space-y-2">
+              {trx.payment_status === 'partial' && (
+                <div className="space-y-2 py-4 sm:py-6 font-mono text-xs sm:text-sm border-b-2 border-dashed border-slate-200">
                   <div className="flex justify-between text-slate-600">
-                    <span>Status</span>
-                    <span className="font-bold text-amber-700">MEMBER</span>
+                    <span>DP Dibayar ({getPaymentLabel(trx.payment_method)})</span>
+                    <span>{formatRupiah(trx.amount_paid || 0)}</span>
                   </div>
+                  <div className="flex justify-between font-bold text-slate-900">
+                    <span>Sisa Tagihan</span>
+                    <span className="text-red-600">{formatRupiah(trx.remaining_balance || 0)}</span>
+                  </div>
+                </div>
+              )}
+
+              {trx.payment_status === 'unpaid' && (
+                <div className="space-y-2 py-4 sm:py-6 font-mono text-xs sm:text-sm border-b-2 border-dashed border-slate-200">
+                  <div className="flex justify-between font-bold text-slate-900">
+                    <span>Tagihan (Tempo)</span>
+                    <span className="text-red-600">{formatRupiah(trx.remaining_balance || 0)}</span>
+                  </div>
+                  {trx.due_date && (
+                    <div className="flex justify-between text-slate-600 mt-1">
+                      <span>Jatuh Tempo</span>
+                      <span>{new Date(trx.due_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
 
 
+
+
               {/* Footer */}
-              <div className="mt-6 sm:mt-8 text-center text-slate-400 text-xs">
-                <p>Terima kasih atas kunjungan Anda</p>
-              </div>
+              {storeInfo.showFooter && (
+                <div className="mt-6 sm:mt-8 text-center text-slate-400 text-xs space-y-1">
+                  {displayedFooter1 && <p>{displayedFooter1}</p>}
+                  {displayedFooter2 && <p>{displayedFooter2}</p>}
+                  {displayedFooter3 && <p>{displayedFooter3}</p>}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

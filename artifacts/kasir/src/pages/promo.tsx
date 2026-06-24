@@ -508,7 +508,6 @@ export default function PromoPage() {
                           <TableCell className="hidden sm:table-cell text-center text-slate-400 text-xs">{(currentPage - 1) * ITEMS_PER_PAGE + index + 1}</TableCell>
                           <TableCell>
                             <div className="font-medium">{customer.name}</div>
-                            {customer.membership_type === 'member' && <span className="text-[10px] bg-orange-500 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">Member</span>}
                           </TableCell>
                           <TableCell className="text-slate-600 dark:text-slate-400 font-mono text-xs">{customer.phone}</TableCell>
                           <TableCell className="hidden md:table-cell text-slate-500 text-xs">
