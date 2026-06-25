@@ -261,7 +261,7 @@ export default function POSPage() {
       const showFooter = localStorage.getItem('showFooter') !== 'false';
       const printData = {
         ...transaction,
-        storeName: activeOutletObj?.store_name || activeOutletObj?.name || localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || 'SBAGIAMU',
+        storeName: activeOutletObj?.store_name || activeOutletObj?.name || localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || 'CV.AULIA USAHA',
         storeAddress: activeOutletObj?.address || localStorage.getItem('storeAddress') || '',
         storePhone: activeOutletObj?.phone || localStorage.getItem('storePhone') || '',
         footerMessage: showFooter ? (activeOutletObj?.footer_message || localStorage.getItem('footerMessage') || '') : '',
@@ -1490,7 +1490,7 @@ export default function POSPage() {
               {/* Header - Store Name Centered */}
               <div className="text-center mb-3">
                 <p className="font-bold text-base text-slate-900 dark:text-slate-100">
-                  {localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || 'SBAGIAMU'}
+                  {localStorage.getItem('bluetoothStoreName') || localStorage.getItem('storeName') || 'CV.AULIA USAHA'}
                 </p>
                 {(() => {
                   const address = localStorage.getItem('storeAddress');

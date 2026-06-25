@@ -25,7 +25,7 @@ const DEFAULT_TEMPLATES: PromoTemplate[] = [
   {
     id: -2,
     name: "Template Member Baru",
-    content: "🎉 *PROMO MEMBER BARU* 🎉\n\nHalo @ 😊\n\n🎁 Ada promo spesial buat kamu!\n\n💰 Dapatkan *diskon Rp10.000*\nuntuk pembelanjaan berikutnya dengan menunjukkan pesan ini saat bertransaksi.\n\nJangan lewatkan kesempatan spesial ini\nnikmati pengalaman belanja yang lebih hemat di #.\n\n📍 Yuk mampir ke # sekarang!\n\n🙏 Salam Teman Bahagiamu,",
+    content: "🎉 *PROMO MEMBER BARU* 🎉\n\nHalo @ 😊\n\n🎁 Ada promo spesial buat kamu!\n\n💰 Dapatkan *diskon Rp10.000*\nuntuk pembelanjaan berikutnya dengan menunjukkan pesan ini saat bertransaksi.\n\nJangan lewatkan kesempatan spesial ini\nnikmati pengalaman belanja yang lebih hemat di #.\n\n📍 Yuk mampir ke # sekarang!\n\n🙏 Hormat Kami,",
   },
 ];
 
@@ -57,7 +57,7 @@ export default function PromoPage() {
   const [isConfiguringCooldown, setIsConfiguringCooldown] = useState(false);
 
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-  const storeName = localStorage.getItem("storeName") || "SBAGIAMU";
+  const storeName = localStorage.getItem("storeName") || "CV.AULIA USAHA";
 
   useEffect(() => {
     if (user) {
@@ -189,7 +189,7 @@ export default function PromoPage() {
 
   const formatMessage = (message: string, customerName: string) => {
     const cleanName = (customerName || "").trim();
-    const cleanStore = (storeName || "SBAGIAMU").trim();
+    const cleanStore = (storeName || "CV.AULIA USAHA").trim();
     
     return (message || "")
       .replace(/@/g, `*${cleanName}*`)

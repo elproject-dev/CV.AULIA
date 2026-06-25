@@ -52,7 +52,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    
+
     if (password !== confirmPassword) {
       toast({
         title: "Validasi Gagal",
@@ -96,18 +96,18 @@ export default function RegisterPage() {
 
       <div className="w-full max-w-[420px] relative z-10 py-6">
         <div className="text-center mb-8">
-          <img src={`${import.meta.env.BASE_URL}logo-login.png`} alt="Logo" className="h-20 sm:h-24 w-auto mx-auto object-contain mb-4 drop-shadow-2xl" />
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-widest drop-shadow-lg">DAFTAR KASIR</h1>
-          <p className="text-white/80 mt-2 text-sm font-medium tracking-wide">Buat akun untuk mengelola toko Anda</p>
+          <img src={`${import.meta.env.BASE_URL}CV.AULIA.png`} alt="Logo" className="h-20 sm:h-24 w-auto mx-auto object-contain mb-4 drop-shadow-2xl" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-widest drop-shadow-lg">PENDAFTARAN SALES</h1>
+          <p className="text-white/80 mt-2 text-sm font-medium tracking-wide">Buat Akun baru untuk mengelola pekerjaan anda</p>
         </div>
 
         <div className="relative group">
           {/* Subtle glow behind card */}
           <div className="absolute -inset-1 bg-gradient-to-r from-white/20 to-white/0 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-          
+
           <div className="relative bg-white/10 backdrop-blur-2xl rounded-[2rem] border border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] p-6 sm:p-8">
             <form onSubmit={handleSubmit} className="space-y-4">
-              
+
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-white/90 ml-1">Nama Lengkap</label>
                 <div className="relative group/input">

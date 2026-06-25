@@ -14,7 +14,7 @@ const getTransactionTotal = (transaction: any, pointsValue: number) => {
   if (transaction.payment_status === 'unpaid') {
     return 0; // Tempo penuh tidak dihitung sebagai pendapatan
   }
-  
+
   if (transaction.payment_status === 'partial') {
     return toNumber(transaction.amount_paid); // DP hanya dihitung sebesar nominal DP-nya
   }
@@ -101,7 +101,7 @@ export const useGetDashboardStats = (params?: any) => {
       let transactionsQuery = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('created_at, subtotal, tax, discount, cashier_name, payment_status, amount_paid')
+          .select('created_at, subtotal, tax, discount, cashier_name, payment_status, amount_paid, id')
           .eq('status', 'completed')
           .gte('created_at', periodStartIso)
           .lt('created_at', periodEndIso)
@@ -119,6 +119,47 @@ export const useGetDashboardStats = (params?: any) => {
 
       const { data: transactions, error: transactionsError } = await transactionsQuery;
 
+      // Fetch transaction payments
+      let paymentsQuery = applyTenantFilter(
+        supabase
+          .from('transaction_payments')
+          .select('payment_date, amount, transaction_id, cashier_name')
+          .gte('payment_date', periodStartIso)
+          .lt('payment_date', periodEndIso)
+      );
+
+      if (params?.cashierFilter && params.cashierFilter !== 'all') {
+        paymentsQuery = paymentsQuery.ilike('cashier_name', params.cashierFilter);
+      }
+
+      const { data: paymentsData, error: paymentsError } = await paymentsQuery;
+
+      if (productsError) throw productsError;
+      if (transactionsError) throw transactionsError;
+      if (paymentsError) throw paymentsError;
+
+      const payments = paymentsData || [];
+
+      // Filter payments by outlet if specified
+      const paymentTxIds = [...new Set(payments.map((p: any) => p.transaction_id))];
+      let txsForPayments: any[] = [];
+      if (paymentTxIds.length > 0) {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('id, outlet_id')
+          .in('id', paymentTxIds);
+        txsForPayments = txs || [];
+      }
+      const txOutletMap = new Map(txsForPayments.map((t: any) => [t.id, t.outlet_id]));
+
+      const filteredPayments = payments.filter((p: any) => {
+        if (params?.outletFilter && params.outletFilter !== 'all') {
+          const outletId = txOutletMap.get(p.transaction_id);
+          return outletId === parseInt(params.outletFilter);
+        }
+        return true;
+      });
+
       // Customers adalah data bersama - tidak pakai filter tenant
       const { count: customersCount, error: customersError } = await supabase
         .from('customers')
@@ -130,23 +171,24 @@ export const useGetDashboardStats = (params?: any) => {
         .gte('created_at', periodStartIso)
         .lt('created_at', periodEndIso);
 
-      if (productsError) throw productsError;
-      if (transactionsError) throw transactionsError;
       if (customersError) throw customersError;
       if (newCustomersError) throw newCustomersError;
 
-      const pointsValue = parseInt(localStorage.getItem('pointsValue') || '1000');
       const periodTransactions = transactions || [];
       const todayTransactions = periodTransactions.filter((transaction: any) => {
         if (!transaction.created_at) return false;
         return getLocalDateKey(new Date(transaction.created_at)) === todayKey;
       });
-      const totalRevenuePeriod = periodTransactions.reduce((sum: number, transaction: any) => (
-        sum + getTransactionTotal(transaction, pointsValue)
-      ), 0);
-      const totalRevenueToday = todayTransactions.reduce((sum: number, transaction: any) => (
-        sum + getTransactionTotal(transaction, pointsValue)
-      ), 0);
+      const todayPayments = filteredPayments.filter((p: any) => {
+        if (!p.payment_date) return false;
+        return getLocalDateKey(new Date(p.payment_date)) === todayKey;
+      });
+      const totalRevenuePeriod =
+        periodTransactions.reduce((sum: number, transaction: any) => sum + toNumber(transaction.amount_paid), 0) +
+        filteredPayments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0);
+      const totalRevenueToday =
+        todayTransactions.reduce((sum: number, transaction: any) => sum + toNumber(transaction.amount_paid), 0) +
+        todayPayments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0);
       const transactionsPeriod = periodTransactions.length;
 
       setData({
@@ -172,31 +214,37 @@ export const useGetDashboardStats = (params?: any) => {
 
   useEffect(() => {
     fetchStats();
-  }, [params?.cashierFilter, params?.outletFilter]);
+  }, [params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
 
-  // Realtime subscription for new transactions
+  // Realtime subscription for new transactions and payments
   useEffect(() => {
-    const channel = supabase
-      .channel('dashboard_realtime')
+    const channel1 = supabase
+      .channel('dashboard_transactions_realtime')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'transactions',
-          filter: 'status=eq.completed'
-        },
+        { event: '*', schema: 'public', table: 'transactions' },
         () => {
-          // Refresh stats when new transaction is added
+          fetchStats();
+        }
+      )
+      .subscribe();
+
+    const channel2 = supabase
+      .channel('dashboard_payments_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transaction_payments' },
+        () => {
           fetchStats();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channel1);
+      supabase.removeChannel(channel2);
     };
-  }, [params?.cashierFilter, params?.outletFilter]);
+  }, [params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
 
   return { data, isLoading, error };
 };
@@ -461,7 +509,7 @@ export const useGetRevenueChart = (params?: any) => {
       let query = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('created_at, subtotal, tax, discount, payment_status, amount_paid')
+          .select('created_at, subtotal, tax, discount, payment_status, amount_paid, id')
           .eq('status', 'completed')
           .gte('created_at', chartStart.toISOString())
           .lte('created_at', chartEnd.toISOString())
@@ -482,7 +530,44 @@ export const useGetRevenueChart = (params?: any) => {
 
       if (error) throw error;
 
-      const pointsValue = parseInt(localStorage.getItem('pointsValue') || '1000');
+      // Fetch transaction payments in the chart period
+      let paymentsQuery = applyTenantFilter(
+        supabase
+          .from('transaction_payments')
+          .select('payment_date, amount, transaction_id, cashier_name')
+          .gte('payment_date', chartStart.toISOString())
+          .lte('payment_date', chartEnd.toISOString())
+      );
+
+      if (params?.cashierFilter && params.cashierFilter !== 'all') {
+        paymentsQuery = paymentsQuery.ilike('cashier_name', params.cashierFilter);
+      }
+
+      const { data: paymentsData, error: paymentsError } = await paymentsQuery;
+      if (paymentsError) throw paymentsError;
+
+      const payments = paymentsData || [];
+
+      // Filter payments by outlet if specified
+      const paymentTxIds = [...new Set(payments.map((p: any) => p.transaction_id))];
+      let txsForPayments: any[] = [];
+      if (paymentTxIds.length > 0) {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('id, outlet_id')
+          .in('id', paymentTxIds);
+        txsForPayments = txs || [];
+      }
+      const txOutletMap = new Map(txsForPayments.map((t: any) => [t.id, t.outlet_id]));
+
+      const filteredPayments = payments.filter((p: any) => {
+        if (params?.outletFilter && params.outletFilter !== 'all') {
+          const outletId = txOutletMap.get(p.transaction_id);
+          return outletId === parseInt(params.outletFilter);
+        }
+        return true;
+      });
+
       const grouped = new Map<string, { date: string; revenue: number; transactions: number }>();
 
       // Generate buckets for each day between chartStart and chartEnd
@@ -498,8 +583,17 @@ export const useGetRevenueChart = (params?: any) => {
         const key = getLocalDateKey(new Date(trx.created_at));
         const existing = grouped.get(key);
         if (existing) {
-          existing.revenue += getTransactionTotal(trx, pointsValue);
+          existing.revenue += toNumber(trx.amount_paid);
           existing.transactions += 1;
+        }
+      });
+
+      filteredPayments.forEach((p: any) => {
+        if (!p.payment_date) return;
+        const key = getLocalDateKey(new Date(p.payment_date));
+        const existing = grouped.get(key);
+        if (existing) {
+          existing.revenue += toNumber(p.amount);
         }
       });
 
@@ -516,29 +610,35 @@ export const useGetRevenueChart = (params?: any) => {
     fetchRevenueData();
   }, [params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
 
-  // Realtime subscription for new transactions
+  // Realtime subscription for new transactions and payments
   useEffect(() => {
-    const channel = supabase
-      .channel('revenue_chart_realtime')
+    const channel1 = supabase
+      .channel('revenue_chart_transactions_realtime')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'transactions',
-          filter: 'status=eq.completed'
-        },
+        { event: '*', schema: 'public', table: 'transactions' },
         () => {
-          // Refresh revenue chart when new transaction is added
+          fetchRevenueData();
+        }
+      )
+      .subscribe();
+
+    const channel2 = supabase
+      .channel('revenue_chart_payments_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transaction_payments' },
+        () => {
           fetchRevenueData();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channel1);
+      supabase.removeChannel(channel2);
     };
-  }, [params?.cashierFilter, params?.outletFilter]);
+  }, [params?.cashierFilter, params?.outletFilter, params?.startDate, params?.endDate]);
 
   return { data, isLoading, error };
 };
@@ -1699,16 +1799,16 @@ export const generateNextCustomerId = async () => {
       .ilike('customer_id_manual', 'CTM-%')
       .order('customer_id_manual', { ascending: false })
       .limit(1);
-    
+
     if (error || !data || data.length === 0) {
       return 'CTM-00001';
     }
 
     const lastId = data[0].customer_id_manual;
     const lastNumber = parseInt(lastId.replace('CTM-', ''), 10);
-    
+
     if (isNaN(lastNumber)) return 'CTM-00001';
-    
+
     const nextNumber = lastNumber + 1;
     return `CTM-${nextNumber.toString().padStart(5, '0')}`;
   } catch (err) {
@@ -1865,7 +1965,7 @@ export const useCreateTransaction = () => {
           change: params.data.change || 0,
           status: params.data.status || 'completed',
           outlet_id: selectedOutletId ? parseInt(selectedOutletId) : null,
-
+          created_at: new Date().toISOString(),
         };
         const extendedPayload = {
           ...basePayload,
@@ -1924,12 +2024,12 @@ export const useCreateTransaction = () => {
             const quantity = item.quantity;
             const conversionFactor = item.conversionFactor || item.conversion_factor || 1;
             const totalPcs = quantity; // Already in base pcs
-            
+
             const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', productId).single();
             if (product && product.stock_quantity !== null) {
               const newStock = Math.max(0, product.stock_quantity - totalPcs);
               await supabase.from('products').update({ stock_quantity: newStock }).eq('id', productId);
-              
+
               await supabase.from('stock_movements').insert({
                 product_id: productId,
                 quantity: -totalPcs,
@@ -2744,6 +2844,28 @@ export const useBulkSaveProductUoms = () => {
 
 
 
+const pruneStockMovements = async () => {
+  try {
+    const { data: movements, error } = await supabase
+      .from('stock_movements')
+      .select('id')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    if (movements && movements.length > 20) {
+      const idsToDelete = movements.slice(20).map((m: any) => m.id);
+      const { error: deleteError } = await supabase
+        .from('stock_movements')
+        .delete()
+        .in('id', idsToDelete);
+      if (deleteError) throw deleteError;
+    }
+  } catch (err) {
+    console.error("Failed to prune stock movements:", err);
+  }
+};
+
 export const useListStockMovements = (productId?: number) => {
   const [data, setData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -2752,6 +2874,8 @@ export const useListStockMovements = (productId?: number) => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      await pruneStockMovements();
+
       let query = supabase
         .from('stock_movements')
         .select('*, products(name)')
@@ -2839,7 +2963,31 @@ export const useDeleteStockMovement = () => {
       try {
         const { error } = await supabase.from('stock_movements').delete().eq('id', params.id);
         if (error) throw error;
-        
+
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        if (options?.onSuccess) options.onSuccess();
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending,
+    error: null
+  };
+};
+
+export const useDeleteAllStockMovements = () => {
+  const [isPending, setIsPending] = useState(false);
+  const queryClient = useQueryClient();
+
+  return {
+    mutate: async (params?: any, options?: any) => {
+      setIsPending(true);
+      try {
+        const { error } = await supabase.from('stock_movements').delete().neq('id', 0);
+        if (error) throw error;
+
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
         if (options?.onSuccess) options.onSuccess();
       } catch (err) {
@@ -2877,22 +3025,22 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
     queryKey: ['transactions', transactionId],
     queryFn: async () => {
       if (!transactionId) return null;
-      
+
       const { data: trx, error: trxError } = await supabase
         .from('transactions')
         .select('*, customers(name, phone, address, district, city)')
         .eq('id', transactionId)
         .single();
-        
+
       if (trxError) throw trxError;
-      
+
       const { data: items, error: itemsError } = await supabase
         .from('transaction_items')
         .select('*, products(image_url, product_uoms(*))')
         .eq('transaction_id', transactionId);
-        
+
       if (itemsError) throw itemsError;
-      
+
       // Fetch existing returns to calculate max limit
       const { data: returnsData } = await supabase
         .from('sales_returns')
@@ -2905,13 +3053,13 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
           .from('sales_return_items')
           .select('transaction_item_id, quantity, unit_name')
           .in('return_id', returnIds);
-          
+
         returnItemsData = riData;
       }
-      
+
       const itemsWithReturnData = items.map(item => {
         const uoms = (item.products?.product_uoms || []).sort((a: any, b: any) => (a.sort_order || 0) - (b.sort_order || 0));
-        
+
         let returnedBaseQty = 0;
         if (returnItemsData) {
           const itemReturns = returnItemsData.filter(ri => ri.transaction_item_id === item.id);
@@ -2922,7 +3070,7 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
             returnedBaseQty += ri.quantity * conv;
           });
         }
-        
+
         return {
           ...item,
           already_returned_base_qty: returnedBaseQty,
@@ -2931,7 +3079,7 @@ export const useGetTransactionByInvoice = (transactionId: number | string | null
           uoms
         };
       });
-      
+
       return { ...trx, items: itemsWithReturnData };
     },
     enabled: !!transactionId
@@ -2960,7 +3108,7 @@ export const useCreateReturn = () => {
           }])
           .select()
           .single();
-          
+
         if (returnError) throw returnError;
 
         // 2. Insert return items
@@ -2974,28 +3122,28 @@ export const useCreateReturn = () => {
           refund_price: item.return_price || item.price,
           subtotal: item.return_subtotal
         }));
-        
+
         const { error: itemsError } = await supabase
           .from('sales_return_items')
           .insert(returnItems);
-          
+
         if (itemsError) throw itemsError;
 
         const isCompleted = (params.status || 'completed') === 'completed';
         const isDamagedOrExpired = params.reason === 'Barang Rusak/Cacat' || params.reason === 'Barang Kadaluarsa';
-        
+
         if (isCompleted) {
           for (const item of params.items) {
             const conversionFactor = item.return_conversion_factor || item.conversion_factor || 1;
             const totalPcsReturned = item.return_quantity * conversionFactor;
-            
+
             const { data: product } = await supabase.from('products').select('stock_quantity').eq('id', item.product_id).single();
             if (product && product.stock_quantity !== null) {
               if (!isDamagedOrExpired) {
                 const newStock = product.stock_quantity + totalPcsReturned;
                 await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
               }
-              
+
               await supabase.from('stock_movements').insert({
                 product_id: item.product_id,
                 quantity: isDamagedOrExpired ? 0 : totalPcsReturned,
@@ -3009,7 +3157,7 @@ export const useCreateReturn = () => {
 
         queryClient.invalidateQueries({ queryKey: ['sales_returns'] });
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        
+
         if (options?.onSuccess) options.onSuccess(returnData);
       } catch (err) {
         if (options?.onError) options.onError(err);
@@ -3050,7 +3198,7 @@ export const useConfirmReturn = () => {
           .select('reason')
           .eq('id', params.returnId)
           .single();
-          
+
         if (returnError) throw returnError;
         const isDamagedOrExpired = salesReturn?.reason === 'Barang Rusak/Cacat' || salesReturn?.reason === 'Barang Kadaluarsa';
 
@@ -3067,7 +3215,7 @@ export const useConfirmReturn = () => {
                 const newStock = product.stock_quantity + totalPcsReturned;
                 await supabase.from('products').update({ stock_quantity: newStock }).eq('id', item.product_id);
               }
-              
+
               await supabase.from('stock_movements').insert({
                 product_id: item.product_id,
                 quantity: isDamagedOrExpired ? 0 : totalPcsReturned,
@@ -3081,7 +3229,7 @@ export const useConfirmReturn = () => {
 
         queryClient.invalidateQueries({ queryKey: ['sales_returns'] });
         queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        
+
         if (options?.onSuccess) options.onSuccess(true);
       } catch (err) {
         if (options?.onError) options.onError(err);
@@ -3109,7 +3257,7 @@ export const useDeleteReturn = () => {
         if (error) throw error;
 
         queryClient.invalidateQueries({ queryKey: ['sales_returns'] });
-        
+
         if (options?.onSuccess) options.onSuccess(true);
       } catch (err) {
         if (options?.onError) options.onError(err);
@@ -3134,6 +3282,7 @@ export const useCreateTransactionPayment = () => {
           payment_method: params.paymentMethod,
           cashier_name: params.cashierName,
           notes: params.notes || null,
+          payment_date: new Date().toISOString(),
         };
 
         const { data: payment, error: paymentError } = await supabase
@@ -3224,7 +3373,7 @@ export const useListTransactionPayments = (transactionId: number | null) => {
       setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -3247,4 +3396,201 @@ export const useListTransactionPayments = (transactionId: number | null) => {
   }, [transactionId]);
 
   return { data, isLoading, error, refetch: fetchPayments };
+};
+
+// ============== JADWAL KUNJUNGAN SALES ==============
+
+export const useListVisitSchedules = () => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchSchedules = async () => {
+    setIsLoading(true);
+    try {
+      const ownerIdStr = localStorage.getItem('ownerId') || localStorage.getItem('tenantOwnerId') || '';
+      let query = supabase
+        .from('visit_schedules')
+        .select('*, customers(id, name, phone, address, district, city)')
+        .eq('is_active', true)
+        .order('day_of_week', { ascending: true })
+        .order('visit_time', { ascending: true });
+
+      if (ownerIdStr) {
+        query = query.eq('owner_id', ownerIdStr);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setData(data || []);
+    } catch (err) {
+      setError(err);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSchedules();
+
+    const channel = supabase
+      .channel('visit_schedules_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'visit_schedules' }, () => {
+        fetchSchedules();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  return { data, isLoading, error, refetch: fetchSchedules };
+};
+
+export const useCreateVisitSchedule = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  const mutate = async (
+    params: { data: any },
+    options?: { onSuccess?: (data: any) => void; onError?: (err: any) => void }
+  ) => {
+    setIsPending(true);
+    try {
+      const ownerIdStr = localStorage.getItem('ownerId') || localStorage.getItem('tenantOwnerId') || '';
+      const payload = { ...params.data, owner_id: ownerIdStr };
+
+      const { data, error } = await supabase.from('visit_schedules').insert([payload]).select().single();
+      if (error) throw error;
+      if (options?.onSuccess) options.onSuccess(data);
+    } catch (err) {
+      if (options?.onError) options.onError(err);
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  return { mutate, isPending };
+};
+
+export const useUpdateVisitSchedule = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  const mutate = async (
+    params: { id: number; data: any },
+    options?: { onSuccess?: (data: any) => void; onError?: (err: any) => void }
+  ) => {
+    setIsPending(true);
+    try {
+      const { data, error } = await supabase
+        .from('visit_schedules')
+        .update(params.data)
+        .eq('id', params.id)
+        .select()
+        .single();
+      if (error) throw error;
+      if (options?.onSuccess) options.onSuccess(data);
+    } catch (err) {
+      if (options?.onError) options.onError(err);
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  return { mutate, isPending };
+};
+
+export const useDeleteVisitSchedule = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  const mutate = async (
+    params: { id: number },
+    options?: { onSuccess?: () => void; onError?: (err: any) => void }
+  ) => {
+    setIsPending(true);
+    try {
+      const { error } = await supabase
+        .from('visit_schedules')
+        .update({ is_active: false })
+        .eq('id', params.id);
+      if (error) throw error;
+      if (options?.onSuccess) options.onSuccess();
+    } catch (err) {
+      if (options?.onError) options.onError(err);
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  return { mutate, isPending };
+};
+
+export const useListVisitLogs = (params?: { limit?: number }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchLogs = async () => {
+    setIsLoading(true);
+    try {
+      const ownerIdStr = localStorage.getItem('ownerId') || localStorage.getItem('tenantOwnerId') || '';
+      let query = supabase
+        .from('visit_logs')
+        .select('*')
+        .order('visited_at', { ascending: false })
+        .limit(params?.limit || 100);
+
+      if (ownerIdStr) {
+        query = query.eq('owner_id', ownerIdStr);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setData(data || []);
+    } catch (err) {
+      setError(err);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+
+    const channel = supabase
+      .channel('visit_logs_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'visit_logs' }, () => {
+        fetchLogs();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  return { data, isLoading, error, refetch: fetchLogs };
+};
+
+export const useCreateVisitLog = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  const mutate = async (
+    params: { data: any },
+    options?: { onSuccess?: (data: any) => void; onError?: (err: any) => void }
+  ) => {
+    setIsPending(true);
+    try {
+      const ownerIdStr = localStorage.getItem('ownerId') || localStorage.getItem('tenantOwnerId') || '';
+      const payload = { ...params.data, owner_id: ownerIdStr };
+
+      const { data, error } = await supabase.from('visit_logs').insert([payload]).select().single();
+      if (error) throw error;
+      if (options?.onSuccess) options.onSuccess(data);
+    } catch (err) {
+      if (options?.onError) options.onError(err);
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  return { mutate, isPending };
 };

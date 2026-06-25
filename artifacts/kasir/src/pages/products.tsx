@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useListCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, getListProductsQueryKey, getListCategoriesQueryKey, useListOutlets, useCreateStockMovement, useListStockMovements, useDeleteStockMovement, useBulkSaveProductUoms } from "@workspace/api-client-react";
+import { useListProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, useListCategories, useCreateCategory, useUpdateCategory, useDeleteCategory, getListProductsQueryKey, getListCategoriesQueryKey, useListOutlets, useCreateStockMovement, useListStockMovements, useDeleteStockMovement, useDeleteAllStockMovements, useBulkSaveProductUoms } from "@workspace/api-client-react";
 import { formatRupiah } from "@/lib/formatters";
 import { uploadProductImage, deleteProductImage, deleteProductImageByName, getProductImageUrl } from "@/lib/supabase-storage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle, Filter, ArrowUpDown, Clock, Layers, Archive, CheckCircle, Ruler } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Package, FolderPlus, Upload, X, Image as ImageIcon, Store, Tag, AlertTriangle, SlidersHorizontal, ArrowUpDown, Clock, Layers, Archive, CheckCircle, Ruler } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -731,7 +731,7 @@ export default function ProductsPage() {
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="flex items-center gap-2">
-                      <Filter className="w-4 h-4" />
+                      <SlidersHorizontal className="w-4 h-4" />
                       <span className="hidden sm:inline">Filter & Urutkan</span>
                     </Button>
                   </PopoverTrigger>
@@ -1273,13 +1273,7 @@ export default function ProductsPage() {
               </div>
             </>
           ) : activeTab === 'history' ? (
-            <div className="space-y-4">
-              <div className="mb-4 flex flex-col gap-1">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Riwayat Mutasi Stok</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Seluruh riwayat keluar-masuk barang, penjualan, dan penyesuaian stok.</p>
-              </div>
-              <HistoryTabContent />
-            </div>
+            <HistoryTabContent isAdmin={isAdmin} />
           ) : null}
         </div>
       </div>
@@ -1787,13 +1781,16 @@ export default function ProductsPage() {
                 <div className="w-32 space-y-1">
                   <label className="text-xs font-medium text-slate-500">Tambah (Qty)</label>
                   <Input
-                    type="number"
-                    min={1}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="0"
                     className="bg-white dark:bg-slate-950"
-                    value={item.quantity}
+                    value={item.quantity === 0 ? "" : item.quantity}
                     onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
                       const newItems = [...restockItems];
-                      newItems[index].quantity = parseInt(e.target.value) || 0;
+                      newItems[index].quantity = parseInt(val) || 0;
                       setRestockItems(newItems);
                     }}
                   />
@@ -1877,10 +1874,15 @@ export default function ProductsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Jumlah Restock</label>
               <Input
-                type="number"
-                min={1}
-                value={quickRestockQty}
-                onChange={(e) => setQuickRestockQty(parseInt(e.target.value) || 0)}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="0"
+                value={quickRestockQty === 0 ? "" : quickRestockQty}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setQuickRestockQty(parseInt(val) || 0);
+                }}
               />
               {quickRestockConversion > 1 && (
                 <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
@@ -1939,9 +1941,10 @@ export default function ProductsPage() {
   );
 }
 
-function HistoryTabContent() {
+function HistoryTabContent({ isAdmin }: { isAdmin: boolean }) {
   const { data: movements, isLoading, refetch } = useListStockMovements();
   const deleteMovement = useDeleteStockMovement();
+  const deleteAllMovements = useDeleteAllStockMovements();
   const { toast } = useToast();
 
   const handleDelete = (id: number) => {
@@ -1952,6 +1955,19 @@ function HistoryTabContent() {
           refetch();
         },
         onError: () => toast({ title: "Error", description: "Gagal menghapus riwayat mutasi", variant: "destructive" })
+      });
+    }
+  };
+
+  const handleDeleteAll = () => {
+    if (!isAdmin) return;
+    if (confirm("Apakah Anda yakin ingin menghapus seluruh riwayat mutasi stok? Tindakan ini tidak dapat dibatalkan dan tidak akan mengembalikan kuantitas stok produk.")) {
+      deleteAllMovements.mutate(undefined, {
+        onSuccess: () => {
+          toast({ title: "Sukses", description: "Seluruh riwayat mutasi berhasil dihapus" });
+          refetch();
+        },
+        onError: () => toast({ title: "Error", description: "Gagal menghapus seluruh riwayat mutasi", variant: "destructive" })
       });
     }
   };
@@ -1968,59 +1984,78 @@ function HistoryTabContent() {
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <Table className="min-w-[800px]">
-          <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
-            <TableRow className="border-slate-200 dark:border-slate-800">
-              <TableHead>Waktu</TableHead>
-              <TableHead>Produk</TableHead>
-              <TableHead>Jenis Mutasi</TableHead>
-              <TableHead>Catatan</TableHead>
-              <TableHead className="text-right">Perubahan Qty</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Memuat riwayat...</TableCell></TableRow>
-            ) : movements?.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Belum ada riwayat mutasi.</TableCell></TableRow>
-            ) : (
-              movements?.map((move: any) => {
-                const isPositive = move.quantity > 0;
-                return (
-                  <TableRow key={move.id} className="border-slate-100 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
-                    <TableCell className="text-sm text-slate-500 whitespace-nowrap">
-                      {new Date(move.created_at).toLocaleString('id-ID', {
-                        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                      })}
-                    </TableCell>
-                    <TableCell className="font-medium text-slate-900 dark:text-slate-100">{move.products?.name || 'Produk Dihapus'}</TableCell>
-                    <TableCell>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {formatMovementType(move.type)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-500 italic max-w-[200px] truncate" title={move.note || '-'}>
-                      {move.note || '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={`font-bold inline-flex items-center justify-center px-2 py-1 rounded-md ${isPositive ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
-                        {isPositive ? `+${move.quantity}` : move.quantity}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(move.id)} className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Riwayat Mutasi Stok</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Seluruh riwayat keluar-masuk barang, penjualan, dan penyesuaian stok.</p>
+        </div>
+        {isAdmin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDeleteAll}
+            disabled={deleteAllMovements.isPending || movements?.length === 0}
+            className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/20 font-medium self-end sm:self-auto"
+          >
+            Clear All
+          </Button>
+        )}
+      </div>
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <Table className="min-w-[800px]">
+            <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
+              <TableRow className="border-slate-200 dark:border-slate-800">
+                <TableHead>Waktu</TableHead>
+                <TableHead>Produk</TableHead>
+                <TableHead>Jenis Mutasi</TableHead>
+                <TableHead>Catatan</TableHead>
+                <TableHead className="text-right">Perubahan Qty</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={6} className="text-center py-8">Memuat riwayat...</TableCell></TableRow>
+              ) : movements?.length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="text-center py-8">Belum ada riwayat mutasi.</TableCell></TableRow>
+              ) : (
+                movements?.map((move: any) => {
+                  const isPositive = move.quantity > 0;
+                  return (
+                    <TableRow key={move.id} className="border-slate-100 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                      <TableCell className="text-sm text-slate-500 whitespace-nowrap">
+                        {new Date(move.created_at).toLocaleString('id-ID', {
+                          day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        })}
+                      </TableCell>
+                      <TableCell className="font-medium text-slate-900 dark:text-slate-100">{move.products?.name || 'Produk Dihapus'}</TableCell>
+                      <TableCell>
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {formatMovementType(move.type)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500 italic max-w-[200px] truncate" title={move.note || '-'}>
+                        {move.note || '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={`font-bold inline-flex items-center justify-center px-2 py-1 rounded-md ${isPositive ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+                          {isPositive ? `+${move.quantity}` : move.quantity}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(move.id)} className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );

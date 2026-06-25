@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { useCountUp } from "@/hooks/useCountUp";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { useListReceivables, useListTransactionPayments, useCreateTransactionPayment, useGetTransaction } from "@workspace/api-client-react";
+import { useListReceivables, useListTransactionPayments, useCreateTransactionPayment, useGetTransaction, useDeleteTransaction } from "@workspace/api-client-react";
 import { formatRupiah, formatInvoiceNumber, formatSimpleDate } from "@/lib/formatters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, FileText, Calendar, User, ChevronRight, AlertCircle, CheckCircle2, Clock, History, TrendingDown, Receipt, Download, FileDown, Printer } from "lucide-react";
+import { Search, FileText, Calendar, User, ChevronRight, AlertCircle, CheckCircle2, Clock, History, TrendingDown, Receipt, Download, FileDown, Printer, Trash2, SlidersHorizontal } from "lucide-react";
 import { TbCoin } from "react-icons/tb";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,32 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import { Capacitor } from "@capacitor/core";
 import { isTauri, tauriSaveFile } from "@/lib/tauri-file";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+const isDateOverdue = (dueDateStr: string | null | undefined) => {
+  if (!dueDateStr) return false;
+  
+  // Parse the due date strictly in local timezone YYYY-MM-DD
+  const parts = dueDateStr.split('T')[0].split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const dueDateObj = new Date(year, month, day);
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return dueDateObj <= today;
+  }
+  
+  // Fallback
+  const dueDateObj = new Date(dueDateStr);
+  dueDateObj.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dueDateObj <= today;
+};
 
 export default function ReceivablesPage() {
   const { toast } = useToast();
@@ -494,6 +520,38 @@ export default function ReceivablesPage() {
   };
   const [salesFilter, setSalesFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [tempSalesFilter, setTempSalesFilter] = useState("all");
+  const [tempStatusFilter, setTempStatusFilter] = useState("all");
+  const [tempStartDate, setTempStartDate] = useState<string>("");
+  const [tempEndDate, setTempEndDate] = useState<string>("");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  useEffect(() => {
+    if (isFilterOpen) {
+      setTempSalesFilter(salesFilter);
+      setTempStatusFilter(statusFilter);
+      setTempStartDate(startDate);
+      setTempEndDate(endDate);
+    }
+  }, [isFilterOpen, salesFilter, statusFilter, startDate, endDate]);
+
+  const handleApplyFilter = () => {
+    setSalesFilter(tempSalesFilter);
+    setStatusFilter(tempStatusFilter);
+    setStartDate(tempStartDate);
+    setEndDate(tempEndDate);
+    setIsFilterOpen(false);
+  };
+
+  const handleResetFilter = () => {
+    setTempSalesFilter("all");
+    setTempStatusFilter("all");
+    setTempStartDate("");
+    setTempEndDate("");
+  };
+
   const [activeTab, setActiveTab] = useState<'outstanding' | 'history'>('outstanding');
   const { data: receivables, isLoading, refetch } = useListReceivables();
 
@@ -509,6 +567,26 @@ export default function ReceivablesPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const { data: detailTransaction, isLoading: isLoadingDetail } = useGetTransaction(selectedDetailId || 0);
 
+  const deleteTransaction = useDeleteTransaction();
+
+  const handleDeleteTransaction = (id: number) => {
+    if (!confirm(`Hapus transaksi ${formatInvoiceNumber(id)}? Tindakan ini tidak dapat dibatalkan.`)) return;
+
+    deleteTransaction.mutate({ id }, {
+      onSuccess: () => {
+        toast({ title: "Sukses", description: "Transaksi berhasil dihapus" });
+        setIsDetailModalOpen(false);
+        setIsPaymentModalOpen(false);
+        setSelectedDetailId(null);
+        setSelectedTransaction(null);
+        refetch();
+      },
+      onError: (err: any) => {
+        toast({ title: "Error", description: err.message || "Gagal menghapus transaksi", variant: "destructive" });
+      }
+    });
+  };
+
   const uniqueSales = useMemo(() => {
     if (!receivables) return [];
     return Array.from(new Set(receivables.map((r: any) => r.cashier_name).filter(Boolean))) as string[];
@@ -522,7 +600,7 @@ export default function ReceivablesPage() {
 
     if (receivables) {
       receivables.forEach((r: any) => {
-        const isOverdue = r.due_date ? new Date(r.due_date) < new Date() : false;
+        const isOverdue = isDateOverdue(r.due_date);
 
         if (r.payment_status !== 'paid') {
           tPiutang += r.remaining_balance;
@@ -547,6 +625,20 @@ export default function ReceivablesPage() {
     // Filter by tab first:
     if (activeTab === 'outstanding' && r.payment_status === 'paid') return false;
     if (activeTab === 'history' && r.payment_status !== 'paid') return false;
+
+    // Filter by date range
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      const itemDate = new Date(r.created_at);
+      if (itemDate < start) return false;
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      const itemDate = new Date(r.created_at);
+      if (itemDate > end) return false;
+    }
 
     // Filter by sales
     if (salesFilter !== 'all' && r.cashier_name !== salesFilter) return false;
@@ -711,7 +803,7 @@ export default function ReceivablesPage() {
                     <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                   </div>
                 </div>
-                <p className="text-xs mt-3 text-red-200">{receivables?.filter((r: any) => r.payment_status !== 'paid' && r.due_date && new Date(r.due_date) < new Date()).length || 0} faktur menunggak</p>
+                <p className="text-xs mt-3 text-red-200">{receivables?.filter((r: any) => r.payment_status !== 'paid' && r.due_date && isDateOverdue(r.due_date)).length || 0} faktur menunggak</p>
               </div>
             </div>
 
@@ -762,35 +854,118 @@ export default function ReceivablesPage() {
                 className="pl-9"
               />
             </div>
-            <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-              <div className="w-full sm:w-[180px]">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Semua Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Status</SelectItem>
-                    <SelectItem value="paid">Lunas</SelectItem>
-                    <SelectItem value="partial">Cicilan</SelectItem>
-                    <SelectItem value="unpaid">Belum Bayar</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {isAdmin && (
-                <div className="w-full sm:w-[180px]">
-                  <Select value={salesFilter} onValueChange={setSalesFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Semua Sales" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Sales</SelectItem>
-                      {uniqueSales.map((sales: string) => (
-                        <SelectItem key={sales} value={sales}>{sales}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+            <div className="flex gap-2 items-center">
+              <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="relative bg-white dark:bg-slate-800 dark:border-slate-700 shrink-0 h-10 px-4 border-2 flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <SlidersHorizontal className="w-4 h-4 text-primary" />
+                    <span className="font-medium text-sm">Filter</span>
+                    {(statusFilter !== "all" || salesFilter !== "all" || startDate !== "" || endDate !== "") && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[340px] max-w-[95vw] p-4 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2 font-semibold text-sm mb-4 border-b pb-2 text-slate-800 dark:text-slate-200">
+                    <SlidersHorizontal className="w-4 h-4 text-primary" />
+                    Filter Piutang
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Date Filters */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-500">Rentang Tanggal</Label>
+                      <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+                        <div className="relative w-full h-9">
+                          <Input
+                            type="text"
+                            placeholder="Tanggal Mulai"
+                            value={tempStartDate ? tempStartDate.split('-').reverse().join('-') : ""}
+                            readOnly
+                            className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+                          />
+                          <input
+                            type="date"
+                            value={tempStartDate}
+                            onChange={(e: any) => setTempStartDate(e.target.value)}
+                            onClick={(e: any) => {
+                              try { e.target.showPicker?.(); } catch (err) { }
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title="Tanggal Mulai"
+                          />
+                        </div>
+                        <span className="text-slate-400 text-sm hidden sm:block">-</span>
+                        <div className="relative w-full h-9">
+                          <Input
+                            type="text"
+                            placeholder="Tanggal Akhir"
+                            value={tempEndDate ? tempEndDate.split('-').reverse().join('-') : ""}
+                            readOnly
+                            className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+                          />
+                          <input
+                            type="date"
+                            value={tempEndDate}
+                            onChange={(e: any) => setTempEndDate(e.target.value)}
+                            onClick={(e: any) => {
+                              try { e.target.showPicker?.(); } catch (err) { }
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title="Tanggal Akhir"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-500">Status Pembayaran</Label>
+                      <Select value={tempStatusFilter} onValueChange={setTempStatusFilter}>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue placeholder="Semua Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Semua Status</SelectItem>
+                          <SelectItem value="paid">Lunas</SelectItem>
+                          <SelectItem value="partial">Cicilan</SelectItem>
+                          <SelectItem value="unpaid">Belum Bayar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Sales Filter (Khusus Admin) */}
+                    {isAdmin && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-slate-500">Sales</Label>
+                        <Select value={tempSalesFilter} onValueChange={setTempSalesFilter}>
+                          <SelectTrigger className="h-9 text-xs">
+                            <SelectValue placeholder="Semua Sales" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Semua Sales</SelectItem>
+                            {uniqueSales.map((sales: string) => (
+                              <SelectItem key={sales} value={sales}>{sales}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 justify-end mt-6">
+                    <Button variant="outline" onClick={handleResetFilter} className="h-9 text-xs w-full">
+                      Atur Ulang
+                    </Button>
+                    <Button onClick={handleApplyFilter} className="h-9 px-4 text-xs w-full">
+                      Terapkan
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -832,7 +1007,7 @@ export default function ReceivablesPage() {
                   </TableRow>
                 ) : (
                   filteredReceivables?.map((trx: any) => {
-                    const isOverdue = trx.due_date ? new Date(trx.due_date) < new Date() : false;
+                    const isOverdue = isDateOverdue(trx.due_date);
                     return (
                       <TableRow key={trx.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => handleRowClick(trx)}>
                         <TableCell className="font-mono text-xs font-bold text-slate-900 dark:text-white whitespace-nowrap">{formatInvoiceNumber(trx.id)}</TableCell>
@@ -856,7 +1031,11 @@ export default function ReceivablesPage() {
                           <Button
                             size="sm"
                             variant={activeTab === 'history' ? "outline" : "default"}
-                            className={activeTab === 'outstanding' ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                            className={
+                              activeTab === 'outstanding'
+                                ? "bg-emerald-600 hover:bg-emerald-700 !text-white shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 duration-200 border-0 transition-all cursor-pointer !font-bold tracking-wide"
+                                : ""
+                            }
                             onClick={(e) => { e.stopPropagation(); handleOpenPayment(trx); }}
                           >
                             {activeTab === 'history' ? "Detail" : "Proses Bayar"}
@@ -956,9 +1135,23 @@ export default function ReceivablesPage() {
               </div>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="flex flex-row justify-between items-center w-full gap-2">
               {selectedTransaction?.payment_status === 'paid' ? (
-                <Button onClick={() => setIsPaymentModalOpen(false)}>Tutup</Button>
+                <>
+                  {isAdmin && activeTab === 'history' && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="flex items-center gap-2"
+                      onClick={() => handleDeleteTransaction(selectedTransaction.id)}
+                      disabled={deleteTransaction.isPending}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {deleteTransaction.isPending ? "Menghapus..." : "Hapus"}
+                    </Button>
+                  )}
+                  <Button onClick={() => setIsPaymentModalOpen(false)}>Tutup</Button>
+                </>
               ) : (
                 <>
                   <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
@@ -1047,18 +1240,36 @@ export default function ReceivablesPage() {
               </div>
             )}
 
-            <DialogFooter className="flex flex-row justify-between items-center w-full gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex items-center gap-2 border-primary text-primary hover:bg-primary/10"
-                onClick={() => handlePrintInvoice(detailTransaction)}
-              >
-                <Printer className="w-4 h-4" />
-                Cetak Faktur
-              </Button>
-              <Button onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
-            </DialogFooter>
+            <div className="flex flex-row justify-between items-center w-full gap-2 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <div>
+                {!(Capacitor.getPlatform() === 'android') && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex items-center gap-2 border-primary text-primary hover:bg-primary/10"
+                    onClick={() => handlePrintInvoice(detailTransaction)}
+                  >
+                    <Printer className="w-4 h-4" />
+                    Cetak Faktur
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2 items-center">
+                {isAdmin && activeTab === 'history' && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="flex items-center gap-2"
+                    onClick={() => handleDeleteTransaction(detailTransaction.id)}
+                    disabled={deleteTransaction.isPending}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {deleteTransaction.isPending ? "Menghapus..." : "Hapus"}
+                  </Button>
+                )}
+                <Button onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1130,6 +1341,9 @@ async function exportReceivablesToExcel(
   ];
 
   const rows: any[] = [];
+  const rowStripes: number[] = [];
+  let currentStripe = 0; // Alternates between 0 and 1 per transaction
+
   filteredList.forEach((r: any) => {
     const total = (r.subtotal || 0) + (r.tax || 0) - (r.discount || 0);
     const paid = total - r.remaining_balance;
@@ -1150,6 +1364,7 @@ async function exportReceivablesToExcel(
         r.due_date ? formatSimpleDate(r.due_date) : '-',
         r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Belum Bayar' : 'Lunas',
       ]);
+      rowStripes.push(currentStripe);
     } else {
       items.forEach((item: any, idx: number) => {
         if (idx === 0) {
@@ -1183,8 +1398,11 @@ async function exportReceivablesToExcel(
             "",
           ]);
         }
+        rowStripes.push(currentStripe);
       });
     }
+    // Toggle stripe color for the next transaction group
+    currentStripe = currentStripe === 0 ? 1 : 0;
   });
 
   const wsData = [
@@ -1199,7 +1417,7 @@ async function exportReceivablesToExcel(
       row.map((cell, colIdx) => {
         const isCurrency = colIdx >= 5 && colIdx <= 8;
         const isQty = colIdx === 4;
-        const isEven = rowIndex % 2 === 0;
+        const isEven = rowStripes[rowIndex] === 0;
         const fillStyle = {
           patternType: "solid" as const,
           fgColor: isEven ? { rgb: "FFFFFF" } : { rgb: "F2F2F2" }

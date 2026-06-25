@@ -1,4 +1,4 @@
-package com.sbagiamu.app;
+package com.cvauliausaha.app;
 
 import android.content.Intent;
 import android.net.Uri;

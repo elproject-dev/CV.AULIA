@@ -224,7 +224,7 @@ export function formatReceipt(transaction: any): string {
   console.log('formatReceipt called with transaction keys:', Object.keys(transaction || {}));
 
   const {
-    storeName = 'SBAGIAMU',
+    storeName = 'CV.AULIA USAHA',
     storeAddress = '',
     storePhone = '',
     customerName,
@@ -548,7 +548,7 @@ export async function printReceipt(transaction: any): Promise<boolean> {
     // Tambahkan logo di awal
     let finalReceipt = '';
     try {
-      const logoData = await imageToEscPosBitmap(`${import.meta.env.BASE_URL}sbagiamu.png`, 80);
+      const logoData = await imageToEscPosBitmap(`${import.meta.env.BASE_URL}CV.AULIA.png`, 80);
       finalReceipt = logoData;
       console.log('Logo berhasil ditambahkan');
     } catch (logoError) {
@@ -809,7 +809,7 @@ export interface ReceiptData {
  */
 export function generateReceiptRaw(data: ReceiptData): string {
   const {
-    storeName = 'SBAGIAMU',
+    storeName = 'CV.AULIA USAHA',
     storeAddress = '',
     invoiceNumber,
     date = new Date(),

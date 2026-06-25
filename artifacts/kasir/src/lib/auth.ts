@@ -9,7 +9,7 @@ export type UserRole = "admin" | "kasir";
 export const ADMIN_EMAIL = "cvauliausaha@gmail.com";
 
 // Kasir default email (can be customized)
-export const KASIR_EMAIL = "kasir@sbagiamu.com";
+export const KASIR_EMAIL = "kasir@cvauliausaha.com";
 
 export interface AuthUser {
   id: string;
@@ -40,8 +40,8 @@ export function canAccessRoute(user: AuthUser | null, path: string): boolean {
   if (!user) return false;
   if (isAdminMode(user)) return true;
 
-  // Kasir can only access POS, transactions, products, dashboard, customers, expenses, settings, return-stock, and receivables
-  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings", "/return-stock", "/customer-returns", "/receivables"];
+  // Kasir can only access POS, transactions, products, dashboard, customers, expenses, settings, return-stock, and receivables, and visit-schedule
+  const kasirAllowed = ["/", "/pos", "/transactions", "/products", "/customers", "/expenses", "/settings", "/return-stock", "/customer-returns", "/receivables", "/visit-schedule"];
   return kasirAllowed.some(
     (route) => path === route || (route !== "/" && path.startsWith(`${route}/`))
   );

@@ -365,7 +365,7 @@ export default function SettingsPage() {
       if (!opened) {
         toast({
           title: "Hanya tersedia di Android",
-          description: "Buka Pengaturan > Aplikasi > SBAGIAMU > Izin secara manual.",
+          description: "Buka Pengaturan > Aplikasi > CV.AULIA USAHA > Izin secara manual.",
         });
       }
     } catch (error) {
@@ -876,13 +876,13 @@ export default function SettingsPage() {
                 {/* App Info */}
                 <div className="flex items-center gap-4 p-5 bg-gradient-to-r from-primary/10 to-primary/5 dark:bg-none dark:bg-black rounded-xl">
                   <div className="flex-1">
-                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">SBAGIAMU POS</h3>
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">CV.AULIA USAHA</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400">Point of Sale System</p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Versi 1.0.0</p>
                   </div>
                   <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center p-2 animate-logo-ring">
                     <img
-                      src={`${import.meta.env.BASE_URL}logo-login.png`}
+                      src={`${import.meta.env.BASE_URL}CV.AULIA.png`}
                       alt="Logo"
                       className="w-12 h-12 object-contain"
                     />

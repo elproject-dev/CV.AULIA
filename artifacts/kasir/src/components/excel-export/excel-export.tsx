@@ -408,7 +408,7 @@ function transformTransactions(
 
   const storedBranch = typeof window !== "undefined" ? localStorage.getItem('storeBranch') : null;
   const storedAddress = typeof window !== "undefined" ? localStorage.getItem('storeAddress') : null;
-  const actualBranchName = selectedOutletName || (typeof storedBranch === 'string' && storedBranch.trim()) || (typeof storedAddress === 'string' && storedAddress.trim()) || branchName || "SBAGIAMU";
+  const actualBranchName = selectedOutletName || (typeof storedBranch === 'string' && storedBranch.trim()) || (typeof storedAddress === 'string' && storedAddress.trim()) || branchName || "CV.AULIA USAHA";
 
   transactions.forEach((trx, trxIndex) => {
     const stripe = trxIndex % 2;
@@ -598,7 +598,7 @@ export function DownloadExcelDialog({
   open,
   onOpenChange,
   transactions,
-  branchName = "SBAGIAMU",
+  branchName = "CV.AULIA USAHA",
   cashierDefault = "Admin Kasir",
   isAdmin = true,
   outlets = [],

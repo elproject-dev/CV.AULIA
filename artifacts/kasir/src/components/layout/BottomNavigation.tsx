@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2, RefreshCcw } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, History, Menu, Users, Settings, LogOut, Tag, Wallet, User, UserCog, Megaphone, Undo2, RefreshCcw, CalendarDays } from "lucide-react";
 import { TbCoin } from "react-icons/tb";
 import { cn } from "@/lib/utils";
 import { useMemo, useState, useEffect } from "react";
@@ -13,7 +13,7 @@ interface BottomNavigationProps {
 }
 
 export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [showMore, setShowMore] = useState(false);
   const { user, logout } = useAuth();
   const [cartCount, setCartCount] = useState(0);
@@ -60,6 +60,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
     if (!isAdmin) {
       return [
         { href: "/customers", label: "Pelanggan", icon: Users },
+        { href: "/visit-schedule", label: "Jadwal Kunjungan", icon: CalendarDays },
         { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
         { href: "/expenses", label: "Pengeluaran", icon: Wallet },
         { href: "/receivables", label: "Piutang", icon: TbCoin },
@@ -69,6 +70,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
 
     return [
       { href: "/staff", label: "Staff", icon: UserCog },
+      { href: "/visit-schedule", label: "Jadwal Kunjungan", icon: CalendarDays },
       { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
       { href: "/expenses", label: "Pengeluaran", icon: Wallet },
       { href: "/receivables", label: "Piutang", icon: TbCoin },
@@ -184,10 +186,12 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                 }
 
                 return (
-                  <Link
+                  <button
                     key={link.href}
-                    href={link.href}
-                    onClick={() => setShowMore(false)}
+                    onClick={() => {
+                      setShowMore(false);
+                      setLocation(link.href);
+                    }}
                     className={cn(
                       "flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200 relative",
                       isActive
@@ -210,7 +214,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                     )}>
                       {link.label}
                     </span>
-                  </Link>
+                  </button>
                 );
               })}
             </div>

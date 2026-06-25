@@ -1040,7 +1040,7 @@ export default function DashboardPage() {
         open={showDownloadDialog}
         onOpenChange={setShowDownloadDialog}
         transactions={transactionsForExport}
-        branchName="SBAGIAMU"
+        branchName="CV.AULIA USAHA"
         cashierDefault="Admin Kasir"
         isAdmin={isAdminSuper}
         outlets={outlets || []}

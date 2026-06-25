@@ -82,15 +82,14 @@ export default function LoginPage() {
 
       <div className="w-full max-w-[420px] relative z-10">
         <div className="text-center mb-10">
-          <img src={`${import.meta.env.BASE_URL}logo-login.png`} alt="Logo" className="h-28 w-auto mx-auto object-contain mb-5 drop-shadow-2xl" />
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-widest drop-shadow-lg">SBAGIAMU</h1>
-          <p className="text-white/70 mt-3 text-sm sm:text-base font-medium tracking-wide">TEMAN BAHAGIAMU</p>
+          <img src={`${import.meta.env.BASE_URL}CV.AULIA.png`} alt="Logo" className="h-28 w-auto mx-auto object-contain mb-5 drop-shadow-2xl" />
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-widest drop-shadow-lg">CV. AULIA USAHA</h1>
         </div>
 
         <div className="relative group">
           {/* Subtle glow behind card */}
           <div className="absolute -inset-1 bg-gradient-to-r from-white/20 to-white/0 rounded-[2rem] blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-          
+
           <div className="relative bg-white/10 backdrop-blur-2xl rounded-[2rem] border border-white/20 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] p-8 sm:p-10">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2.5">

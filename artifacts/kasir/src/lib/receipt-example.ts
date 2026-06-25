@@ -154,10 +154,10 @@ export async function exampleReceiptWithLogo(): Promise<string> {
   const total = subtotal - discount;
 
   const receiptData: ReceiptData = {
-    storeName: 'SBAGIAMU',
+    storeName: 'CV.AULIA USAHA',
     storeAddress: 'jl.condong catur no 13 yk',
-    logoPath: `${import.meta.env.BASE_URL}sbagiamu.png`, // Logo dari public folder
-    invoiceNumber: 'INV-SBG-2026-001',
+    logoPath: `${import.meta.env.BASE_URL}CV.AULIA.png`, // Logo dari public folder
+    invoiceNumber: 'INV-CVA-2026-001',
     date: new Date(),
     customerName: 'Pelanggan Setia',
 

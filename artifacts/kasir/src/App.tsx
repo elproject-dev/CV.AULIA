@@ -27,6 +27,7 @@ import ExpensesPage from "@/pages/expenses";
 import StaffPage from "@/pages/staff";
 import PromoPage from "@/pages/promo";
 import CustomerReturnsPage from "@/pages/customer-returns";
+import VisitSchedulePage from "@/pages/visit-schedule";
 
 const queryClient = new QueryClient();
 
@@ -118,6 +119,11 @@ function AppRoutes() {
       <Route path="/customer-returns">
         <ProtectedRoute>
           <CustomerReturnsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/visit-schedule">
+        <ProtectedRoute>
+          <VisitSchedulePage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

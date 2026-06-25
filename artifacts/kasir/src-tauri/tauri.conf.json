@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Sbagiamu",
+  "productName": "CV.AULIA USAHA",
   "version": "0.1.0",
-  "identifier": "com.sbagiamu.kasir",
+  "identifier": "com.cvauliausaha.kasir",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",

@@ -12,9 +12,10 @@ import { ChevronRight, ChevronLeft, CreditCard, Banknote, QrCode, User, History,
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { ADMIN_EMAIL } from "@/lib/auth";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { Capacitor } from "@capacitor/core";
 
 import {
   connectToPrinter,
@@ -726,8 +727,9 @@ function TransactionReceiptDialog({
           <div className="p-8 text-center text-slate-500">Memuat detail struk...</div>
         ) : (
           <div className="flex flex-col h-full max-h-[85vh]">
-            <div className="p-4 border-b border-slate-200 bg-white flex justify-center items-center shrink-0">
-              <h2 className="font-bold text-lg">Detail Transaksi</h2>
+            <div className="p-4 border-b border-slate-200 bg-white flex flex-col justify-center items-center shrink-0">
+              <DialogTitle className="font-bold text-lg">Detail Transaksi</DialogTitle>
+              <DialogDescription className="sr-only">Rincian struk transaksi lengkap</DialogDescription>
             </div>
 
             <div className="p-4 sm:p-6 overflow-y-auto bg-white m-4 rounded-xl shadow-sm border border-slate-200 printable-receipt [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -864,10 +866,12 @@ function TransactionReceiptDialog({
 
             <div className="p-4 border-t border-slate-200 bg-white flex gap-3 shrink-0">
               {isAdmin ? (
-                <Button className="flex-1" variant="outline" onClick={handlePrintInvoice}>
-                  <Printer className="w-4 h-4 mr-2" />
-                  Cetak Faktur
-                </Button>
+                !(Capacitor.getPlatform() === 'android') && (
+                  <Button className="flex-1" variant="outline" onClick={handlePrintInvoice}>
+                    <Printer className="w-4 h-4 mr-2" />
+                    Cetak Faktur
+                  </Button>
+                )
               ) : (
                 <Button className="flex-1" variant="outline" onClick={handlePrintReceipt} disabled={isPrinting}>
                   <Printer className="w-4 h-4 mr-2" />

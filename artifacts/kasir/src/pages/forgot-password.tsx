@@ -109,7 +109,7 @@ export default function ForgotPasswordPage() {
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50 group-focus-within/input:text-white transition-colors duration-300" />
                     <Input
                       type="email"
-                      placeholder="contoh: budi@sbagiamu.com"
+                      placeholder="contoh: budi@cvauliausaha.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="h-12 pl-11 bg-white/5 border-white/10 text-white placeholder:text-white/40 rounded-xl focus:bg-white/10 focus:border-white/30 focus:ring-4 focus:ring-white/10 focus-visible:ring-0 focus-visible:border-white/30 focus-visible:ring-offset-0 transition-all duration-300"

@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw } from "lucide-react";
+import { Calculator, LayoutDashboard, Package, Users, History, Settings, LogOut, Wallet, UserCog, Tag, User, Megaphone, ArrowRightLeft, Undo2, RefreshCcw, CalendarDays } from "lucide-react";
 import { TbCoin } from "react-icons/tb";
 import { cn } from "@/lib/utils";
 import { BottomNavigation } from "./BottomNavigation";
@@ -18,6 +18,7 @@ const ALL_LINKS = [
   { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw, adminOnly: false },
   { href: "/products", label: "Produk", icon: Package, adminOnly: false },
   { href: "/customers", label: "Pelanggan", icon: Users, adminOnly: false },
+  { href: "/visit-schedule", label: "Jadwal Kunjungan", icon: CalendarDays, adminOnly: false },
   { href: "/staff", label: "Staff", icon: UserCog, adminOnly: true },
   { href: "/transactions", label: "Riwayat Transaksi", icon: History, adminOnly: false },
   { href: "/expenses", label: "Pengeluaran", icon: Wallet, adminOnly: false },
@@ -99,7 +100,7 @@ export function Sidebar({ children, className }: SidebarProps) {
 
       if (assignedOutlet) {
         let changed = false;
-        
+
         const currentName = localStorage.getItem('storeName');
         const expectedStoreName = assignedOutlet.store_name || assignedOutlet.name;
         if (expectedStoreName && currentName !== expectedStoreName) {
@@ -188,7 +189,7 @@ export function Sidebar({ children, className }: SidebarProps) {
         const parsed = JSON.parse(saved);
         setCartCount(parsed.length || 0);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const handleCartUpdate = (e: any) => {
       setCartCount(e.detail || 0);
@@ -215,7 +216,7 @@ export function Sidebar({ children, className }: SidebarProps) {
       <aside className="w-16 bg-sidebar text-sidebar-foreground border-r border-sidebar-border hidden md:flex flex-col flex-shrink-0 transition-all duration-300">
         <div className="h-16 flex items-center justify-center border-b border-sidebar-border">
           <img
-            src={`${import.meta.env.BASE_URL}logo-login.png`}
+            src={`${import.meta.env.BASE_URL}CV.AULIA.png`}
             alt="Store Logo"
             className="h-8 w-8 object-contain"
           />

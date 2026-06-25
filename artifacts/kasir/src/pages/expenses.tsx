@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2, Image as ImageIcon, Camera, X } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2, Image as ImageIcon, Camera, X, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { applyTenantFilter, withTenantOwner, handleTenantError, isTenantSuperAdmin, getTenantOwnerId } from "@/lib/tenant";
 import { loadSession } from "@/lib/auth";
@@ -62,6 +62,13 @@ const DEFAULT_CATEGORIES: ExpenseCategory[] = [
   { id: "other", name: "Lainnya", color: "slate" },
 ];
 
+const getLocalDateString = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function ExpensesPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -95,9 +102,9 @@ export default function ExpensesPage() {
   // Download dialog state
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
-  const [downloadDateRange, setDownloadDateRange] = useState<"today" | "thisMonth" | "custom">("thisMonth");
   const [downloadStartDate, setDownloadStartDate] = useState("");
   const [downloadEndDate, setDownloadEndDate] = useState("");
+  const [downloadCount, setDownloadCount] = useState<number | null>(null);
 
   // Check if current user is admin
   const isAdmin = useMemo(() => {
@@ -123,7 +130,7 @@ export default function ExpensesPage() {
     description: "",
     supplier: "",
     amount: "",
-    date: new Date().toISOString().split("T")[0],
+    date: getLocalDateString(),
     image_url: "",
   });
 
@@ -426,6 +433,52 @@ export default function ExpensesPage() {
     };
   }, [fetchExpenses]);
 
+  // Reset download filters on close
+  useEffect(() => {
+    if (!showDownloadDialog) {
+      setDownloadStartDate("");
+      setDownloadEndDate("");
+      setDownloadCount(null);
+    }
+  }, [showDownloadDialog]);
+
+  // Fetch download count preview
+  useEffect(() => {
+    if (!showDownloadDialog) return;
+
+    const fetchDownloadCount = async () => {
+      try {
+        let query = supabase
+          .from("expenses")
+          .select("*", { count: "exact", head: true });
+
+        query = applyTenantFilter(query);
+
+        if (selectedOutlet !== "all") {
+          query = query.eq("outlet_id", parseInt(selectedOutlet));
+        }
+        if (isAdmin && selectedUserId !== "all") {
+          query = query.eq("owner_id", selectedUserId);
+        }
+        if (downloadStartDate) {
+          query = query.gte("date", downloadStartDate);
+        }
+        if (downloadEndDate) {
+          query = query.lte("date", downloadEndDate);
+        }
+
+        const { count, error } = await query;
+        if (!error && count !== null) {
+          setDownloadCount(count);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchDownloadCount();
+  }, [showDownloadDialog, downloadStartDate, downloadEndDate, selectedOutlet, selectedUserId, isAdmin, applyTenantFilter]);
+
   const filteredExpenses = expenses.filter((expense) => {
     const matchesSearch =
       expense.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -458,7 +511,7 @@ export default function ExpensesPage() {
         description: "",
         supplier: "",
         amount: "",
-        date: new Date().toISOString().split("T")[0],
+        date: getLocalDateString(),
         image_url: "",
       });
     }
@@ -601,24 +654,41 @@ export default function ExpensesPage() {
     }).format(amount);
   };
 
-  const handleExportExpenses = async (period: 'today' | 'thisMonth') => {
+  const handleExportExpenses = async () => {
     try {
       setDownloadLoading(true);
 
-      let filtered = expenses; // expenses is already filtered by API for outlet/user
+      let query = supabase
+        .from("expenses")
+        .select("*")
+        .order("date", { ascending: false });
 
-      const now = new Date();
-      if (period === 'today') {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        filtered = filtered.filter(e => new Date(e.date) >= today);
-      } else if (period === 'thisMonth') {
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        firstDayOfMonth.setHours(0, 0, 0, 0);
-        filtered = filtered.filter(e => new Date(e.date) >= firstDayOfMonth);
+      // Apply tenant filter
+      query = applyTenantFilter(query);
+
+      // Filter by selected outlet
+      if (selectedOutlet !== "all") {
+        query = query.eq("outlet_id", parseInt(selectedOutlet));
       }
 
-      if (filtered.length === 0) {
+      // Filter by selected user (if admin)
+      if (isAdmin && selectedUserId !== "all") {
+        query = query.eq("owner_id", selectedUserId);
+      }
+
+      // Date range filters
+      if (downloadStartDate) {
+        query = query.gte("date", downloadStartDate);
+      }
+      if (downloadEndDate) {
+        query = query.lte("date", downloadEndDate);
+      }
+
+      const { data: filtered, error } = await query;
+
+      if (error) throw error;
+
+      if (!filtered || filtered.length === 0) {
         toast({ title: "Info", description: `Tidak ada pengeluaran untuk periode ini`, variant: "destructive" });
         return;
       }
@@ -677,7 +747,7 @@ export default function ExpensesPage() {
         right: { style: "thin", color: { rgb: "CCCCCC" } },
       };
 
-      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:H1");
+      const range = XLSX.utils.decode_range(ws["!ref"] || "A1:I1");
       for (let R = range.s.r; R <= range.e.r; ++R) {
         for (let C = range.s.c; C <= range.e.c; ++C) {
           const cellAddress = { c: C, r: R };
@@ -688,8 +758,8 @@ export default function ExpensesPage() {
           const cell = ws[cellRef];
 
           let horizontalAlign: "left" | "center" | "right" = "left";
-          if (C === 0 || C === 1) horizontalAlign = "center"; // No, Tanggal
-          else if (C === 7) horizontalAlign = "right"; // Jumlah (last column index H = 7)
+          if (C === 0 || C === 1 || C === 7) horizontalAlign = "center"; // No, Tanggal, Status
+          else if (C === 8) horizontalAlign = "right"; // Jumlah (index 8)
 
           if (R === 0) {
             // Header
@@ -706,7 +776,7 @@ export default function ExpensesPage() {
               border: GRID_BORDER
             };
 
-            if (C === 7) { // Jumlah
+            if (C === 8) { // Jumlah
               cell.s.numFmt = "#,##0";
               if (typeof cell.v === 'number' || !isNaN(Number(cell.v))) {
                 if (typeof cell.v !== 'number') {
@@ -724,7 +794,15 @@ export default function ExpensesPage() {
       const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
-      const fileName = `Laporan_Pengeluaran_${period === 'today' ? 'HariIni' : 'BulanIni'}_${now.getTime()}.xlsx`;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let fileName = `Laporan_Pengeluaran_${dateStr}.xlsx`;
+      if (downloadStartDate && downloadEndDate) {
+        fileName = `Laporan_Pengeluaran_${downloadStartDate}_sd_${downloadEndDate}.xlsx`;
+      } else if (downloadStartDate) {
+        fileName = `Laporan_Pengeluaran_Mulai_${downloadStartDate}.xlsx`;
+      } else if (downloadEndDate) {
+        fileName = `Laporan_Pengeluaran_Sampai_${downloadEndDate}.xlsx`;
+      }
 
       if (Capacitor.isNativePlatform()) {
         const reader = new FileReader();
@@ -1168,9 +1246,9 @@ export default function ExpensesPage() {
                         {isAdmin && expense.status === 'pending' ? (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleUpdateStatus(expense.id, 'approved'); }}
-                            className="inline-flex px-2 py-1 text-[10px] sm:text-xs font-medium rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition-colors cursor-pointer shadow-sm"
+                            className="inline-flex px-3.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-md bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-md shadow-red-600/20 hover:shadow-lg hover:shadow-red-600/30 hover:-translate-y-0.5 active:translate-y-0 duration-200"
                           >
-                            Pending
+                            Konfirmasi
                           </button>
                         ) : (
                           <span
@@ -1332,9 +1410,9 @@ export default function ExpensesPage() {
                         {isAdmin && expense.status === 'pending' ? (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleUpdateStatus(expense.id, 'approved'); }}
-                            className="inline-flex px-3 py-1.5 text-xs font-medium rounded-full bg-yellow-500 hover:bg-yellow-600 text-white transition-colors cursor-pointer shadow-sm"
+                            className="inline-flex px-4 py-2 text-xs font-bold rounded-md bg-red-600 hover:bg-red-700 text-white transition-all cursor-pointer shadow-md shadow-red-600/20 hover:shadow-lg hover:shadow-red-600/30 hover:-translate-y-0.5 active:translate-y-0 duration-200"
                           >
-                            Pending
+                            Konfirmasi
                           </button>
                         ) : (
                           <span
@@ -1588,28 +1666,12 @@ export default function ExpensesPage() {
 
           {isAdmin && (
             <div className="space-y-2 mt-2">
-              {outlets && outlets.length > 0 && (
-                <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-                  <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Semua Outlet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Outlet</SelectItem>
-                    {outlets.map((outlet: any) => (
-                      <SelectItem key={outlet.id} value={outlet.id.toString()}>
-                        {outlet.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
               <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                 <SelectTrigger className="h-10">
-                  <SelectValue placeholder="Semua Staff" />
+                  <SelectValue placeholder="Semua Sales" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Staff</SelectItem>
+                  <SelectItem value="all">Semua Sales</SelectItem>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.name}
@@ -1620,44 +1682,90 @@ export default function ExpensesPage() {
             </div>
           )}
 
-          <div className="space-y-3 py-4">
-            <button
-              onClick={() => handleExportExpenses('today')}
-              disabled={downloadLoading || isLoading}
-              className="w-full flex items-center gap-4 p-4 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors border-2 border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
-                <Calendar className="w-6 h-6 text-white" />
+          <div className="space-y-3 mt-4 py-4 border-t border-slate-100 dark:border-slate-800">
+            <Label className="text-sm font-bold text-slate-700 dark:text-slate-300">Pilih Rentang Waktu</Label>
+            <div className="flex flex-col gap-3 w-full">
+              <div className="space-y-1.5 w-full">
+                <Label className="text-xs text-slate-500 font-medium">Dari Tanggal</Label>
+                <div className="relative w-full h-11">
+                  <Input
+                    type="text"
+                    placeholder="Pilih Tanggal Mulai"
+                    value={downloadStartDate ? downloadStartDate.split('-').reverse().join('-') : ""}
+                    readOnly
+                    className="absolute inset-0 h-11 w-full rounded-lg text-sm text-center bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-medium cursor-pointer shadow-sm hover:border-primary transition-colors"
+                  />
+                  <input
+                    type="date"
+                    value={downloadStartDate}
+                    onChange={(e) => setDownloadStartDate(e.target.value)}
+                    onClick={(e: any) => {
+                      try { e.target.showPicker?.(); } catch (err) { }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    title="Tanggal Mulai"
+                  />
+                </div>
               </div>
-              <div className="text-left min-w-0">
-                <p className="font-medium text-slate-700">Hari Ini</p>
-                <p className="text-xs text-slate-500 font-normal truncate">
-                  {selectedOutlet === "all" ? "Semua outlet" : `Outlet: ${outlets?.find(o => o.id.toString() === selectedOutlet)?.name || selectedOutlet}`}
-                  {selectedUserId !== "all" && ` | Staff: ${users.find(u => u.id === selectedUserId)?.name || selectedUserId}`}
-                </p>
-              </div>
-            </button>
 
-            <button
-              onClick={() => handleExportExpenses('thisMonth')}
-              disabled={downloadLoading || isLoading}
-              className="w-full flex items-center gap-4 p-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 transition-colors border-2 border-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-                <Calendar className="w-6 h-6 text-white" />
+              <div className="space-y-1.5 w-full">
+                <Label className="text-xs text-slate-500 font-medium">Sampai Tanggal</Label>
+                <div className="relative w-full h-11">
+                  <Input
+                    type="text"
+                    placeholder="Pilih Tanggal Akhir"
+                    value={downloadEndDate ? downloadEndDate.split('-').reverse().join('-') : ""}
+                    readOnly
+                    className="absolute inset-0 h-11 w-full rounded-lg text-sm text-center bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-medium cursor-pointer shadow-sm hover:border-primary transition-colors"
+                  />
+                  <input
+                    type="date"
+                    value={downloadEndDate}
+                    onChange={(e) => setDownloadEndDate(e.target.value)}
+                    onClick={(e: any) => {
+                      try { e.target.showPicker?.(); } catch (err) { }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    title="Tanggal Akhir"
+                  />
+                </div>
               </div>
-              <div className="text-left min-w-0">
-                <p className="font-medium text-slate-700">Bulan Ini</p>
-                <p className="text-xs text-slate-500 font-normal truncate">
-                  {selectedOutlet === "all" ? "Semua outlet" : `Outlet: ${outlets?.find(o => o.id.toString() === selectedOutlet)?.name || selectedOutlet}`}
-                  {selectedUserId !== "all" && ` | Staff: ${users.find(u => u.id === selectedUserId)?.name || selectedUserId}`}
-                </p>
-              </div>
-            </button>
+            </div>
 
-            <p className="text-xs text-slate-500 text-center pt-2">
-              {expenses.length} pengeluaran ditemukan pada filter saat ini
-            </p>
+            <Button
+              onClick={handleExportExpenses}
+              disabled={downloadLoading || !downloadStartDate || !downloadEndDate}
+              className="w-full h-12 text-sm font-bold mt-2 shadow-sm"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {downloadLoading ? "Mengunduh..." : "Download Laporan Excel"}
+            </Button>
+
+            {/* Expenses count preview */}
+            {downloadStartDate && downloadEndDate ? (() => {
+              const start = new Date(downloadStartDate);
+              start.setHours(0, 0, 0, 0);
+              const end = new Date(downloadEndDate);
+              end.setHours(23, 59, 59, 999);
+
+              if (start > end) {
+                return (
+                  <p className="text-xs text-red-500 font-medium text-center pt-2">
+                    Tanggal akhir harus lebih besar atau sama dengan tanggal mulai
+                  </p>
+                );
+              }
+
+              return (
+                <p className="text-xs text-slate-500 font-medium text-center pt-2">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">{downloadCount !== null ? downloadCount : 0}</span> pengeluaran ditemukan pada rentang waktu ini.
+                </p>
+              );
+            })() : (
+              <p className="text-xs text-slate-500 font-medium text-center pt-2">
+                Pilih tanggal untuk melihat jumlah pengeluaran yang akan didownload.
+              </p>
+            )}
           </div>
 
           <DialogFooter>
