@@ -648,13 +648,13 @@ export default function ProductsPage() {
             <Package className="w-6 h-6 text-primary animate-pulse" />
             Manajemen Produk
           </h1>
-          <div className="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto">
+          <div className="flex flex-row gap-2 w-full sm:w-auto">
             {isAdmin && (
               <>
-                <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)} className="w-full sm:w-auto">
+                <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)} className="flex-1 sm:flex-initial w-full sm:w-auto">
                   <FolderPlus className="w-4 h-4 mr-2" /> Kategori
                 </Button>
-                <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
+                <Button onClick={() => handleOpenDialog()} className="flex-1 sm:flex-initial w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" /> Tambah Produk
                 </Button>
               </>
@@ -663,51 +663,51 @@ export default function ProductsPage() {
         </div>
 
         {/* Tabs Switcher */}
-        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-6">
+        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-between sm:justify-start sm:gap-6 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setActiveTab('products')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'products'
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'products'
               ? 'border-primary text-primary'
               : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
-            <Package className="w-4 h-4" />
-            Daftar Produk
+            <Package className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Daftar Produk</span>
           </button>
           {isAdmin && (
             <>
               <button
                 onClick={() => setActiveTab('stock')}
-                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'stock'
+                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'stock'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
               >
-                <Layers className="w-4 h-4" />
-                Stok Barang
+                <Layers className="w-5 h-5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Stok Barang</span>
                 {stockStats.outOfStock > 0 && (
-                  <span className="flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
+                  <span className="absolute sm:relative top-2 right-1/4 sm:top-0 sm:right-0 flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
                 )}
               </button>
               <button
                 onClick={() => setActiveTab('discounts')}
-                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'discounts'
+                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'discounts'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
               >
-                <Tag className="w-4 h-4" />
-                Diskon & Satuan
+                <Tag className="w-5 h-5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Diskon & Satuan</span>
               </button>
               <button
                 onClick={() => setActiveTab('history')}
-                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'history'
+                className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'history'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
               >
-                <Clock className="w-4 h-4" />
-                Riwayat Aksi
+                <Clock className="w-5 h-5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Riwayat Aksi</span>
               </button>
             </>
           )}
@@ -730,7 +730,7 @@ export default function ProductsPage() {
 
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="flex items-center gap-2">
+                    <Button variant="outline" className="flex items-center gap-2 shrink-0">
                       <SlidersHorizontal className="w-4 h-4" />
                       <span className="hidden sm:inline">Filter & Urutkan</span>
                     </Button>
@@ -928,82 +928,82 @@ export default function ProductsPage() {
           ) : activeTab === 'stock' ? (
             <>
               {/* Stock Metric Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-5 items-stretch">
                 {/* Total Jenis Barang */}
-                <Card className="bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg">
-                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                <div className="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-blue-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Total Jenis Barang</p>
-                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                        <p className="text-blue-100 text-xs sm:text-sm font-medium">Total Jenis Barang</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
                           {stockStats.totalItems}
                         </p>
                       </div>
-                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                        <Package className="w-4 h-4 text-white" />
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Package className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                       </div>
                     </div>
-                    <p className="text-[10px] text-blue-200 mt-2">Produk Terdaftar</p>
-                  </CardContent>
-                </Card>
+                    <p className="text-xs mt-3 text-blue-200">Produk Terdaftar</p>
+                  </div>
+                </div>
 
                 {/* Total Stok Gudang */}
-                <Card className="bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg">
-                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                <div className="rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-purple-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Total Stok Gudang</p>
-                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                        <p className="text-purple-100 text-xs sm:text-sm font-medium">Total Stok Gudang</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
                           {stockStats.totalStock}
                         </p>
                       </div>
-                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                        <Archive className="w-4 h-4 text-white" />
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <Archive className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                       </div>
                     </div>
-                    <p className="text-[10px] text-purple-200 mt-2">Pcs Terhitung</p>
-                  </CardContent>
-                </Card>
+                    <p className="text-xs mt-3 text-purple-200">Pcs Terhitung</p>
+                  </div>
+                </div>
 
                 {/* Stok Habis */}
-                <Card className="bg-gradient-to-br from-red-500 to-red-600 border-0 shadow-lg">
-                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                <div className="rounded-xl bg-gradient-to-br from-red-500 to-red-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-red-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Stok Habis</p>
-                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                        <p className="text-red-100 text-xs sm:text-sm font-medium">Stok Habis</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
                           {stockStats.outOfStock}
                         </p>
                       </div>
-                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                        <AlertTriangle className="w-4 h-4 text-white" />
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                       </div>
                     </div>
-                    <p className="text-[10px] text-red-200 mt-2">Perlu Restock Segera</p>
-                  </CardContent>
-                </Card>
+                    <p className="text-xs mt-3 text-red-200">Perlu Restock Segera</p>
+                  </div>
+                </div>
 
                 {/* Stok Menipis */}
-                <Card className="bg-gradient-to-br from-amber-500 to-orange-600 border-0 shadow-lg">
-                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full min-h-[110px]">
+                <div className="rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 border-0 shadow-lg h-full">
+                  <div className="p-4 sm:p-5 h-full flex flex-col justify-between">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-amber-100 text-xs sm:text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">Stok Menipis</p>
-                        <p className="text-lg sm:text-2xl font-bold text-white leading-tight mt-1">
+                        <p className="text-amber-100 text-xs sm:text-sm font-medium">Stok Menipis</p>
+                        <p className="text-lg sm:text-lg md:text-xl font-bold text-white leading-tight mt-1 truncate">
                           {stockStats.lowStock}
                         </p>
                       </div>
-                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                        <AlertTriangle className="w-4 h-4 text-white animate-pulse" />
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 text-white animate-pulse" />
                       </div>
                     </div>
-                    <p className="text-[10px] text-amber-250 mt-2">Batas Kritis Low</p>
-                  </CardContent>
-                </Card>
+                    <p className="text-xs mt-3 text-amber-200">Batas Kritis Low</p>
+                  </div>
+                </div>
               </div>
 
               {/* Stock Filters */}
-              <div className="mb-4 flex flex-col sm:flex-row gap-3">
+              <div className="mb-4 flex flex-row items-center gap-2 sm:gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
                   <Input
@@ -1014,12 +1014,12 @@ export default function ProductsPage() {
                   />
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                   <Select
                     value={stockStatusFilter}
                     onValueChange={(val: any) => setStockStatusFilter(val)}
                   >
-                    <SelectTrigger className="w-[180px] bg-white dark:bg-slate-900">
+                    <SelectTrigger className="w-[130px] sm:w-[180px] bg-white dark:bg-slate-900 text-xs">
                       <SelectValue placeholder="Filter Stok" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1046,7 +1046,7 @@ export default function ProductsPage() {
 
                     return (
                       <div key={product.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-3 flex flex-col gap-3">
-                        <div className="flex gap-3">
+                        <div className="flex gap-3 relative">
                           <div className="w-12 h-12 rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
                             {productImage ? (
                               <img src={productImage} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
@@ -1054,7 +1054,7 @@ export default function ProductsPage() {
                               <Package className="w-6 h-6 text-slate-300 dark:text-slate-600" />
                             )}
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 pr-14">
                             <h4 className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-1">{product.name}</h4>
                             <p className="text-xs text-slate-500 dark:text-slate-400">{categoryName}</p>
                             <div className="flex items-center gap-2 mt-1.5">
@@ -1062,14 +1062,16 @@ export default function ProductsPage() {
                               {(product.uoms || []).filter((u: any) => u.unit_name !== 'pcs' && u.conversion_factor > 1).length > 0 && (
                                 <span className="text-[10px] text-slate-500 dark:text-slate-400">({formatMultiUnitStock(product)})</span>
                               )}
-                              {stock <= 0 ? (
-                                <Badge variant="destructive" className="bg-red-500 text-white text-[10px] py-0 px-1.5 h-4 font-semibold">Habis</Badge>
-                              ) : stock <= 5 ? (
-                                <Badge className="bg-amber-500 text-white text-[10px] py-0 px-1.5 h-4 font-semibold">Menipis</Badge>
-                              ) : (
-                                <Badge className="bg-green-500 text-white text-[10px] py-0 px-1.5 h-4 font-semibold">Tersedia</Badge>
-                              )}
                             </div>
+                          </div>
+                          <div className="absolute top-0 right-0">
+                            {stock <= 0 ? (
+                              <Badge variant="destructive" className="bg-red-500 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Habis</Badge>
+                            ) : stock <= 5 ? (
+                              <Badge className="bg-amber-500 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Menipis</Badge>
+                            ) : (
+                              <Badge className="bg-green-500 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Tersedia</Badge>
+                            )}
                           </div>
                         </div>
                         {isAdmin && (
@@ -1200,7 +1202,63 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+              {/* Mobile Discount Cards */}
+              <div className="flex flex-col gap-3 md:hidden">
+                {isLoading ? (
+                  <div className="text-center py-10 text-slate-500">Memuat data produk...</div>
+                ) : sortedProducts?.length === 0 ? (
+                  <div className="text-center py-10 text-slate-500">Tidak ada produk ditemukan.</div>
+                ) : (
+                  sortedProducts?.map((product: any) => {
+                    const uoms = product.uoms || [];
+                    const hasDiscount = uoms.some((u: any) => u.discount_type !== 'none' && (Number(u.discount_value) > 0));
+                    const additionalUoms = uoms.filter((u: any, index: number, self: any[]) => 
+                      u.unit_name !== 'pcs' && self.findIndex((t: any) => t.unit_name === u.unit_name) === index
+                    );
+                    return (
+                      <div key={product.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 flex flex-col gap-3">
+                        <div className="flex gap-3 relative">
+                          <div className="w-12 h-12 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {getProductImage(product) ? (
+                              <img src={getProductImage(product)!} alt={product.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            ) : (
+                              <ImageIcon className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0 pr-14">
+                            <div className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-1">
+                              {product.name}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{categories?.find((c: any) => c.id === product.category_id || c.id === product.categoryId)?.name || "Tanpa Kategori"}</div>
+                            <div className="mt-1 font-medium text-slate-700 dark:text-slate-300 text-sm">{formatRupiah(product.price)} / pcs</div>
+                          </div>
+                          {hasDiscount && (
+                            <div className="absolute top-0 right-0">
+                              <Badge className="bg-green-500 hover:bg-green-600 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Promo</Badge>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge className="text-[10px] bg-slate-500 text-white border-0">pcs</Badge>
+                          {additionalUoms.map((u: any, idx: number) => (
+                            <Badge key={idx} className={`text-[10px] border-0 ${u.discount_type !== 'none' && Number(u.discount_value) > 0 ? 'bg-green-500 text-white' : 'bg-slate-500 text-white'}`}>
+                              {u.unit_name}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <Button size="sm" variant="outline" onClick={() => handleOpenDiscountDialog(product)} className="w-full text-xs h-8">
+                            <Tag className="w-3.5 h-3.5 mr-1.5" /> Atur Satuan & Diskon
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Desktop Discount Table */}
+              <div className="hidden md:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <Table className="min-w-[600px]">
                     <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
@@ -2002,7 +2060,54 @@ function HistoryTabContent({ isAdmin }: { isAdmin: boolean }) {
           </Button>
         )}
       </div>
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+      {/* Mobile History Cards */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {isLoading ? (
+          <div className="text-center py-10 text-slate-500">Memuat riwayat...</div>
+        ) : movements?.length === 0 ? (
+          <div className="text-center py-10 text-slate-500">Belum ada riwayat mutasi.</div>
+        ) : (
+          movements?.map((move: any) => {
+            const isPositive = move.quantity > 0;
+            return (
+              <div key={move.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4">
+                <div className="flex justify-between items-start mb-2 gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-slate-900 dark:text-white text-sm line-clamp-1">{move.products?.name || 'Produk Dihapus'}</h4>
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block mt-0.5">
+                      {formatMovementType(move.type)}
+                    </span>
+                  </div>
+                  <span className={`font-bold inline-flex items-center justify-center px-2 py-1 rounded-md text-sm shrink-0 ${isPositive ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+                    {isPositive ? `+${move.quantity}` : move.quantity}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    {new Date(move.created_at).toLocaleString('id-ID', {
+                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                {move.note && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-2 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg">"{move.note}"</p>
+                )}
+                {isAdmin && (
+                  <div className="flex justify-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(move.id)} className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                      <Trash2 className="w-3.5 h-3.5 mr-1" /> Hapus
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop History Table */}
+      <div className="hidden md:block bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <Table className="min-w-[800px]">
             <TableHeader className="bg-slate-50 dark:bg-slate-900/50">

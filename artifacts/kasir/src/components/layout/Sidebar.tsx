@@ -11,6 +11,8 @@ import { useListOutlets } from "@/mocks/api-client-react";
 import { ProfileDialog } from "./ProfileDialog";
 import { usePendingExpensesCount } from "@/hooks/usePendingExpenses";
 import { usePendingReturnsCount } from "@/hooks/usePendingReturns";
+import { usePendingCheckInsCount } from "@/hooks/usePendingCheckIns";
+import { usePendingReceivablesCount } from "@/hooks/usePendingReceivables";
 
 const ALL_LINKS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
@@ -201,6 +203,8 @@ export function Sidebar({ children, className }: SidebarProps) {
 
   const pendingExpensesCount = usePendingExpensesCount();
   const pendingReturnsCount = usePendingReturnsCount();
+  const pendingCheckInsCount = usePendingCheckInsCount();
+  const pendingReceivablesCount = usePendingReceivablesCount();
 
   const links = useMemo(() => {
     if (!user) return [];
@@ -245,6 +249,12 @@ export function Sidebar({ children, className }: SidebarProps) {
                   <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
                 )}
                 {link.href === "/customer-returns" && pendingReturnsCount > 0 && isAdminMode(user) && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                )}
+                {link.href === "/visit-schedule" && pendingCheckInsCount > 0 && isAdminMode(user) && (
+                  <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
+                )}
+                {link.href === "/receivables" && pendingReceivablesCount > 0 && (
                   <span className="absolute top-2 right-2 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900" />
                 )}
               </Link>

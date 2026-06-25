@@ -854,39 +854,39 @@ export default function CustomerReturnsPage() {
         </div>
 
         {/* Tabs Switcher */}
-        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-between sm:justify-start sm:gap-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
           <button
             onClick={() => setActiveTab('new')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'new'
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'new'
               ? 'border-primary text-primary'
               : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
-            <Receipt className="w-4 h-4" />
-            Buat Retur Baru
+            <Receipt className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Buat Retur Baru</span>
           </button>
           <button
             onClick={() => setActiveTab('pending')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'pending'
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'pending'
               ? 'border-primary text-primary'
               : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
-            <Clock className="w-4 h-4" />
-            Menunggu Konfirmasi
+            <Clock className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Menunggu Konfirmasi</span>
             {pendingReturns.length > 0 && (
-              <span className="flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
+              <span className="absolute sm:relative top-2 right-1/3 sm:top-0 sm:right-0 flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 animate-bounce" />
             )}
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'history'
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'history'
               ? 'border-primary text-primary'
               : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
-            <History className="w-4 h-4" />
-            Riwayat Selesai
+            <History className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Riwayat Selesai</span>
           </button>
         </div>
 
@@ -968,7 +968,7 @@ export default function CustomerReturnsPage() {
               <Card className="shadow-sm border-slate-200 dark:border-slate-800">
                 <CardHeader className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
                   <CardTitle className="text-lg">Cari Transaksi</CardTitle>
-                  <CardDescription>Masukkan Nomor Invoice atau ID Transaksi untuk memulai proses retur</CardDescription>
+                  <CardDescription>Masukkan Nomor Invoice atau ID Transaksi</CardDescription>
                 </CardHeader>
                 <CardContent className="p-6">
                   <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 max-w-lg">
@@ -1280,7 +1280,7 @@ export default function CustomerReturnsPage() {
               <Card className="shadow-sm border-slate-200 dark:border-slate-800">
                 <CardHeader className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
                   <CardTitle>Riwayat Selesai</CardTitle>
-                  <CardDescription>Daftar seluruh laporan retur yang telah diproses/selesai</CardDescription>
+                  <CardDescription>Daftar seluruh laporan retur yang telah selesai</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
                   {renderTable(completedReturns, "Belum ada riwayat retur yang selesai.", <History className="w-12 h-12 mb-3" />)}

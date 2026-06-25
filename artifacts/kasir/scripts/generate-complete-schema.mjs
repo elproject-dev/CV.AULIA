@@ -50,7 +50,8 @@ const migrationFiles = [
   'migration-add-expenses-supplier.sql',
   'migration-add-expenses-image.sql',
   'migration-setup-expense-receipts-storage.sql',
-  'migration-add-outlets-footers.sql'
+  'migration-add-outlets-footers.sql',
+  'migration-enable-realtime-sync.sql'
 ];
 
 async function generate() {

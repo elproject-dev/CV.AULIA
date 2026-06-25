@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { ProfileDialog } from "@/components/layout/ProfileDialog";
 import { getProductImageUrl } from "@/lib/supabase-storage";
 import { formatRupiah } from "@/lib/formatters";
-import { Activity, CreditCard, DollarSign, Package, Users, BarChart3, ShieldCheck, FileDown, Download, ChevronRight, WifiOff, Building2, UserCircle, LayoutDashboard, Crown, Star, TrendingUp, History } from "lucide-react";
+import { Activity, CreditCard, DollarSign, Package, Users, BarChart3, ShieldCheck, FileDown, Download, ChevronRight, WifiOff, UserCircle, LayoutDashboard, Crown, Star, TrendingUp, History } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DownloadExcelDialog, mapApiTransactionsToExport } from "@/components/excel-export";
@@ -664,14 +664,6 @@ export default function DashboardPage() {
                                   - {new Date(trx.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </div>
-                              <div className="flex flex-col gap-0.5 text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5">
-                                {trx.outletName && trx.outletName !== '-' && (
-                                  <span className="flex items-center gap-1 truncate">
-                                    <Building2 className="w-3 h-3 shrink-0" />
-                                    <span className="truncate">{trx.outletName.replace(/^Outlet\s+/i, '')}</span>
-                                  </span>
-                                )}
-                              </div>
                             </div>
 
                             {/* Total & Kasir */}
@@ -796,9 +788,6 @@ export default function DashboardPage() {
 
                               <div className="text-right shrink-0">
                                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{prod.qty} Terjual</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-end gap-1">
-                                  <Building2 className="w-3 h-3 inline-block" /> {prod.topOutletName}
-                                </p>
                               </div>
                             </div>
 
@@ -851,9 +840,6 @@ export default function DashboardPage() {
                                 {/* Customer Info */}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{customer.name}</p>
-                                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1 truncate" title={customer.outletName}>
-                                    <Building2 className="w-3 h-3 shrink-0" /> <span className="truncate">{customer.outletName}</span>
-                                  </p>
                                 </div>
 
                                 {/* Total & Points */}

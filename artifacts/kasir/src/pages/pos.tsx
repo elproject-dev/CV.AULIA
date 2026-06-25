@@ -10,7 +10,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Tag, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler, Clock, CalendarRange, CheckCircle2, Wallet } from "lucide-react";
+import { Search, Plus, Minus, X, CreditCard, Banknote, QrCode, ShoppingCart, Package, Trash2, Printer, Bluetooth, Circle, Store, AlertTriangle, Ruler, Clock, CalendarRange, CheckCircle2, Wallet } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -235,13 +235,19 @@ export default function POSPage() {
   // Function to handle printing receipt
   const handlePrintReceipt = async (
     transaction: any,
-    options?: { showSuccessNotification?: boolean }
+    options?: { showSuccessNotification?: boolean; hideErrorNotification?: boolean }
   ) => {
     console.log('Starting print process...', transaction);
 
+    const showError = (msg: string) => {
+      if (!options?.hideErrorNotification) {
+        void showPrinterNotConnectedNotification(msg);
+      }
+    };
+
     if (!isBluetoothAvailable()) {
       console.error('Bluetooth plugin not available');
-      void showPrinterNotConnectedNotification('Plugin Bluetooth tidak tersedia di perangkat ini.');
+      showError('Plugin Bluetooth tidak tersedia di perangkat ini.');
       return;
     }
 
@@ -250,7 +256,7 @@ export default function POSPage() {
 
     if (!printerMac) {
       console.error('Printer MAC not set');
-      void showPrinterNotConnectedNotification('Alamat MAC printer belum diatur di pengaturan.');
+      showError('Alamat MAC printer belum diatur di pengaturan.');
       return;
     }
 
@@ -277,7 +283,7 @@ export default function POSPage() {
 
       if (!connectionResult.success) {
         console.error('Connection failed:', connectionResult.message);
-        void showPrinterNotConnectedNotification(connectionResult.message);
+        showError(connectionResult.message);
         return;
       }
 
@@ -291,7 +297,7 @@ export default function POSPage() {
 
       if (!printed) {
         console.error('Print failed');
-        void showPrinterNotConnectedNotification('Gagal mencetak struk. Pastikan printer menyala dan terhubung.');
+        showError('Gagal mencetak struk. Pastikan printer menyala dan terhubung.');
       } else if (options?.showSuccessNotification) {
         const invoiceId = transaction?.id ?? transaction?.transaction_id;
         void showPrintSuccessNotification(
@@ -309,9 +315,7 @@ export default function POSPage() {
       console.log('Printer disconnected');
     } catch (error) {
       console.error('Print error:', error);
-      void showPrinterNotConnectedNotification(
-        error instanceof Error ? error.message : 'Terjadi kesalahan saat mencetak struk.'
-      );
+      showError(error instanceof Error ? error.message : 'Terjadi kesalahan saat mencetak struk.');
       // Ensure disconnect on error
       try {
         await disconnectPrinter();
@@ -853,7 +857,7 @@ export default function POSPage() {
             pointsValue: 0,
             createdAt: res?.created_at || new Date().toISOString()
           };
-          handlePrintReceipt(transactionData);
+          handlePrintReceipt(transactionData, { hideErrorNotification: true });
         }
         setCart([]);
         setCustomerId(undefined);
@@ -962,7 +966,6 @@ export default function POSPage() {
                   className="rounded-full whitespace-nowrap shrink-0 text-xs lg:text-sm px-3"
                   size="sm"
                 >
-                  <Tag className="w-3 h-3 mr-1.5 opacity-70" />
                   {cat.name}
                 </Button>
               ))}
@@ -1262,8 +1265,8 @@ export default function POSPage() {
                     className="h-10 lg:h-9"
                   />
                 </div>
-                <div className="flex flex-col sm:flex-row gap-3 lg:gap-2">
-                  <div className="flex flex-col gap-2 w-full">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-2">
                     <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Kecamatan</label>
                     <Input
                       value={manualDistrict}
@@ -1272,7 +1275,7 @@ export default function POSPage() {
                       className="h-10 lg:h-9"
                     />
                   </div>
-                  <div className="flex flex-col gap-2 w-full">
+                  <div className="flex flex-col gap-2">
                     <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Kabupaten</label>
                     <Input
                       value={manualCity}
@@ -1319,7 +1322,7 @@ export default function POSPage() {
             <div className="px-4 lg:px-3 pb-4 lg:pb-3">
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-normal text-slate-500 dark:text-slate-400 uppercase tracking-wider">Metode Pembayaran</label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => setPaymentMethod("cash")}
                     className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 transition-all ${paymentMethod === "cash" ? "border-primary bg-primary/5 text-primary dark:bg-primary-900/20 dark:border-primary-400 dark:text-primary-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"}`}
@@ -1333,13 +1336,6 @@ export default function POSPage() {
                   >
                     <CreditCard className="w-4 h-4 lg:w-5 lg:h-5 mb-1" />
                     <span className="text-[10px] font-medium">Transfer</span>
-                  </button>
-                  <button
-                    onClick={() => setPaymentMethod("debit_card")}
-                    className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 transition-all ${paymentMethod === "debit_card" ? "border-primary bg-primary/5 text-primary dark:bg-primary-900/20 dark:border-primary-400 dark:text-primary-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"}`}
-                  >
-                    <Wallet className="w-4 h-4 lg:w-5 lg:h-5 mb-1" />
-                    <span className="text-[10px] font-medium">E-wallet</span>
                   </button>
                   <button
                     onClick={() => setPaymentMethod("qris")}

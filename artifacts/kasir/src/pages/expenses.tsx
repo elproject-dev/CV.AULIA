@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2, Image as ImageIcon, Camera, X, Download } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Wallet, TrendingDown, SlidersHorizontal, Receipt, User, Store, Calendar, FileDown, Loader2, Image as ImageIcon, Camera, X, Download, Tag } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { applyTenantFilter, withTenantOwner, handleTenantError, isTenantSuperAdmin, getTenantOwnerId } from "@/lib/tenant";
 import { loadSession } from "@/lib/auth";
@@ -812,12 +812,12 @@ export default function ExpensesPage() {
           await Filesystem.writeFile({
             path: fileName,
             data: base64data,
-            directory: Directory.Documents,
+            directory: Directory.Cache,
             recursive: true
           });
           const filePath = await Filesystem.getUri({
             path: fileName,
-            directory: Directory.Documents
+            directory: Directory.Cache
           });
           await Share.share({
             title: "Download Laporan Pengeluaran",
@@ -945,31 +945,15 @@ export default function ExpensesPage() {
     <Sidebar>
       <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-900">
         {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-                <Wallet className="w-6 h-6 text-primary" />
-                Pengeluaran
-              </h1>
-            </div>
-            <div className="flex flex-col-reverse sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0">
-              <Button variant="outline" onClick={() => setShowDownloadDialog(true)} className="w-full sm:w-auto">
-                <FileDown className="w-4 h-4 mr-2" />
-                Download
-              </Button>
-              {isAdmin && (
-                <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)} className="w-full sm:w-auto">
-                  <SlidersHorizontal className="w-4 h-4 mr-2" />
-                  Kategori
-                </Button>
-              )}
-              <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Tambah Pengeluaran
-              </Button>
-            </div>
-          </div>
+        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-between">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+            <Wallet className="w-6 h-6 text-primary" />
+            Pengeluaran
+          </h1>
+          <Button variant="outline" onClick={() => setShowDownloadDialog(true)} className="h-10 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0 gap-2">
+            <FileDown className="w-4 h-4 text-primary" />
+            <span className="font-medium text-xs sm:text-sm">Download</span>
+          </Button>
         </div>
 
         <div className="p-5 flex-1 overflow-auto">
@@ -1046,146 +1030,158 @@ export default function ExpensesPage() {
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-5">
+          {/* Filters & Actions */}
+          <div className="flex flex-col md:flex-row gap-3 mb-5">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
               <Input
                 placeholder="Cari pengeluaran..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-10 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl"
+                className="pl-9 h-10 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
               />
             </div>
 
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="h-10 w-full sm:w-auto bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-center shrink-0">
-                  <SlidersHorizontal className="w-4 h-4 mr-2 text-primary" />
-                  <span className="font-medium">Filter</span>
+            <div className="flex flex-row items-center justify-center md:justify-start gap-2 overflow-x-auto scrollbar-hide py-0.5 shrink-0 w-full md:w-auto">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="h-10 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center justify-center flex-1 md:flex-initial w-full md:w-auto gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-primary" />
+                    <span className="font-medium text-xs sm:text-sm">Filter</span>
 
-                  {/* Indicator if any filter is active */}
-                  {(selectedCategory !== "all" || selectedOutlet !== "all" || selectedUserId !== "all" || startDate !== "" || endDate !== "") && (
-                    <span className="ml-2 w-2 h-2 rounded-full bg-primary shrink-0" />
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-[320px] sm:w-[380px] p-4 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <SlidersHorizontal className="w-5 h-5 text-primary" />
-                  Filter Pengeluaran
-                </div>
+                    {/* Indicator if any filter is active */}
+                    {(selectedCategory !== "all" || selectedOutlet !== "all" || selectedUserId !== "all" || startDate !== "" || endDate !== "") && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[320px] sm:w-[380px] p-4 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+                    <SlidersHorizontal className="w-5 h-5 text-primary" />
+                    Filter Pengeluaran
+                  </div>
 
-                <div className="space-y-4">
-                  {/* Date Filters */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium text-slate-500">Rentang Tanggal</Label>
-                    <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
-                      <div className="relative w-full h-9">
-                        <Input
-                          type="text"
-                          placeholder="Tanggal Mulai"
-                          value={startDate ? startDate.split('-').reverse().join('-') : ""}
-                          readOnly
-                          className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
-                        />
-                        <input
-                          type="date"
-                          value={startDate}
-                          onChange={(e: any) => setStartDate(e.target.value)}
-                          onClick={(e: any) => {
-                            try { e.target.showPicker?.(); } catch (err) { }
-                          }}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          title="Tanggal Mulai"
-                        />
-                      </div>
-                      <span className="text-slate-400 text-sm hidden sm:block">-</span>
-                      <div className="relative w-full h-9">
-                        <Input
-                          type="text"
-                          placeholder="Tanggal Akhir"
-                          value={endDate ? endDate.split('-').reverse().join('-') : ""}
-                          readOnly
-                          className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
-                        />
-                        <input
-                          type="date"
-                          value={endDate}
-                          onChange={(e: any) => setEndDate(e.target.value)}
-                          onClick={(e: any) => {
-                            try { e.target.showPicker?.(); } catch (err) { }
-                          }}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          title="Tanggal Akhir"
-                        />
+                  <div className="space-y-4">
+                    {/* Date Filters */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-slate-500">Rentang Tanggal</Label>
+                      <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+                        <div className="relative w-full h-9">
+                          <Input
+                            type="text"
+                            placeholder="Tanggal Mulai"
+                            value={startDate ? startDate.split('-').reverse().join('-') : ""}
+                            readOnly
+                            className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+                          />
+                          <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e: any) => setStartDate(e.target.value)}
+                            onClick={(e: any) => {
+                              try { e.target.showPicker?.(); } catch (err) { }
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title="Tanggal Mulai"
+                          />
+                        </div>
+                        <span className="text-slate-400 text-sm hidden sm:block">-</span>
+                        <div className="relative w-full h-9">
+                          <Input
+                            type="text"
+                            placeholder="Tanggal Akhir"
+                            value={endDate ? endDate.split('-').reverse().join('-') : ""}
+                            readOnly
+                            className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+                          />
+                          <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e: any) => setEndDate(e.target.value)}
+                            onClick={(e: any) => {
+                              try { e.target.showPicker?.(); } catch (err) { }
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title="Tanggal Akhir"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Category Filter */}
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium text-slate-500">Kategori</Label>
-                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                      <SelectTrigger className="w-full h-9">
-                        <SelectValue placeholder="Semua Kategori" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Semua Kategori</SelectItem>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-
-
-                  {/* User Filter (Admin Only) */}
-                  {isAdmin && (
+                    {/* Category Filter */}
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium text-slate-500">Sales</Label>
-                      <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                      <Label className="text-xs font-medium text-slate-500">Kategori</Label>
+                      <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                         <SelectTrigger className="w-full h-9">
-                          <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-slate-400 shrink-0" />
-                            <SelectValue placeholder="Semua Sales" />
-                          </div>
+                          <SelectValue placeholder="Semua Kategori" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Semua Sales</SelectItem>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.name}
+                          <SelectItem value="all">Semua Kategori</SelectItem>
+                          {categories.map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              {cat.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  )}
-                </div>
 
-                {/* Reset Button */}
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <Button
-                    variant="outline"
-                    className="w-full h-9 text-xs"
-                    onClick={() => {
-                      setSelectedCategory("all");
-                      setSelectedOutlet("all");
-                      setSelectedUserId("all");
-                      setStartDate("");
-                      setEndDate("");
-                    }}
-                    disabled={selectedCategory === "all" && selectedOutlet === "all" && selectedUserId === "all" && !startDate && !endDate}
-                  >
-                    Atur Ulang Filter
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
+                    {/* User Filter (Admin Only) */}
+                    {isAdmin && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-slate-500">Sales</Label>
+                        <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                          <SelectTrigger className="w-full h-9">
+                            <div className="flex items-center gap-2">
+                              <User className="w-4 h-4 text-slate-400 shrink-0" />
+                              <SelectValue placeholder="Semua Sales" />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Semua Sales</SelectItem>
+                            {users.map((user) => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reset Button */}
+                  <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <Button
+                      variant="outline"
+                      className="w-full h-9 text-xs"
+                      onClick={() => {
+                        setSelectedCategory("all");
+                        setSelectedOutlet("all");
+                        setSelectedUserId("all");
+                        setStartDate("");
+                        setEndDate("");
+                      }}
+                      disabled={selectedCategory === "all" && selectedOutlet === "all" && selectedUserId === "all" && !startDate && !endDate}
+                    >
+                      Atur Ulang Filter
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {isAdmin && (
+                <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)} className="h-10 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center justify-center flex-1 md:flex-initial w-full md:w-auto gap-2">
+                  <Tag className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-xs sm:text-sm">Kategori</span>
+                </Button>
+              )}
+
+              <Button onClick={() => handleOpenDialog()} className="h-10 flex items-center justify-center flex-1 md:flex-initial w-full md:w-auto gap-2 text-white bg-primary">
+                <Plus className="w-4 h-4" />
+                <span className="font-medium text-xs sm:text-sm">Tambah</span>
+              </Button>
+            </div>
           </div>
 
           {/* ── MOBILE & TABLET: Card List ── */}

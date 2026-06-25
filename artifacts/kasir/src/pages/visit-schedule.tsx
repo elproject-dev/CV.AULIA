@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import { supabase } from "@/lib/supabase";
 import { Sidebar } from "@/components/layout/Sidebar";
 import {
   useListVisitSchedules,
@@ -87,6 +88,29 @@ function formatVisitedAt(dateStr: string) {
   }
 }
 
+function isDateInCurrentWeek(dateStr: string): boolean {
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+
+    // Get start of current week (Monday)
+    const currentDay = now.getDay(); // 0 is Sunday, 1 is Monday...
+    const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() + diffToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    // Get end of current week (Sunday)
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    return date >= startOfWeek && date <= endOfWeek;
+  } catch {
+    return false;
+  }
+}
+
 async function getLocationNative(): Promise<{ latitude: number; longitude: number }> {
   // Use Capacitor Geolocation on Android native
   if (Capacitor.isNativePlatform()) {
@@ -120,6 +144,10 @@ async function getLocationNative(): Promise<{ latitude: number; longitude: numbe
   });
 }
 
+const cleanNotes = (notes: string | null | undefined) => {
+  if (!notes) return "";
+  return notes.replace(/\s*\[verified\]\s*/g, "").trim();
+};
 
 export default function VisitSchedulePage() {
   const { toast } = useToast();
@@ -128,8 +156,19 @@ export default function VisitSchedulePage() {
 
   const [activeTab, setActiveTab] = useState<"schedule" | "history">("schedule");
   const [selectedDay, setSelectedDay] = useState<number>(getTodayDayId());
-  const [salesFilter, setSalesFilter] = useState<string>("all");
+  const [scheduleSalesFilter, setScheduleSalesFilter] = useState<string>("all");
+  const [logSalesFilter, setLogSalesFilter] = useState<string>("all");
+  const [logDayFilter, setLogDayFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [checkingLog, setCheckingLog] = useState<any>(null);
+  const [verifiedLogs, setVerifiedLogs] = useState<Record<number, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem("kasir_verified_logs");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
   const [editingSchedule, setEditingSchedule] = useState<any>(null);
   const [trackingId, setTrackingId] = useState<number | null>(null); // schedule id being tracked
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
@@ -154,9 +193,26 @@ export default function VisitSchedulePage() {
   const deleteSchedule = useDeleteVisitSchedule();
   const createLog = useCreateVisitLog();
 
-  // Active staff list for sales dropdown
+  // Names of admins to exclude from sales options
+  const adminNames = useMemo(() => {
+    const names = new Set<string>();
+    names.add("Admin");
+    if (user?.role === "admin" && user?.name) {
+      names.add(user.name);
+    }
+    (staffList || []).forEach((s: any) => {
+      if ((s.role === 'admin' || s.role === 'developer') && s.name) {
+        names.add(s.name);
+      }
+    });
+    return names;
+  }, [staffList, user]);
+
+  // Active staff list for sales dropdown (excluding admins)
   const activeSalesList = useMemo(() => {
-    return (staffList || []).filter((s: any) => s.status === 'active' && s.name);
+    return (staffList || []).filter(
+      (s: any) => s.status === 'active' && s.name && s.role !== 'admin' && s.role !== 'developer'
+    );
   }, [staffList]);
 
   const visibleSchedules = useMemo(() => {
@@ -175,33 +231,59 @@ export default function VisitSchedulePage() {
     return list;
   }, [logs, isAdmin, user?.name]);
 
-  // Unique sales names from schedules
+  // Unique sales names from schedules (excluding admins)
   const uniqueSalesNames = useMemo(() => {
-    const names = visibleSchedules.map((s: any) => s.sales_name).filter(Boolean);
+    const names = visibleSchedules
+      .map((s: any) => s.sales_name)
+      .filter((name: string) => name && !adminNames.has(name));
     return Array.from(new Set(names)).sort() as string[];
-  }, [visibleSchedules]);
+  }, [visibleSchedules, adminNames]);
 
-  // Unique sales names from logs
+  // Unique sales names from logs (excluding admins)
   const uniqueLogSalesNames = useMemo(() => {
-    const names = visibleLogs.map((l: any) => l.sales_name).filter(Boolean);
+    const names = visibleLogs
+      .map((l: any) => l.sales_name)
+      .filter((name: string) => name && !adminNames.has(name));
     return Array.from(new Set(names)).sort() as string[];
-  }, [visibleLogs]);
+  }, [visibleLogs, adminNames]);
 
   const filteredSchedules = useMemo(
     () =>
-      salesFilter === "all"
+      scheduleSalesFilter === "all"
         ? visibleSchedules
-        : visibleSchedules.filter((s: any) => s.sales_name === salesFilter),
-    [visibleSchedules, salesFilter]
+        : visibleSchedules.filter((s: any) => s.sales_name === scheduleSalesFilter),
+    [visibleSchedules, scheduleSalesFilter]
   );
 
-  const filteredLogs = useMemo(
-    () =>
-      salesFilter === "all"
-        ? visibleLogs
-        : visibleLogs.filter((l: any) => l.sales_name === salesFilter),
-    [visibleLogs, salesFilter]
-  );
+  const filteredLogs = useMemo(() => {
+    let list = visibleLogs;
+    if (logSalesFilter !== "all") {
+      list = list.filter((l: any) => l.sales_name === logSalesFilter);
+    }
+    if (logDayFilter !== "all") {
+      const targetDay = parseInt(logDayFilter);
+      list = list.filter((l: any) => {
+        if (!l.visited_at) return false;
+        const jsDay = new Date(l.visited_at).getDay(); // 0=Sun, 1=Mon...6=Sat
+        const dayId = jsDay === 0 ? 7 : jsDay;
+        return dayId === targetDay;
+      });
+    }
+    return list;
+  }, [visibleLogs, logSalesFilter, logDayFilter]);
+
+  // Check if a schedule has been visited this week
+  const visitedScheduleIdsToday = useMemo(() => {
+    const visitedSet = new Set<number>();
+    (logs || []).forEach((log: any) => {
+      if (log.schedule_id && log.visited_at) {
+        if (isDateInCurrentWeek(log.visited_at)) {
+          visitedSet.add(log.schedule_id);
+        }
+      }
+    });
+    return visitedSet;
+  }, [logs]);
 
   const schedulesForDay = useMemo(
     () => filteredSchedules.filter((s: any) => s.day_of_week === selectedDay),
@@ -225,7 +307,7 @@ export default function VisitSchedulePage() {
         day_of_week: selectedDay.toString(),
         visit_time: "",
         notes: "",
-        sales_name: isAdmin ? (salesFilter !== "all" ? salesFilter : "") : (user?.name || ""),
+        sales_name: isAdmin ? (scheduleSalesFilter !== "all" ? scheduleSalesFilter : "") : (user?.name || ""),
       });
     }
     setIsDialogOpen(true);
@@ -357,6 +439,42 @@ export default function VisitSchedulePage() {
     );
   };
 
+  const handleVerifyLog = async (logId: number) => {
+    const log = (logs || []).find((l: any) => l.id === logId);
+    const currentNotes = log?.notes || "";
+    const newNotes = currentNotes.includes("[verified]")
+      ? currentNotes
+      : (currentNotes ? `${currentNotes} [verified]` : "[verified]");
+
+    try {
+      const { error } = await supabase
+        .from("visit_logs")
+        .update({ notes: newNotes })
+        .eq("id", logId);
+
+      if (error) throw error;
+
+      const updated = { ...verifiedLogs, [logId]: true };
+      setVerifiedLogs(updated);
+      localStorage.setItem("kasir_verified_logs", JSON.stringify(updated));
+
+      toast({
+        title: "Validasi Sukses",
+        description: "Lokasi kunjungan terverifikasi valid.",
+      });
+
+      refetchLogs();
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: "Gagal memvalidasi kunjungan di database.",
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingLog(null);
+    }
+  };
+
   const openInMaps = (lat: number, lng: number) => {
     const url = `https://maps.google.com/?q=${lat},${lng}`;
     window.open(url, "_blank");
@@ -389,114 +507,125 @@ export default function VisitSchedulePage() {
         </div>
 
         {/* Tabs — underline style matching products.tsx */}
-        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-6">
-          <button
-            onClick={() => setActiveTab("schedule")}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
-              activeTab === "schedule"
+        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-between items-center">
+          <div className="flex gap-6">
+            <button
+              onClick={() => setActiveTab("schedule")}
+              className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === "schedule"
                 ? "border-primary text-primary"
                 : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <CalendarDays className="w-4 h-4" />
-            Jadwal
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${
-              activeTab === "history"
+                }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              Jadwal
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === "history"
                 ? "border-primary text-primary"
                 : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <History className="w-4 h-4" />
-            Riwayat
-            {(logs || []).length > 0 && (
-              <Badge className="bg-primary text-primary-foreground text-[10px] h-4 px-1.5">
-                {(logs || []).length}
-              </Badge>
-            )}
-          </button>
+                }`}
+            >
+              <History className="w-4 h-4" />
+              Riwayat
+            </button>
+          </div>
+          {isAdmin && (
+            <div className="block sm:hidden flex-shrink-0">
+              {activeTab === "schedule" && uniqueSalesNames.length > 0 && (
+                <Select value={scheduleSalesFilter} onValueChange={(v) => setScheduleSalesFilter(v)}>
+                  <SelectTrigger className="w-[120px] h-8 text-[11px] rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm border">
+                    <SelectValue placeholder="Pilih sales..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-[11px]">Semua Sales</SelectItem>
+                    {uniqueSalesNames.map((name) => (
+                      <SelectItem key={name} value={name} className="text-[11px]">{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {activeTab === "history" && uniqueLogSalesNames.length > 0 && (
+                <Select value={logSalesFilter} onValueChange={(v) => setLogSalesFilter(v)}>
+                  <SelectTrigger className="w-[120px] h-8 text-[11px] rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm border">
+                    <SelectValue placeholder="Pilih sales..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-[11px]">Semua Sales</SelectItem>
+                    {uniqueLogSalesNames.map((name) => (
+                      <SelectItem key={name} value={name} className="text-[11px]">{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Schedule Tab */}
         {activeTab === "schedule" && (
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Day tabs + Sales filter bar */}
-            <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-6 py-3 space-y-3">
-              {/* Sales filter */}
-              {uniqueSalesNames.length > 1 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5" />
-                    Sales:
-                  </span>
-                  <div className="flex gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setSalesFilter("all")}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-xs font-semibold transition-all border",
-                        salesFilter === "all"
-                          ? "bg-primary text-primary-foreground border-transparent shadow-sm"
-                          : "bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:bg-slate-100"
-                      )}
-                    >
-                      Semua
-                    </button>
-                    {uniqueSalesNames.map((name) => (
+            <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 sm:px-6 py-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                {/* Day tabs */}
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide flex-1">
+                  {DAYS.map((day) => {
+                    const isToday = day.id === getTodayDayId();
+                    const isSelected = day.id === selectedDay;
+                    const count = dayScheduleCounts[day.id] || 0;
+                    return (
                       <button
-                        key={name}
-                        onClick={() => setSalesFilter(name)}
+                        key={day.id}
+                        onClick={() => setSelectedDay(day.id)}
                         className={cn(
-                          "px-3 py-1 rounded-full text-xs font-semibold transition-all border",
-                          salesFilter === name
-                            ? "bg-primary text-primary-foreground border-transparent shadow-sm"
-                            : "bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:bg-slate-100"
+                          "flex flex-row items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-200 flex-shrink-0 border text-xs font-semibold",
+                          isSelected
+                            ? "bg-primary text-primary-foreground border-transparent shadow-sm scale-105"
+                            : isToday
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "bg-slate-50 dark:bg-slate-700/30 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
                         )}
                       >
-                        {name}
+                        {count > 0 && (
+                          <span
+                            className={cn(
+                              "text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0",
+                              isSelected
+                                ? "bg-white text-primary"
+                                : "bg-primary text-primary-foreground"
+                            )}
+                          >
+                            {count}
+                          </span>
+                        )}
+                        <span>{day.label}</span>
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
-              {/* Day tabs */}
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                {DAYS.map((day) => {
-                  const isToday = day.id === getTodayDayId();
-                  const isSelected = day.id === selectedDay;
-                  const count = dayScheduleCounts[day.id] || 0;
-                  return (
-                    <button
-                      key={day.id}
-                      onClick={() => setSelectedDay(day.id)}
-                      className={cn(
-                        "flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all duration-200 min-w-[54px] flex-shrink-0 border",
-                        isSelected
-                          ? "bg-primary text-primary-foreground border-transparent shadow-md scale-105"
-                          : isToday
-                          ? "bg-primary/10 text-primary border-primary/30"
-                          : "bg-slate-50 dark:bg-slate-700/30 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
-                      )}
+
+                {/* Sales filter */}
+                {isAdmin && uniqueSalesNames.length > 0 && (
+                  <div className="hidden sm:block flex-shrink-0">
+                    <Select
+                      value={scheduleSalesFilter}
+                      onValueChange={(v) => setScheduleSalesFilter(v)}
                     >
-                      <span className="text-[11px] font-semibold">{day.short}</span>
-                      {count > 0 ? (
-                        <span
-                          className={cn(
-                            "text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center",
-                            isSelected
-                              ? "bg-white/25 text-primary-foreground"
-                              : "bg-primary/15 text-primary"
-                          )}
-                        >
-                          {count}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] opacity-50">-</span>
-                      )}
-                    </button>
-                  );
-                })}
+                      <SelectTrigger className="w-[180px] h-9 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                        <SelectValue placeholder="Pilih sales..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all" className="text-xs">Semua Sales</SelectItem>
+                        {uniqueSalesNames.map((name) => (
+                          <SelectItem key={name} value={name} className="text-xs">
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -511,7 +640,7 @@ export default function VisitSchedulePage() {
                   )}
                 </h2>
                 <span className="text-sm text-slate-500 dark:text-slate-400">
-                  {schedulesForDay.length} toko
+                  {schedulesForDay.length} kunjungan
                 </span>
               </div>
 
@@ -548,47 +677,119 @@ export default function VisitSchedulePage() {
                     const customer = schedule.customers || {};
                     const name = schedule.customer_name || customer.name || "—";
                     const phone = customer.phone || "—";
-                    const address = customer.address
-                      ? `${customer.address}${customer.district ? `, Kec. ${customer.district}` : ""}${customer.city ? `, ${customer.city}` : ""}`
+                    const mainAddress = customer.address || null;
+                    const districtAndCity = (customer.district || customer.city)
+                      ? `${customer.district ? `Kec. ${customer.district}` : ""}${customer.district && customer.city ? ", " : ""}${customer.city ? `Kab. ${customer.city}` : ""}`
                       : null;
                     const isTracking = trackingId === schedule.id;
+
+                    // Find this week's log for this schedule to check verification status
+                    const todayLogForSchedule = (logs || []).find((log: any) => {
+                      return (
+                        log.schedule_id === schedule.id &&
+                        log.visited_at &&
+                        isDateInCurrentWeek(log.visited_at)
+                      );
+                    });
 
                     return (
                       <div
                         key={schedule.id}
                         className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200"
                       >
-                        {/* Card header */}
-                        <div className="flex items-start gap-3 p-3 sm:p-4">
-                          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-                            {idx + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
+                        {/* Card body */}
+                        <div className="flex items-start justify-between gap-3 p-3 sm:p-4">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className="hidden sm:flex flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 items-center justify-center text-primary font-bold text-sm">
+                              {idx + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
                               <h3 className="font-semibold text-slate-900 dark:text-white text-sm truncate">
                                 {name}
                               </h3>
-                              {schedule.visit_time && (
-                                <Badge variant="secondary" className="text-[10px] flex-shrink-0 gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {schedule.visit_time}
+                              <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                <Phone className="w-3 h-3 flex-shrink-0 text-primary" />
+                                <span>{phone}</span>
+                              </div>
+                              {(mainAddress || districtAndCity) && (
+                                <div className="flex items-start gap-1.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                  <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5 text-primary" />
+                                  <div className="flex flex-col">
+                                    {mainAddress && <span className="line-clamp-2">{mainAddress}</span>}
+                                    {districtAndCity && (
+                                      <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium">
+                                        {districtAndCity}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              {schedule.notes && (
+                                <p className="mt-1.5 text-xs text-slate-400 italic line-clamp-1">
+                                  "{schedule.notes}"
+                                </p>
+                              )}
+                              {todayLogForSchedule && (
+                                <Badge className="bg-primary hover:bg-primary text-primary-foreground border-transparent font-semibold rounded-lg text-[10px] h-6 px-2 flex items-center justify-center gap-1 mt-2 shadow-sm w-max">
+                                  <Clock className="w-3 h-3 text-primary-foreground" />
+                                  Check-in: {formatVisitedAt(todayLogForSchedule.visited_at)}
                                 </Badge>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
-                              <Phone className="w-3 h-3 flex-shrink-0" />
-                              <span>{phone}</span>
-                            </div>
-                            {address && (
-                              <div className="flex items-start gap-1.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                                <span className="line-clamp-2">{address}</span>
-                              </div>
+                          </div>
+
+                          {/* Right status / actions container (anchored to the far-right edge) */}
+                          <div className="flex-shrink-0 flex flex-col items-end gap-2 self-center ml-auto min-h-[40px]">
+                            {/* Visit Time Badge at the top right of the card body */}
+                            {schedule.visit_time && (
+                              <Badge variant="secondary" className="text-[10px] flex-shrink-0 gap-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-none font-medium h-5 px-1.5 shadow-none rounded-md">
+                                <Clock className="w-3 h-3" />
+                                {schedule.visit_time}
+                              </Badge>
                             )}
-                            {schedule.notes && (
-                              <p className="mt-1.5 text-xs text-slate-400 italic line-clamp-1">
-                                "{schedule.notes}"
-                              </p>
+
+                            {/* Status Badge / Admin Verification Action */}
+                            {isAdmin ? (
+                              todayLogForSchedule ? (
+                                (verifiedLogs[todayLogForSchedule.id] || (todayLogForSchedule.notes && todayLogForSchedule.notes.includes('[verified]'))) ? (
+                                  <Badge className="bg-green-500 hover:bg-green-600 text-white border-transparent font-semibold rounded-lg text-[10px] h-7 px-2.5 flex items-center justify-center gap-1 shadow-sm">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                    Selesai
+                                  </Badge>
+                                ) : (
+                                  <div className="flex flex-col sm:flex-row gap-1">
+                                    {todayLogForSchedule.latitude && todayLogForSchedule.longitude && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2.5 gap-1.5 text-[11px] border-primary/30 text-primary hover:bg-primary/5 rounded-lg font-semibold shadow-sm"
+                                        onClick={() => openInMaps(todayLogForSchedule.latitude, todayLogForSchedule.longitude)}
+                                      >
+                                        <Map className="w-3.5 h-3.5" />
+                                        Periksa
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2.5 gap-1.5 text-[11px] bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg font-semibold shadow-sm"
+                                      onClick={() => handleVerifyLog(todayLogForSchedule.id)}
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      Konfirmasi
+                                    </Button>
+                                  </div>
+                                )
+                              ) : (
+                                <Badge className="bg-slate-400 dark:bg-slate-700 text-white border-transparent font-semibold rounded-full text-[10px] h-5 px-2.5 shadow-sm">
+                                  Pending
+                                </Badge>
+                              )
+                            ) : (
+                              visitedScheduleIdsToday.has(schedule.id) && (
+                                <Badge className="bg-green-500 hover:bg-green-600 text-white border-transparent font-semibold rounded-full text-[10px] h-5 px-2.5 shadow-sm">
+                                  Selesai
+                                </Badge>
+                              )
                             )}
                           </div>
                         </div>
@@ -621,29 +822,45 @@ export default function VisitSchedulePage() {
                                 </Button>
                               </>
                             )}
-                            <Button
-                              size="sm"
-                              className={cn(
-                                "h-7 gap-1.5 text-xs font-semibold rounded-lg shadow-sm transition-all",
-                                isTracking
-                                  ? "bg-orange-500 hover:bg-orange-600 text-white"
-                                  : ""
-                              )}
-                              onClick={() => !isTracking && handleStartVisit(schedule)}
-                              disabled={isTracking || createLog.isPending}
-                            >
-                              {isTracking ? (
-                                <>
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  GPS...
-                                </>
+
+                            {!isAdmin && (
+                              visitedScheduleIdsToday.has(schedule.id) ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 gap-1.5 text-xs font-semibold rounded-lg border-green-200 bg-green-50/50 text-green-600 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/50 hover:bg-green-100 hover:text-green-700"
+                                  onClick={() => handleStartVisit(schedule)}
+                                  disabled={isTracking || createLog.isPending}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Kunjungi Lagi
+                                </Button>
                               ) : (
-                                <>
-                                  <Navigation className="w-3.5 h-3.5" />
-                                  Kunjungi
-                                </>
-                              )}
-                            </Button>
+                                <Button
+                                  size="sm"
+                                  className={cn(
+                                    "h-7 gap-1.5 text-xs font-semibold rounded-lg shadow-sm transition-all",
+                                    isTracking
+                                      ? "bg-orange-500 hover:bg-orange-600 text-white"
+                                      : ""
+                                  )}
+                                  onClick={() => !isTracking && handleStartVisit(schedule)}
+                                  disabled={isTracking || createLog.isPending}
+                                >
+                                  {isTracking ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      GPS...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Navigation className="w-3.5 h-3.5" />
+                                      Kunjungi
+                                    </>
+                                  )}
+                                </Button>
+                              )
+                            )}
                           </div>
                         </div>
                       </div>
@@ -658,52 +875,53 @@ export default function VisitSchedulePage() {
         {/* History Tab */}
         {activeTab === "history" && (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <History className="w-4 h-4 text-primary" />
-                Riwayat Kunjungan
-                {filteredLogs.length > 0 && (
-                  <Badge className="bg-primary text-primary-foreground text-[10px] h-4 px-1.5">
-                    {filteredLogs.length}
-                  </Badge>
-                )}
+            <div className="flex flex-row items-center justify-between gap-2 mb-4">
+              <h2 className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <History className="w-4 h-4 text-primary shrink-0" />
+                <span className="truncate">Riwayat Kunjungan</span>
               </h2>
-              {/* Sales filter for history */}
-              {uniqueLogSalesNames.length > 1 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5" />
-                    Sales:
-                  </span>
-                  <div className="flex gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setSalesFilter("all")}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-xs font-semibold transition-all border",
-                        salesFilter === "all"
-                          ? "bg-primary text-primary-foreground border-transparent shadow-sm"
-                          : "bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:bg-slate-100"
-                      )}
+              {/* Filters for history */}
+              <div className="flex gap-2 items-center shrink-0">
+                {/* Sales filter for history */}
+                {isAdmin && uniqueLogSalesNames.length > 0 && (
+                  <div className="hidden sm:block">
+                    <Select
+                      value={logSalesFilter}
+                      onValueChange={(v) => setLogSalesFilter(v)}
                     >
-                      Semua
-                    </button>
-                    {uniqueLogSalesNames.map((name) => (
-                      <button
-                        key={name}
-                        onClick={() => setSalesFilter(name)}
-                        className={cn(
-                          "px-3 py-1 rounded-full text-xs font-semibold transition-all border",
-                          salesFilter === name
-                            ? "bg-primary text-primary-foreground border-transparent shadow-sm"
-                            : "bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-600 hover:bg-slate-100"
-                        )}
-                      >
-                        {name}
-                      </button>
-                    ))}
+                      <SelectTrigger className="w-[180px] h-8 text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                        <SelectValue placeholder="Pilih sales..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all" className="text-xs">Semua Sales</SelectItem>
+                        {uniqueLogSalesNames.map((name) => (
+                          <SelectItem key={name} value={name} className="text-xs">
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Day filter for history */}
+                <Select
+                  value={logDayFilter}
+                  onValueChange={(v) => setLogDayFilter(v)}
+                >
+                  <SelectTrigger className="w-[110px] sm:w-[150px] h-8 text-[11px] sm:text-xs rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                    <SelectValue placeholder="Semua Hari" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="text-xs">Semua Hari</SelectItem>
+                    {DAYS.map((day) => (
+                      <SelectItem key={day.id} value={day.id.toString()} className="text-xs">
+                        {day.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {logsLoading ? (
@@ -716,7 +934,9 @@ export default function VisitSchedulePage() {
                   <History className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                 </div>
                 <p className="text-slate-500 dark:text-slate-400 font-medium">
-                  {salesFilter !== "all" ? `Belum ada riwayat untuk ${salesFilter}` : "Belum ada riwayat kunjungan"}
+                  {logSalesFilter !== "all" || logDayFilter !== "all"
+                    ? "Belum ada riwayat dengan kriteria filter tersebut"
+                    : "Belum ada riwayat kunjungan"}
                 </p>
                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
                   Klik "Kunjungi" pada jadwal untuk mencatat kunjungan
@@ -724,15 +944,15 @@ export default function VisitSchedulePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredLogs.map((log: any) => (
+                {filteredLogs.map((log: any, idx: number) => (
                   <div
                     key={log.id}
                     className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200"
                   >
                     <div className="flex items-start justify-between gap-3 p-3 sm:p-4">
                       <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+                          {idx + 1}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">
@@ -746,31 +966,46 @@ export default function VisitSchedulePage() {
                             <Clock className="w-3 h-3" />
                             <span>{formatVisitedAt(log.visited_at)}</span>
                           </div>
-                          {log.notes && (
-                            <p className="mt-1.5 text-xs text-slate-400 italic">"{log.notes}"</p>
+                          {cleanNotes(log.notes) && (
+                            <p className="mt-1.5 text-xs text-slate-400 italic">"{cleanNotes(log.notes)}"</p>
                           )}
                         </div>
                       </div>
 
-                      {log.latitude && log.longitude && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1 text-xs flex-shrink-0"
-                          onClick={() => openInMaps(log.latitude, log.longitude)}
-                        >
-                          <Map className="w-3.5 h-3.5" />
-                          Maps
-                        </Button>
-                      )}
+                      {/* Status Badges on the far right side of the history card */}
+                      <div className="flex-shrink-0 flex flex-col sm:flex-row items-center gap-1.5 self-center ml-auto">
+                        <Badge className="bg-green-500 hover:bg-green-600 text-white border-transparent font-semibold rounded-full text-[10px] h-5 px-2 shadow-sm">
+                          Selesai
+                        </Badge>
+                        {(verifiedLogs[log.id] || (log.notes && log.notes.includes('[verified]'))) ? (
+                          <Badge className="bg-blue-500 hover:bg-blue-600 text-white border-transparent font-semibold rounded-full text-[10px] h-5 px-2 shadow-sm">
+                            Valid
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-yellow-500 hover:bg-yellow-600 text-white border-transparent font-semibold rounded-full text-[10px] h-5 px-2 shadow-sm">
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     {log.latitude && log.longitude && (
-                      <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-2 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
-                        <MapPin className="w-3 h-3 text-green-500 flex-shrink-0" />
-                        <span className="font-mono">
-                          {log.latitude.toFixed(6)}, {log.longitude.toFixed(6)}
-                        </span>
+                      <div className="px-3 sm:px-4 pb-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-2 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                          <span className="font-mono">
+                            {log.latitude.toFixed(6)}, {log.longitude.toFixed(6)}
+                          </span>
+                        </div>
+                        <a
+                          href={`https://maps.google.com/?q=${log.latitude},${log.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:underline flex items-center gap-1 font-medium"
+                        >
+                          <Map className="w-3 h-3 text-primary" />
+                          Buka Peta
+                        </a>
                       </div>
                     )}
                   </div>
@@ -970,7 +1205,7 @@ export default function VisitSchedulePage() {
               Konfirmasi Kunjungan
             </DialogTitle>
             <DialogDescription>
-              Lokasi berhasil didapatkan. Tambahkan catatan kunjungan (opsional).
+              Selesaikan check-in kunjungan hari ini
             </DialogDescription>
           </DialogHeader>
 
@@ -986,7 +1221,7 @@ export default function VisitSchedulePage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <MapPin className="w-3.5 h-3.5 text-green-500" />
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
                   <span className="font-mono">
                     {pendingCheckIn.position.latitude.toFixed(6)},{" "}
                     {pendingCheckIn.position.longitude.toFixed(6)}
@@ -1036,6 +1271,87 @@ export default function VisitSchedulePage() {
                 </>
               )}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Location Verification Dialog */}
+      <Dialog open={!!checkingLog} onOpenChange={(open) => !open && setCheckingLog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-primary" />
+              Pemeriksaan Lokasi Kunjungan
+            </DialogTitle>
+            <DialogDescription>
+              Validasi koordinat GPS sales saat melakukan check-in
+            </DialogDescription>
+          </DialogHeader>
+
+          {checkingLog && (
+            <div className="py-2 space-y-4">
+              <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="grid grid-cols-[100px_1fr] text-xs gap-y-2">
+                  <span className="text-slate-400 font-medium">Toko:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {checkingLog.customer_name}
+                  </span>
+
+                  <span className="text-slate-400 font-medium">Sales:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {checkingLog.sales_name}
+                  </span>
+
+                  <span className="text-slate-400 font-medium">Waktu:</span>
+                  <span className="text-slate-600 dark:text-slate-300">
+                    {formatVisitedAt(checkingLog.visited_at)}
+                  </span>
+
+                  <span className="text-slate-400 font-medium">Koordinat:</span>
+                  <span className="font-mono text-slate-600 dark:text-slate-300">
+                    {checkingLog.latitude.toFixed(6)}, {checkingLog.longitude.toFixed(6)}
+                  </span>
+
+                  {checkingLog.notes && (
+                    <>
+                      <span className="text-slate-400 font-medium">Catatan:</span>
+                      <span className="text-slate-600 dark:text-slate-300 italic">
+                        "{cleanNotes(checkingLog.notes)}"
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Badge */}
+              <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
+                <span className="text-slate-500">Status Pemeriksaan:</span>
+                {(verifiedLogs[checkingLog.id] || (checkingLog.notes && checkingLog.notes.includes('[verified]'))) ? (
+                  <Badge className="bg-emerald-500 text-white font-bold">
+                    VALID
+                  </Badge>
+                ) : (
+                  <Badge className="bg-amber-500 text-white font-bold">
+                    MENUNGGU VALIDASI
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setCheckingLog(null)}>
+              Tutup
+            </Button>
+            {checkingLog && !(verifiedLogs[checkingLog.id] || (checkingLog.notes && checkingLog.notes.includes('[verified]'))) && (
+              <Button
+                onClick={() => handleVerifyLog(checkingLog.id)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Konfirmasi Lokasi Valid
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

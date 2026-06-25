@@ -37,6 +37,9 @@ interface Transaction {
   cashierName?: string;
   outletId?: number;
   tax?: number;
+  paymentStatus?: string;
+  dueDate?: string;
+  remainingBalance?: number;
 }
 
 interface ExportColumn {
@@ -58,20 +61,25 @@ interface ExportOptions {
 const DEFAULT_COL_WIDTHS: ExportColumn[] = [
   { header: "Tanggal", key: "Tanggal", width: 12 },
   { header: "Jam", key: "Jam", width: 8 },
-  { header: "No. ID", key: "No. ID", width: 15 },
-  { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 20 },
+  { header: "No.Transaksi", key: "No.Transaksi", width: 15 },
+  { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 35 },
   { header: "Penjualan Produk", key: "Penjualan Produk", width: 40 },
   { header: "Total", key: "Total", width: 15 },
+  { header: "Cicilan", key: "Cicilan", width: 15 },
+  { header: "Tempo Penuh", key: "Tempo Penuh", width: 15 },
+  { header: "Tagihan", key: "Tagihan", width: 15 },
+  { header: "Jatuh Tempo", key: "Jatuh Tempo", width: 15 },
   { header: "Metode", key: "Metode", width: 10 },
-  { header: "Kasir", key: "Kasir", width: 15 },
-  { header: "Outlet", key: "Outlet", width: 20 },
+  { header: "Salesman", key: "Salesman", width: 15 },
+  { header: "Status", key: "Status", width: 15 },
 ];
 
 const CENTER_ALIGNED_KEYS = new Set([
   "Tanggal",
   "Jam",
-  "No. ID",
+  "No.Transaksi",
   "Status",
+  "Jatuh Tempo",
   "Diskon",
   "No",
   "Poin",
@@ -80,16 +88,18 @@ const CENTER_ALIGNED_KEYS = new Set([
 
 const RIGHT_ALIGNED_KEYS = new Set([
   "Total",
+  "Cicilan",
+  "Tempo Penuh",
+  "Tagihan",
   "PPN",
   "Grand Total",
   "Metode",
-  "Kasir",
-  "Outlet",
+  "Salesman",
   "Total Belanja",
 ]);
 
 // Columns that need thousand separator format (numbers only)
-const THOUSAND_FORMAT_KEYS = new Set(["Total", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
+const THOUSAND_FORMAT_KEYS = new Set(["Total", "Cicilan", "Tempo Penuh", "Tagihan", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
 
 const HEADER_STYLE = {
   font: { bold: true, color: { rgb: "FFFFFF" } },
@@ -216,82 +226,13 @@ function applyWorksheetStyles(
   return { lastDataRow };
 }
 
-function addSumRow(
-  ws: XLSX.WorkSheet,
-  columns: ExportColumn[],
-  lastDataRow: number
-): void {
-  const sumRow = lastDataRow + 1;
-  const startRow = 2; // Data starts at row 2 (after header)
-
-  const summaryCol = columns.length - 2;
-
-  // Add SUM formulas for Total in column
-  const sumItems = [
-    { label: "Total", colKey: "Total" },
-  ];
-
-  // No fill - clean look
-  const SUM_LABEL_FILL = { patternType: "none" as const, fgColor: { rgb: "FFFFFF" } };
-  const SUM_LABEL_FONT = { bold: true, rgb: "000000" };
-
-  sumItems.forEach((item, idx) => {
-    const rowNum = sumRow + idx;
-
-    // Get column index for the source column
-    const sourceColIndex = columns.findIndex((c) => c.key === item.colKey);
-    if (sourceColIndex === -1) return;
-
-    const sourceColLetter = XLSX.utils.encode_col(sourceColIndex);
-    const cellRef = XLSX.utils.encode_cell({ r: rowNum, c: summaryCol });
-
-    // Create label
-    ws[cellRef] = {
-      t: "s",
-      v: item.label + "",
-    };
-    ws[cellRef].s = {
-      font: SUM_LABEL_FONT,
-      fill: SUM_LABEL_FILL,
-      alignment: { horizontal: "right" as const, vertical: "center" as const },
-      border: GRID_BORDER,
-    };
-
-    // Add the sum value in the next column
-    const valueCol = columns.length - 1;
-    const valueCellRef = XLSX.utils.encode_cell({ r: rowNum, c: valueCol });
-    const formula = `SUM(${sourceColLetter}${startRow}:${sourceColLetter}${lastDataRow})`;
-
-    ws[valueCellRef] = { t: "n", f: formula, v: 0 };
-    ws[valueCellRef].s = {
-      font: SUM_LABEL_FONT,
-      fill: SUM_LABEL_FILL,
-      alignment: { horizontal: "right" as const, vertical: "center" as const },
-      border: GRID_BORDER,
-      numFmt: RUPIAH_FORMAT,
-    };
-  });
-
-  // Update worksheet range to include all sum rows
-  const range = XLSX.utils.decode_range(ws["!ref"]!);
-  ws["!ref"] = XLSX.utils.encode_range({
-    s: range.s,
-    e: { r: sumRow + sumItems.length, c: Math.max(range.e.c, summaryCol + 1) },
-  });
-}
-
 // Core export function
 export async function exportToExcel(options: ExportOptions): Promise<void> {
   const { sheetName, columns, data, rowStripes, filename } = options;
 
   const ws = XLSX.utils.json_to_sheet(data);
   ws["!cols"] = columns.map((col) => ({ wch: col.width }));
-  const { lastDataRow } = applyWorksheetStyles(ws, columns, rowStripes);
-
-  // Add sum row if there's data
-  if (lastDataRow > 1) {
-    addSumRow(ws, columns, lastDataRow);
-  }
+  applyWorksheetStyles(ws, columns, rowStripes);
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -307,13 +248,13 @@ export async function exportToExcel(options: ExportOptions): Promise<void> {
     await Filesystem.writeFile({
       path: fileName,
       data: base64Data,
-      directory: Directory.Documents,
+      directory: Directory.Cache,
       recursive: true,
     });
 
     const filePath = await Filesystem.getUri({
       path: fileName,
-      directory: Directory.Documents,
+      directory: Directory.Cache,
     });
 
     await Share.share({
@@ -369,16 +310,27 @@ function buildExportRow(
   // Hitung Total (jumlah dari qty * harga per item)
   const totalBelanja = itemsList.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0);
 
+  const statusStr = trx.paymentStatus === 'paid' ? 'Lunas' : (trx.paymentStatus === 'partial' ? 'Cicilan' : (trx.paymentStatus === 'unpaid' ? 'Belum Bayar' : '-'));
+  const remaining = Number(trx.remainingBalance) || 0;
+  let paid = totalBelanja - remaining;
+
+  const isPaid = trx.paymentStatus === 'paid';
+  const isUnpaid = trx.paymentStatus === 'unpaid';
+
   return {
     Tanggal: formatDateForExcel(trx.createdAt),
     Jam: formatTimeForExcel(trx.createdAt),
-    "No. ID": Number.isFinite(transactionId) ? formatInvoiceNumber(transactionId) : "-",
+    "No.Transaksi": Number.isFinite(transactionId) ? formatInvoiceNumber(transactionId) : "-",
     "Nama Pelanggan": trx.customerName || "Umum",
     "Penjualan Produk": penjualanProduk || "-",
     Total: formatExcelRupiah(totalBelanja),
+    Cicilan: isPaid || isUnpaid ? "-" : formatExcelRupiah(paid),
+    "Tempo Penuh": isUnpaid ? formatExcelRupiah(remaining) : "-",
+    Tagihan: formatExcelRupiah(remaining),
+    "Jatuh Tempo": trx.dueDate ? formatDateForExcel(trx.dueDate) : "-",
     Metode: formatPaymentMethod(trx.paymentMethod),
-    Kasir: trx.cashierName || cashierDefault,
-    Outlet: outletName || branchName,
+    Salesman: trx.cashierName || cashierDefault,
+    Status: statusStr,
   };
 }
 
@@ -451,6 +403,9 @@ export function mapApiTransactionsToExport(
       total,
       cashierName: (trx.cashier_name ?? trx.cashierName) as string | undefined,
       outletId: Number(trx.outlet_id ?? trx.outletId) || undefined,
+      paymentStatus: trx.payment_status as string | undefined,
+      dueDate: trx.due_date as string | undefined,
+      remainingBalance: Number(trx.remaining_balance ?? trx.remainingBalance) || 0,
     };
   });
 }

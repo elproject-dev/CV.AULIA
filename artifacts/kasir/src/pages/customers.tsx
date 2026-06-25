@@ -5,7 +5,7 @@ import { formatRupiah } from "@/lib/formatters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, Edit, Trash2, Phone, Award, Users, Download, Store, AlertTriangle, Copy } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Phone, Award, Users, Download, Store, AlertTriangle, Copy, MapPin } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ export default function CustomersPage() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [salesFilter, setSalesFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("newest");
   const [lookupPhone, setLookupPhone] = useState("");
   const [lookupResult, setLookupResult] = useState<any>(null);
   const { data: customers, isLoading } = useListCustomers();
@@ -204,6 +205,24 @@ export default function CustomersPage() {
     if (!search || search.length < 3) return true;
     const s = search.toLowerCase();
     return customer.name?.toLowerCase().includes(s) || (customer.phone || "").toLowerCase().includes(s);
+  }).sort((a: any, b: any) => {
+    if (sortBy === "newest") {
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    if (sortBy === "oldest") {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
+    if (sortBy === "id_asc") {
+      const idA = a.customer_id_manual || "";
+      const idB = b.customer_id_manual || "";
+      return idA.localeCompare(idB);
+    }
+    if (sortBy === "id_desc") {
+      const idA = a.customer_id_manual || "";
+      const idB = b.customer_id_manual || "";
+      return idB.localeCompare(idA);
+    }
+    return 0;
   });
 
   return (
@@ -234,18 +253,33 @@ export default function CustomersPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
               <Input placeholder="Cari pelanggan..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
             </div>
-            <div className="w-full sm:w-[200px]">
-              <Select value={salesFilter} onValueChange={setSalesFilter}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Semua Sales" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Sales</SelectItem>
-                  {uniqueSalesNames.map((name: any) => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex gap-3 w-full sm:w-auto">
+              <div className="w-full sm:w-[160px]">
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Urutkan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Terbaru</SelectItem>
+                    <SelectItem value="oldest">Terlama</SelectItem>
+                    <SelectItem value="id_asc">ID (A-Z)</SelectItem>
+                    <SelectItem value="id_desc">ID (Z-A)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full sm:w-[160px]">
+                <Select value={salesFilter} onValueChange={setSalesFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Semua Sales" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Sales</SelectItem>
+                    {uniqueSalesNames.map((name: any) => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -263,19 +297,22 @@ export default function CustomersPage() {
                         <div className="font-semibold text-slate-900 dark:text-white mb-1.5">{customer.name}</div>
                         <div className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                           <div className="flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-slate-400" />
+                            <Phone className="w-3.5 h-3.5 text-primary" />
                             {customer.phone || "-"}
                           </div>
                           {(customer.address || customer.district || customer.city) && (
-                            <div className="text-slate-400 mt-1 flex flex-col gap-0.5">
-                              <div>📍 {customer.address || "-"}</div>
-                              {(customer.district || customer.city) && (
-                                <div className="text-[10px] text-slate-500 dark:text-slate-400 ml-4">
-                                  {customer.district ? `Kec. ${customer.district}` : ""}
-                                  {customer.district && customer.city ? ", " : ""}
-                                  {customer.city ? `Kab. ${customer.city}` : ""}
-                                </div>
-                              )}
+                            <div className="flex items-start gap-1.5 mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
+                              <div className="flex flex-col">
+                                <span>{customer.address || "-"}</span>
+                                {(customer.district || customer.city) && (
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium">
+                                    {customer.district ? `Kec. ${customer.district}` : ""}
+                                    {customer.district && customer.city ? ", " : ""}
+                                    {customer.city ? `Kab. ${customer.city}` : ""}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -312,7 +349,6 @@ export default function CustomersPage() {
                   <TableHead className="w-[140px]">ID Pelanggan</TableHead>
                   <TableHead>Nama Pelanggan</TableHead>
                   <TableHead>Kontak</TableHead>
-                  <TableHead>Alamat</TableHead>
                   <TableHead>Pelanggan dari</TableHead>
                   <TableHead className="text-right">Total Belanja</TableHead>
                   {isAdmin && <TableHead className="text-right">Aksi</TableHead>}
@@ -320,9 +356,9 @@ export default function CustomersPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
                 ) : filteredCustomers?.length === 0 ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                 ) : (
                   filteredCustomers?.map((customer: any) => {
                     return (
@@ -334,20 +370,6 @@ export default function CustomersPage() {
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">{customer.customer_id_manual || "-"}</TableCell>
                         <TableCell className="font-medium text-slate-900 dark:text-white whitespace-nowrap">{customer.name}</TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">{customer.phone || "-"}</TableCell>
-                        <TableCell className="text-slate-600 dark:text-slate-400">
-                          {customer.address ? (
-                            <div className="max-w-[200px] truncate">
-                              <div>{customer.address}</div>
-                              {(customer.district || customer.city) && (
-                                <div className="text-[10px] text-slate-400 truncate">
-                                  {customer.district ? `Kec. ${customer.district}` : ""}
-                                  {customer.district && customer.city ? ", " : ""}
-                                  {customer.city ? `Kab. ${customer.city}` : ""}
-                                </div>
-                              )}
-                            </div>
-                          ) : "-"}
-                        </TableCell>
                         <TableCell className="text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           {customer.sales_name || "-"}
                         </TableCell>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useCountUp } from "@/hooks/useCountUp";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { useListReceivables, useListTransactionPayments, useCreateTransactionPayment, useGetTransaction, useDeleteTransaction } from "@workspace/api-client-react";
+import { useListReceivables, useListTransactionPayments, useCreateTransactionPayment, useConfirmTransactionPayment, useListPendingPayments, useGetTransaction, useDeleteTransaction } from "@workspace/api-client-react";
 import { formatRupiah, formatInvoiceNumber, formatSimpleDate } from "@/lib/formatters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 
 const isDateOverdue = (dueDateStr: string | null | undefined) => {
   if (!dueDateStr) return false;
-  
+
   // Parse the due date strictly in local timezone YYYY-MM-DD
   const parts = dueDateStr.split('T')[0].split('-');
   if (parts.length === 3) {
@@ -33,13 +33,13 @@ const isDateOverdue = (dueDateStr: string | null | undefined) => {
     const month = parseInt(parts[1], 10) - 1;
     const day = parseInt(parts[2], 10);
     const dueDateObj = new Date(year, month, day);
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     return dueDateObj <= today;
   }
-  
+
   // Fallback
   const dueDateObj = new Date(dueDateStr);
   dueDateObj.setHours(0, 0, 0, 0);
@@ -108,7 +108,7 @@ export default function ReceivablesPage() {
 
     let itemsHtml = trx.transaction_items?.map((item: any, index: number) => {
       const productName = item.product_name || 'Unknown';
-      
+
       // Sync quantity, unit name, and price based on UOM conversion factor
       const isUom = item.conversion_factor > 1 && item.unit_name && item.unit_name.toLowerCase() !== 'pcs';
       const displayQty = isUom ? (item.unit_qty || (item.quantity / item.conversion_factor)) : item.quantity;
@@ -552,7 +552,7 @@ export default function ReceivablesPage() {
     setTempEndDate("");
   };
 
-  const [activeTab, setActiveTab] = useState<'outstanding' | 'history'>('outstanding');
+  const [activeTab, setActiveTab] = useState<'outstanding' | 'history' | 'pending'>('outstanding');
   const { data: receivables, isLoading, refetch } = useListReceivables();
 
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
@@ -560,8 +560,16 @@ export default function ReceivablesPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
 
-  const { data: paymentsHistory, isLoading: isLoadingHistory } = useListTransactionPayments(selectedTransaction?.id || null);
+  const { data: paymentsHistory, isLoading: isLoadingHistory, refetch: refetchPayments } = useListTransactionPayments(selectedTransaction?.id || null);
   const createPayment = useCreateTransactionPayment();
+  const confirmPayment = useConfirmTransactionPayment();
+  const { data: pendingPayments, isLoading: isLoadingPending } = useListPendingPayments();
+
+  // Set of transaction IDs that already have a pending payment from sales
+  const pendingTransactionIds = useMemo(() => {
+    if (!pendingPayments) return new Set<number>();
+    return new Set(pendingPayments.map((p: any) => p.transaction_id));
+  }, [pendingPayments]);
 
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -655,6 +663,8 @@ export default function ReceivablesPage() {
   });
 
   const handleOpenPayment = (trx: any) => {
+    // Block if there's already a pending payment for this transaction
+    if (pendingTransactionIds.has(trx.id)) return;
     setSelectedTransaction(trx);
     setPaymentAmount(trx.remaining_balance.toLocaleString("id-ID"));
     setPaymentNotes("");
@@ -692,18 +702,41 @@ export default function ReceivablesPage() {
     createPayment.mutate({
       transactionId: selectedTransaction.id,
       amount: amount,
-      paymentMethod: "cash", // Bawaan cash untuk cicilan, bisa dikembangkan
+      paymentMethod: "cash",
       cashierName: cashierName,
-      notes: paymentNotes
+      notes: paymentNotes,
+      isAdmin: isAdmin,
     }, {
       onSuccess: () => {
-        toast({ title: "Sukses", description: "Pembayaran berhasil dicatat" });
+        toast({
+          title: isAdmin ? "Pembayaran Dicatat" : "Permintaan Dikirim",
+          description: isAdmin
+            ? "Dana berhasil masuk ke sistem."
+            : "Pembayaran menunggu konfirmasi admin."
+        });
         setIsPaymentModalOpen(false);
         setSelectedTransaction(null);
         refetch();
       },
       onError: (err: any) => {
         toast({ title: "Error", description: err.message || "Gagal mencatat pembayaran", variant: "destructive" });
+      }
+    });
+  };
+
+  const handleConfirmPayment = (payment: any) => {
+    confirmPayment.mutate({
+      paymentId: payment.id,
+      transactionId: payment.transaction_id,
+      amount: payment.amount,
+      confirmedBy: cashierName,
+    }, {
+      onSuccess: () => {
+        toast({ title: "✅ Dikonfirmasi", description: `Dana ${formatRupiah(payment.amount)} dari ${payment.cashier_name} berhasil masuk.` });
+        refetch();
+      },
+      onError: (err: any) => {
+        toast({ title: "Gagal", description: err.message || "Gagal mengkonfirmasi pembayaran", variant: "destructive" });
       }
     });
   };
@@ -723,48 +756,64 @@ export default function ReceivablesPage() {
   return (
     <Sidebar>
       <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950">
-        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-between">
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
             <TbCoin className="w-6 h-6 text-primary" />
             Piutang Pelanggan
           </h1>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => setShowDownloadDialog(true)}
-            className="flex items-center gap-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-600"
+            className="h-10 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0 gap-2"
           >
-            <Download className="w-4 h-4" />
-            Download Excel
+            <Download className="w-4 h-4 text-primary" />
+            <span className="font-medium text-xs sm:text-sm">Download</span>
           </Button>
         </div>
 
         {/* Tabs Switcher */}
-        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex gap-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <div className="px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-between sm:justify-start sm:gap-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
           <button
             onClick={() => setActiveTab('outstanding')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'outstanding'
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'outstanding'
               ? 'border-primary text-primary'
               : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
-            <Clock className="w-4 h-4" />
-            Belum Lunas
+            <Clock className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Belum Lunas</span>
             {receivables?.filter((r: any) => r.payment_status !== 'paid').length > 0 && (
               <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-full text-[10px] font-bold">
                 {receivables.filter((r: any) => r.payment_status !== 'paid').length}
               </span>
             )}
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('pending')}
+              className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'pending'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                }`}
+            >
+              <CheckCircle2 className="w-5 h-5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Konfirmasi Bayar</span>
+              {pendingPayments && pendingPayments.length > 0 && (
+                <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                  {pendingPayments.length}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('history')}
-            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center gap-2 ${activeTab === 'history'
+            className={`py-3 text-sm font-semibold border-b-2 transition-all relative flex items-center justify-center gap-2 flex-1 sm:flex-none ${activeTab === 'history'
               ? 'border-primary text-primary'
               : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
-            <History className="w-4 h-4" />
-            Riwayat Lunas
+            <History className="w-5 h-5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Riwayat Lunas</span>
           </button>
         </div>
 
@@ -844,210 +893,448 @@ export default function ReceivablesPage() {
             </div>
           </div>
 
-          <div className="mb-4 flex flex-col sm:flex-row justify-between gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
-              <Input
-                placeholder="Cari ID Transaksi / Nama Pelanggan..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex gap-2 items-center">
-              <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="relative bg-white dark:bg-slate-800 dark:border-slate-700 shrink-0 h-10 px-4 border-2 flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <SlidersHorizontal className="w-4 h-4 text-primary" />
-                    <span className="font-medium text-sm">Filter</span>
-                    {(statusFilter !== "all" || salesFilter !== "all" || startDate !== "" || endDate !== "") && (
-                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full" />
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-[340px] max-w-[95vw] p-4 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center gap-2 font-semibold text-sm mb-4 border-b pb-2 text-slate-800 dark:text-slate-200">
-                    <SlidersHorizontal className="w-4 h-4 text-primary" />
-                    Filter Piutang
-                  </div>
+          {/* Tab: Pending Pembayaran (Admin Only) */}
+          {activeTab === 'pending' && isAdmin && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 dark:bg-primary/25 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Konfirmasi Pembayaran</h2>
+                  <p className="text-sm text-slate-500">Pembayaran dari sales yang menunggu konfirmasi admin</p>
+                </div>
+              </div>
 
-                  <div className="space-y-4">
-                    {/* Date Filters */}
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium text-slate-500">Rentang Tanggal</Label>
-                      <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
-                        <div className="relative w-full h-9">
-                          <Input
-                            type="text"
-                            placeholder="Tanggal Mulai"
-                            value={tempStartDate ? tempStartDate.split('-').reverse().join('-') : ""}
-                            readOnly
-                            className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
-                          />
-                          <input
-                            type="date"
-                            value={tempStartDate}
-                            onChange={(e: any) => setTempStartDate(e.target.value)}
-                            onClick={(e: any) => {
-                              try { e.target.showPicker?.(); } catch (err) { }
-                            }}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            title="Tanggal Mulai"
-                          />
+              {isLoadingPending ? (
+                <div className="text-center py-12 text-slate-500">Memuat data...</div>
+              ) : !pendingPayments || pendingPayments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                  <CheckCircle2 className="w-14 h-14 text-emerald-400 mb-4" />
+                  <p className="text-lg font-semibold text-slate-900 dark:text-white">Semua Sudah Dikonfirmasi!</p>
+                  <p className="text-sm text-slate-500">Tidak ada pembayaran yang menunggu konfirmasi.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Mobile Cards */}
+                  <div className="flex flex-col gap-3 md:hidden">
+                    {pendingPayments.map((p: any) => (
+                      <div
+                        key={p.id}
+                        className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm relative hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => handleRowClick({ id: p.transaction_id })}
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="font-mono text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                              {formatInvoiceNumber(p.transaction_id)}
+                            </p>
+                            <p className="font-semibold text-slate-900 dark:text-white mt-1">
+                              {p.transactions?.customers?.name || 'Pelanggan Umum'}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/50 font-medium">
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500" />
+                            </span>
+                            Pending
+                          </Badge>
                         </div>
-                        <span className="text-slate-400 text-sm hidden sm:block">-</span>
-                        <div className="relative w-full h-9">
-                          <Input
-                            type="text"
-                            placeholder="Tanggal Akhir"
-                            value={tempEndDate ? tempEndDate.split('-').reverse().join('-') : ""}
-                            readOnly
-                            className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
-                          />
-                          <input
-                            type="date"
-                            value={tempEndDate}
-                            onChange={(e: any) => setTempEndDate(e.target.value)}
-                            onClick={(e: any) => {
-                              try { e.target.showPicker?.(); } catch (err) { }
-                            }}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            title="Tanggal Akhir"
-                          />
+                        <div className="flex justify-between text-sm mb-3">
+                          <div>
+                            <p className="text-xs text-slate-500">Sales</p>
+                            <p className="font-medium text-slate-700 dark:text-slate-300">{p.cashier_name || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Tanggal Bayar</p>
+                            <p className="font-medium text-slate-700 dark:text-slate-300">{formatSimpleDate(p.payment_date)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-slate-500">Nominal</p>
+                            <p className="font-bold text-amber-600 dark:text-amber-400 text-lg">{formatRupiah(p.amount)}</p>
+                          </div>
                         </div>
+                        {p.notes && (
+                          <p className="text-xs text-slate-500 italic mb-3">Catatan: {p.notes}</p>
+                        )}
+                        <Button
+                          size="sm"
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-0"
+                          onClick={(e) => { e.stopPropagation(); handleConfirmPayment(p); }}
+                          disabled={confirmPayment.isPending}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                          Konfirmasi & Masukkan Dana
+                        </Button>
                       </div>
-                    </div>
-
-                    {/* Status Filter */}
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium text-slate-500">Status Pembayaran</Label>
-                      <Select value={tempStatusFilter} onValueChange={setTempStatusFilter}>
-                        <SelectTrigger className="h-9 text-xs">
-                          <SelectValue placeholder="Semua Status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Semua Status</SelectItem>
-                          <SelectItem value="paid">Lunas</SelectItem>
-                          <SelectItem value="partial">Cicilan</SelectItem>
-                          <SelectItem value="unpaid">Belum Bayar</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Sales Filter (Khusus Admin) */}
-                    {isAdmin && (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-medium text-slate-500">Sales</Label>
-                        <Select value={tempSalesFilter} onValueChange={setTempSalesFilter}>
-                          <SelectTrigger className="h-9 text-xs">
-                            <SelectValue placeholder="Semua Sales" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Semua Sales</SelectItem>
-                            {uniqueSales.map((sales: string) => (
-                              <SelectItem key={sales} value={sales}>{sales}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+                    ))}
                   </div>
 
-                  <div className="flex gap-2 justify-end mt-6">
-                    <Button variant="outline" onClick={handleResetFilter} className="h-9 text-xs w-full">
-                      Atur Ulang
-                    </Button>
-                    <Button onClick={handleApplyFilter} className="h-9 px-4 text-xs w-full">
-                      Terapkan
-                    </Button>
+                  {/* Desktop Table */}
+                  <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-50 dark:bg-slate-800/50">
+                          <TableHead className="whitespace-nowrap w-[130px]">ID Transaksi</TableHead>
+                          <TableHead className="whitespace-nowrap min-w-[180px]">Pelanggan</TableHead>
+                          <TableHead className="whitespace-nowrap text-center min-w-[130px]">Sales</TableHead>
+                          <TableHead className="whitespace-nowrap text-center min-w-[130px]">Tgl Bayar</TableHead>
+                          <TableHead className="whitespace-nowrap text-right min-w-[140px]">Nominal</TableHead>
+                          <TableHead className="whitespace-nowrap min-w-[160px]">Catatan</TableHead>
+                          <TableHead className="whitespace-nowrap text-center min-w-[110px]">Aksi</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingPayments.map((p: any) => (
+                          <TableRow
+                            key={p.id}
+                            className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                            onClick={() => handleRowClick({ id: p.transaction_id })}
+                          >
+                            <TableCell className="font-mono text-xs font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                              {formatInvoiceNumber(p.transaction_id)}
+                            </TableCell>
+                            <TableCell className="font-medium whitespace-nowrap truncate max-w-[200px]">
+                              {p.transactions?.customers?.name || 'Pelanggan Umum'}
+                            </TableCell>
+                            <TableCell className="text-center font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap truncate max-w-[130px]">
+                              {p.cashier_name || '-'}
+                            </TableCell>
+                            <TableCell className="text-center text-slate-500 text-sm whitespace-nowrap">
+                              {formatSimpleDate(p.payment_date)}
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                              {formatRupiah(p.amount)}
+                            </TableCell>
+                            <TableCell className="text-slate-500 text-sm max-w-[160px] truncate">
+                              {p.notes || '-'}
+                            </TableCell>
+                            <TableCell className="text-center whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 border-0"
+                                onClick={(e) => { e.stopPropagation(); handleConfirmPayment(p); }}
+                                disabled={confirmPayment.isPending}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                                Konfirmasi
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
-                </PopoverContent>
-              </Popover>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50 dark:bg-slate-800/50">
-                  <TableHead className="whitespace-nowrap w-[130px]">ID Transaksi</TableHead>
-                  <TableHead className="whitespace-nowrap min-w-[120px]">Tgl Transaksi</TableHead>
-                  <TableHead className="whitespace-nowrap min-w-[180px]">Pelanggan</TableHead>
-                  <TableHead className="whitespace-nowrap min-w-[130px]">Jatuh Tempo</TableHead>
-                  <TableHead className="whitespace-nowrap text-right min-w-[140px]">Total Transaksi</TableHead>
-                  <TableHead className="whitespace-nowrap text-right min-w-[140px]">Sisa Tagihan</TableHead>
-                  <TableHead className="whitespace-nowrap text-center min-w-[130px]">Sales</TableHead>
-                  <TableHead className="whitespace-nowrap text-center min-w-[110px]">Status</TableHead>
-                  <TableHead className="whitespace-nowrap text-right min-w-[100px]">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+          {/* Filter + Table - hanya tampil di tab outstanding & history */}
+          {activeTab !== 'pending' && (
+            <>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 w-4 h-4" />
+                  <Input
+                    placeholder="Cari ID Transaksi / Nama Pelanggan..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex gap-2 items-center shrink-0">
+                  <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="relative bg-white dark:bg-slate-800 dark:border-slate-700 shrink-0 h-10 px-3 sm:px-4 border flex items-center justify-center gap-2 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <SlidersHorizontal className="w-4 h-4 text-primary" />
+                        <span className="font-medium text-xs sm:text-sm">Filter</span>
+                        {(statusFilter !== "all" || salesFilter !== "all" || startDate !== "" || endDate !== "") && (
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full" />
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-[340px] max-w-[95vw] p-4 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center gap-2 font-semibold text-sm mb-4 border-b pb-2 text-slate-800 dark:text-slate-200">
+                        <SlidersHorizontal className="w-4 h-4 text-primary" />
+                        Filter Piutang
+                      </div>
+
+                      <div className="space-y-4">
+                        {/* Date Filters */}
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium text-slate-500">Rentang Tanggal</Label>
+                          <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
+                            <div className="relative w-full h-9">
+                              <Input
+                                type="text"
+                                placeholder="Tanggal Mulai"
+                                value={tempStartDate ? tempStartDate.split('-').reverse().join('-') : ""}
+                                readOnly
+                                className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+                              />
+                              <input
+                                type="date"
+                                value={tempStartDate}
+                                onChange={(e: any) => setTempStartDate(e.target.value)}
+                                onClick={(e: any) => {
+                                  try { e.target.showPicker?.(); } catch (err) { }
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                title="Tanggal Mulai"
+                              />
+                            </div>
+                            <span className="text-slate-400 text-sm hidden sm:block">-</span>
+                            <div className="relative w-full h-9">
+                              <Input
+                                type="text"
+                                placeholder="Tanggal Akhir"
+                                value={tempEndDate ? tempEndDate.split('-').reverse().join('-') : ""}
+                                readOnly
+                                className="absolute inset-0 h-9 w-full rounded-md text-sm text-center bg-transparent focus:ring-0 cursor-pointer"
+                              />
+                              <input
+                                type="date"
+                                value={tempEndDate}
+                                onChange={(e: any) => setTempEndDate(e.target.value)}
+                                onClick={(e: any) => {
+                                  try { e.target.showPicker?.(); } catch (err) { }
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                title="Tanggal Akhir"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-500">Status Pembayaran</Label>
+                          <Select value={tempStatusFilter} onValueChange={setTempStatusFilter}>
+                            <SelectTrigger className="h-9 text-xs">
+                              <SelectValue placeholder="Semua Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Semua Status</SelectItem>
+                              <SelectItem value="paid">Lunas</SelectItem>
+                              <SelectItem value="partial">Cicilan</SelectItem>
+                              <SelectItem value="unpaid">Belum Bayar</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Sales Filter (Khusus Admin) */}
+                        {isAdmin && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-medium text-slate-500">Sales</Label>
+                            <Select value={tempSalesFilter} onValueChange={setTempSalesFilter}>
+                              <SelectTrigger className="h-9 text-xs">
+                                <SelectValue placeholder="Semua Sales" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">Semua Sales</SelectItem>
+                                {uniqueSales.map((sales: string) => (
+                                  <SelectItem key={sales} value={sales}>{sales}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 justify-end mt-6">
+                        <Button variant="outline" onClick={handleResetFilter} className="h-9 text-xs w-full">
+                          Atur Ulang
+                        </Button>
+                        <Button onClick={handleApplyFilter} className="h-9 px-4 text-xs w-full">
+                          Terapkan
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+
+              {/* Mobile Card List */}
+              <div className="flex flex-col gap-3 md:hidden">
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-slate-500">Memuat...</TableCell></TableRow>
+                  <div className="text-center py-10 text-slate-500">Memuat...</div>
                 ) : filteredReceivables?.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-12">
-                      {activeTab === 'outstanding' ? (
-                        <div className="flex flex-col items-center justify-center text-slate-500">
-                          <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-3" />
-                          <p className="text-lg font-medium text-slate-900 dark:text-white">Semua Piutang Lunas!</p>
-                          <p className="text-sm">Tidak ada pelanggan yang menunggak pembayaran saat ini.</p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-slate-500">
-                          <FileText className="w-12 h-12 text-slate-300 mb-3" />
-                          <p className="text-lg font-medium text-slate-900 dark:text-white">Belum Ada Riwayat Pelunasan</p>
-                          <p className="text-sm">Riwayat pelunasan piutang yang selesai akan muncul di sini.</p>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <div className="text-center py-12 text-slate-500">
+                    {activeTab === 'outstanding' ? (
+                      <div className="flex flex-col items-center justify-center text-slate-500">
+                        <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-3" />
+                        <p className="text-lg font-medium text-slate-900 dark:text-white">Semua Piutang Lunas!</p>
+                        <p className="text-sm">Tidak ada pelanggan yang menunggak pembayaran saat ini.</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-slate-500">
+                        <FileText className="w-12 h-12 text-slate-300 mb-3" />
+                        <p className="text-lg font-medium text-slate-900 dark:text-white">Belum Ada Riwayat Pelunasan</p>
+                        <p className="text-sm">Riwayat pelunasan piutang yang selesai akan muncul di sini.</p>
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   filteredReceivables?.map((trx: any) => {
                     const isOverdue = isDateOverdue(trx.due_date);
                     return (
-                      <TableRow key={trx.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => handleRowClick(trx)}>
-                        <TableCell className="font-mono text-xs font-bold text-slate-900 dark:text-white whitespace-nowrap">{formatInvoiceNumber(trx.id)}</TableCell>
-                        <TableCell className="text-slate-500 text-sm whitespace-nowrap">
-                          {formatSimpleDate(trx.created_at)}
-                        </TableCell>
-                        <TableCell className="font-medium whitespace-nowrap truncate max-w-[200px]">
-                          {trx.customer?.name || trx.customer_name || '-'}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          <div className={`flex items-center gap-1.5 text-sm ${isOverdue && trx.payment_status !== 'paid' ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>
-                            {isOverdue && trx.payment_status !== 'paid' && <AlertCircle className="w-3.5 h-3.5" />}
-                            {formatSimpleDate(trx.due_date)}
+                      <div key={trx.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm relative hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleRowClick(trx)}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="font-semibold text-slate-900 dark:text-white mb-1.5 flex items-center justify-between">
+                              <span>{trx.customer?.name || trx.customer_name || '-'}</span>
+                              <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">{formatInvoiceNumber(trx.id)}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                {formatSimpleDate(trx.created_at)}
+                              </div>
+                              {trx.due_date && (
+                                <div className={`flex items-center gap-1.5 ${isOverdue && trx.payment_status !== 'paid' ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>
+                                  {isOverdue && trx.payment_status !== 'paid' ? <AlertCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                                  Jatuh Tempo: {formatSimpleDate(trx.due_date)}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right font-medium whitespace-nowrap">{formatRupiah((trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0))}</TableCell>
-                        <TableCell className={`text-right font-bold whitespace-nowrap ${trx.payment_status === 'paid' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{formatRupiah(trx.remaining_balance)}</TableCell>
-                        <TableCell className="text-center font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap truncate max-w-[130px]">{trx.cashier_name || '-'}</TableCell>
-                        <TableCell className="text-center whitespace-nowrap">{getStatusBadge(trx.payment_status)}</TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                          <Button
-                            size="sm"
-                            variant={activeTab === 'history' ? "outline" : "default"}
-                            className={
-                              activeTab === 'outstanding'
-                                ? "bg-emerald-600 hover:bg-emerald-700 !text-white shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 duration-200 border-0 transition-all cursor-pointer !font-bold tracking-wide"
-                                : ""
-                            }
-                            onClick={(e) => { e.stopPropagation(); handleOpenPayment(trx); }}
-                          >
-                            {activeTab === 'history' ? "Detail" : "Proses Bayar"}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                        <div className="flex justify-between text-sm pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+                          <div className="text-left">
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Total Transaksi</span>
+                            <div className="font-semibold text-slate-700 dark:text-slate-300">{formatRupiah((trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0))}</div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Sisa Tagihan</span>
+                            <div className={`font-bold ${trx.payment_status === 'paid' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{formatRupiah(trx.remaining_balance)}</div>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+                          <div className="flex items-center gap-2">
+                            {getStatusBadge(trx.payment_status)}
+                            <span className="text-xs text-slate-500">({trx.cashier_name || '-'})</span>
+                          </div>
+                          {pendingTransactionIds.has(trx.id) ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              Menunggu
+                            </span>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant={activeTab === 'history' ? "outline" : "default"}
+                              className={
+                                activeTab === 'outstanding'
+                                  ? "bg-emerald-600 hover:bg-emerald-700 !text-white shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 duration-200 border-0 transition-all cursor-pointer !font-bold tracking-wide text-xs h-8"
+                                  : "text-xs h-8"
+                              }
+                              onClick={(e) => { e.stopPropagation(); handleOpenPayment(trx); }}
+                            >
+                              {activeTab === 'history' ? "Detail" : "Bayar"}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     );
                   })
                 )}
-              </TableBody>
-            </Table>
-          </div>
+              </div>
+
+              {/* Desktop Table */}
+              <div className="hidden md:block bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50 dark:bg-slate-800/50">
+                      <TableHead className="whitespace-nowrap w-[130px]">ID Transaksi</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[120px]">Tgl Transaksi</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-[180px]">Pelanggan</TableHead>
+                      <TableHead className="whitespace-nowrap text-center min-w-[130px]">Jatuh Tempo</TableHead>
+                      <TableHead className="whitespace-nowrap text-right min-w-[140px]">Total Transaksi</TableHead>
+                      <TableHead className="whitespace-nowrap text-right min-w-[140px]">Sisa Tagihan</TableHead>
+                      <TableHead className="whitespace-nowrap text-center min-w-[130px]">Sales</TableHead>
+                      <TableHead className="whitespace-nowrap text-center min-w-[110px]">Status</TableHead>
+                      <TableHead className="whitespace-nowrap text-right min-w-[100px]">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isLoading ? (
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-slate-500">Memuat...</TableCell></TableRow>
+                    ) : filteredReceivables?.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-12">
+                          {activeTab === 'outstanding' ? (
+                            <div className="flex flex-col items-center justify-center text-slate-500">
+                              <CheckCircle2 className="w-12 h-12 text-emerald-400 mb-3" />
+                              <p className="text-lg font-medium text-slate-900 dark:text-white">Semua Piutang Lunas!</p>
+                              <p className="text-sm">Tidak ada pelanggan yang menunggak pembayaran saat ini.</p>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center text-slate-500">
+                              <FileText className="w-12 h-12 text-slate-300 mb-3" />
+                              <p className="text-lg font-medium text-slate-900 dark:text-white">Belum Ada Riwayat Pelunasan</p>
+                              <p className="text-sm">Riwayat pelunasan piutang yang selesai akan muncul di sini.</p>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredReceivables?.map((trx: any) => {
+                        const isOverdue = isDateOverdue(trx.due_date);
+                        return (
+                          <TableRow key={trx.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer" onClick={() => handleRowClick(trx)}>
+                            <TableCell className="font-mono text-xs font-bold text-slate-900 dark:text-white whitespace-nowrap">{formatInvoiceNumber(trx.id)}</TableCell>
+                            <TableCell className="text-slate-500 text-sm whitespace-nowrap">
+                              {formatSimpleDate(trx.created_at)}
+                            </TableCell>
+                            <TableCell className="font-medium whitespace-nowrap truncate max-w-[200px]">
+                              {trx.customer?.name || trx.customer_name || '-'}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-center">
+                              <div className={`flex items-center justify-center gap-1.5 text-sm ${isOverdue && trx.payment_status !== 'paid' ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-600 dark:text-slate-400'}`}>
+                                {isOverdue && trx.payment_status !== 'paid' && <AlertCircle className="w-3.5 h-3.5" />}
+                                {formatSimpleDate(trx.due_date)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium whitespace-nowrap">{formatRupiah((trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0))}</TableCell>
+                            <TableCell className={`text-right font-bold whitespace-nowrap ${trx.payment_status === 'paid' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{formatRupiah(trx.remaining_balance)}</TableCell>
+                            <TableCell className="text-center font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap truncate max-w-[130px]">{trx.cashier_name || '-'}</TableCell>
+                            <TableCell className="text-center whitespace-nowrap">{getStatusBadge(trx.payment_status)}</TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              {pendingTransactionIds.has(trx.id) ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                  Menunggu
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant={activeTab === 'history' ? "outline" : "default"}
+                                  className={
+                                    activeTab === 'outstanding'
+                                      ? "bg-emerald-600 hover:bg-emerald-700 !text-white shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:-translate-y-0.5 active:translate-y-0 duration-200 border-0 transition-all cursor-pointer !font-bold tracking-wide"
+                                      : ""
+                                  }
+                                  onClick={(e) => { e.stopPropagation(); handleOpenPayment(trx); }}
+                                >
+                                  {activeTab === 'history' ? "Detail" : "Bayar"}
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+
         </div>
 
         {/* Payment Modal */}
@@ -1055,12 +1342,14 @@ export default function ReceivablesPage() {
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>
-                {selectedTransaction?.payment_status === 'paid' ? "Detail Pelunasan Piutang" : "Pembayaran Piutang"}
+                {selectedTransaction?.payment_status === 'paid' ? "Detail Pembayaran" : "Bayar Hutang"}
               </DialogTitle>
               <DialogDescription>
                 {selectedTransaction?.payment_status === 'paid'
-                  ? "Riwayat lengkap pelunasan piutang pelanggan."
-                  : "Catat pembayaran cicilan atau pelunasan hutang pelanggan."}
+                  ? "Riwayat pembayaran piutang pelanggan."
+                  : isAdmin
+                    ? "Dana akan langsung masuk setelah disimpan."
+                    : "Nominal pembayaran akan dikonfirmasi oleh admin sebelum dana masuk."}
               </DialogDescription>
             </DialogHeader>
 
@@ -1107,26 +1396,23 @@ export default function ReceivablesPage() {
                 {/* History Cicilan */}
                 {!isLoadingHistory && paymentsHistory && paymentsHistory.length > 0 && (
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <p className="text-sm font-medium mb-3">Histori Cicilan</p>
+                    <p className="text-sm font-medium mb-3">Histori Pembayaran</p>
                     <div className="space-y-2 max-h-[150px] overflow-auto pr-2">
                       {paymentsHistory.map((p: any) => (
-                        <div key={p.id} className="flex flex-col gap-2 p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium text-sm text-slate-900 dark:text-white">{formatSimpleDate(p.payment_date)}</p>
-                              <div className="mt-1.5">
-                                <span className="bg-slate-50 dark:bg-slate-800 rounded px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 capitalize">
-                                  {p.payment_method === 'cash' ? 'Tunai' : p.payment_method}
-                                </span>
-                              </div>
-                            </div>
-                            <p className="font-bold text-emerald-600 dark:text-emerald-400">+{formatRupiah(p.amount)}</p>
+                        <div key={p.id} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                          <div>
+                            <p className="font-medium text-sm text-slate-900 dark:text-white">{formatSimpleDate(p.payment_date)}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {p.payment_method === 'cash' ? 'Tunai' : p.payment_method}
+                              {p.notes ? ` · ${p.notes}` : ''}
+                            </p>
                           </div>
-                          {p.notes && (
-                            <div className="bg-slate-50 dark:bg-slate-800/80 rounded px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 w-fit">
-                              {p.notes}
-                            </div>
-                          )}
+                          <div className="text-right">
+                            <p className="font-bold text-emerald-600 dark:text-emerald-400">+{formatRupiah(p.amount)}</p>
+                            {p.status === 'pending' && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">⏳ Pending</span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1134,6 +1420,7 @@ export default function ReceivablesPage() {
                 )}
               </div>
             )}
+
 
             <DialogFooter className="flex flex-row justify-between items-center w-full gap-2">
               {selectedTransaction?.payment_status === 'paid' ? (
@@ -1156,7 +1443,7 @@ export default function ReceivablesPage() {
                 <>
                   <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
                   <Button onClick={handleSubmitPayment} disabled={createPayment.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    {createPayment.isPending ? "Menyimpan..." : "Simpan Pembayaran"}
+                    {createPayment.isPending ? "Menyimpan..." : isAdmin ? "Simpan" : "Kirim Permintaan"}
                   </Button>
                 </>
               )}
@@ -1325,10 +1612,10 @@ async function exportReceivablesToExcel(
       case 7: // Sisa Tagihan
       case 8: // Sudah Dibayar
         return "right";
-      case 0: // ID Transaksi
+      case 0: // No.Transaksi
       case 1: // Tgl Transaksi
       case 4: // Qty
-      case 9: // Sales
+      case 9: // Salesman
       case 10: // Jatuh Tempo
       case 11: // Status
       default:
@@ -1337,7 +1624,7 @@ async function exportReceivablesToExcel(
   }
 
   const headers = [
-    "ID Transaksi", "Tgl Transaksi", "Pelanggan", "Nama Produk", "Qty", "Harga", "Total Transaksi", "Sisa Tagihan", "Sudah Dibayar", "Sales", "Jatuh Tempo", "Status"
+    "No.Transaksi", "Tgl Transaksi", "Pelanggan", "Nama Produk", "Qty", "Harga", "Total Transaksi", "Sisa Tagihan", "Sudah Dibayar", "Salesman", "Jatuh Tempo", "Status"
   ];
 
   const rows: any[] = [];
@@ -1460,13 +1747,13 @@ async function exportReceivablesToExcel(
     await Filesystem.writeFile({
       path: filename,
       data: base64Data,
-      directory: Directory.Documents,
+      directory: Directory.Cache,
       recursive: true,
     });
 
     const filePath = await Filesystem.getUri({
       path: filename,
-      directory: Directory.Documents,
+      directory: Directory.Cache,
     });
 
     await Share.share({

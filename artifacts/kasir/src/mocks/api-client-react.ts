@@ -3007,6 +3007,20 @@ export const useDeleteAllStockMovements = () => {
 
 export const useListReturns = () => {
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('sales_returns_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_returns' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['sales_returns'] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ['sales_returns'],
     queryFn: async () => {
@@ -3276,6 +3290,11 @@ export const useCreateTransactionPayment = () => {
     mutate: async (params: any, options?: any) => {
       setIsPending(true);
       try {
+        // Sales (non-admin) payments are saved as 'pending' and don't immediately
+        // affect the transaction balance. Admin payments are saved as 'confirmed'.
+        const isAdmin = params.isAdmin === true;
+        const paymentStatus = isAdmin ? 'confirmed' : 'pending';
+
         const payload = {
           transaction_id: params.transactionId,
           amount: params.amount,
@@ -3283,6 +3302,8 @@ export const useCreateTransactionPayment = () => {
           cashier_name: params.cashierName,
           notes: params.notes || null,
           payment_date: new Date().toISOString(),
+          status: paymentStatus,
+          ...(isAdmin ? { confirmed_by: params.cashierName, confirmed_at: new Date().toISOString() } : {}),
         };
 
         const { data: payment, error: paymentError } = await supabase
@@ -3293,16 +3314,78 @@ export const useCreateTransactionPayment = () => {
 
         if (paymentError) throw paymentError;
 
-        // Update transaction remaining balance and status
+        // Only update transaction balance if admin (confirmed payment)
+        if (isAdmin) {
+          const { data: trx } = await supabase
+            .from('transactions')
+            .select('remaining_balance')
+            .eq('id', params.transactionId)
+            .single();
+
+          if (trx) {
+            const newBalance = Math.max(0, trx.remaining_balance - params.amount);
+            const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+
+            const { error: trxError } = await supabase
+              .from('transactions')
+              .update({
+                remaining_balance: newBalance,
+                payment_status: newStatus
+              })
+              .eq('id', params.transactionId);
+
+            if (trxError) throw trxError;
+          }
+        }
+
+        if (options?.onSuccess) options.onSuccess(payment);
+      } catch (err) {
+        if (options?.onError) options.onError(err);
+      } finally {
+        setIsPending(false);
+      }
+    },
+    isPending
+  };
+};
+
+export const useConfirmTransactionPayment = () => {
+  const [isPending, setIsPending] = useState(false);
+
+  return {
+    mutate: async (params: { paymentId: number; transactionId: number; amount: number; confirmedBy: string }, options?: any) => {
+      setIsPending(true);
+      try {
+        // Mark payment as confirmed
+        const { error: updateError } = await supabase
+          .from('transaction_payments')
+          .update({
+            status: 'confirmed',
+            confirmed_by: params.confirmedBy,
+            confirmed_at: new Date().toISOString(),
+          })
+          .eq('id', params.paymentId);
+
+        if (updateError) throw updateError;
+
+        // Recalculate transaction balance from all confirmed payments
         const { data: trx } = await supabase
           .from('transactions')
-          .select('remaining_balance')
+          .select('subtotal, tax, discount')
           .eq('id', params.transactionId)
           .single();
 
-        if (trx) {
-          const newBalance = Math.max(0, trx.remaining_balance - params.amount);
-          const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+        const { data: confirmedPayments } = await supabase
+          .from('transaction_payments')
+          .select('amount')
+          .eq('transaction_id', params.transactionId)
+          .eq('status', 'confirmed');
+
+        if (trx && confirmedPayments) {
+          const totalAmount = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0);
+          const totalPaid = confirmedPayments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+          const newBalance = Math.max(0, totalAmount - totalPaid);
+          const newStatus = newBalance <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
           const { error: trxError } = await supabase
             .from('transactions')
@@ -3315,7 +3398,7 @@ export const useCreateTransactionPayment = () => {
           if (trxError) throw trxError;
         }
 
-        if (options?.onSuccess) options.onSuccess(payment);
+        if (options?.onSuccess) options.onSuccess();
       } catch (err) {
         if (options?.onError) options.onError(err);
       } finally {
@@ -3324,6 +3407,55 @@ export const useCreateTransactionPayment = () => {
     },
     isPending
   };
+};
+
+export const useListPendingPayments = () => {
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
+
+  const fetchPendingPayments = async () => {
+    setIsLoading(true);
+    try {
+      const { data: payments, error } = await applyTenantFilter(
+        supabase
+          .from('transaction_payments')
+          .select(`
+            *,
+            transactions!inner(
+              id, subtotal, tax, discount, remaining_balance, payment_status,
+              cashier_name, due_date, created_at,
+              customers(id, name, phone)
+            )
+          `)
+          .eq('status', 'pending')
+          .order('payment_date', { ascending: true })
+      );
+
+      if (error) throw error;
+      setData(payments || []);
+    } catch (err) {
+      handleTenantError(err);
+      setError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingPayments();
+
+    const channel = supabase
+      .channel('pending_payments_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transaction_payments' }, () => {
+        fetchPendingPayments();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  return { data, isLoading, error, refetch: fetchPendingPayments };
 };
 
 export const useListReceivables = () => {
@@ -3357,6 +3489,17 @@ export const useListReceivables = () => {
 
   useEffect(() => {
     fetchReceivables();
+
+    const channel = supabase
+      .channel('receivables_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        fetchReceivables();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return { data, isLoading, error, refetch: fetchReceivables };
@@ -3559,7 +3702,7 @@ export const useListVisitLogs = (params?: { limit?: number }) => {
 
     const channel = supabase
       .channel('visit_logs_realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'visit_logs' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'visit_logs' }, () => {
         fetchLogs();
       })
       .subscribe();

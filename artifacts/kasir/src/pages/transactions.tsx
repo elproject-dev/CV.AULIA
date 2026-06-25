@@ -812,18 +812,7 @@ function TransactionReceiptDialog({
                 </div>
               </div>
 
-              {trx.payment_status === 'paid' && trx.payment_method === 'cash' && (
-                <div className="space-y-2 py-4 sm:py-6 font-mono text-xs sm:text-sm border-b-2 border-dashed border-slate-200">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Tunai</span>
-                    <span>{formatRupiah(trx.amount_paid || 0)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-slate-900">
-                    <span>Kembali</span>
-                    <span>{formatRupiah(trx.change || 0)}</span>
-                  </div>
-                </div>
-              )}
+
 
               {trx.payment_status === 'partial' && (
                 <div className="space-y-2 py-4 sm:py-6 font-mono text-xs sm:text-sm border-b-2 border-dashed border-slate-200">

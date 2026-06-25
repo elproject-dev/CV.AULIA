@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isAdminMode } from "@/lib/auth";
 import { usePendingExpensesCount } from "@/hooks/usePendingExpenses";
 import { usePendingReturnsCount } from "@/hooks/usePendingReturns";
+import { usePendingCheckInsCount } from "@/hooks/usePendingCheckIns";
+import { usePendingReceivablesCount } from "@/hooks/usePendingReceivables";
 
 interface BottomNavigationProps {
   onOpenProfile?: () => void;
@@ -38,6 +40,8 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
   const isAdmin = isAdminMode(user);
   const pendingExpensesCount = usePendingExpensesCount();
   const pendingReturnsCount = usePendingReturnsCount();
+  const pendingCheckInsCount = usePendingCheckInsCount();
+  const pendingReceivablesCount = usePendingReceivablesCount();
 
   const mainLinks = useMemo(() => {
     if (isAdmin) {
@@ -51,7 +55,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
     return [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/pos", label: "Kasir", icon: Calculator },
-      { href: "/products", label: "Produk", icon: Package },
+      { href: "/visit-schedule", label: "Jadwal", icon: CalendarDays },
       { href: "/transactions", label: "Riwayat", icon: History },
     ];
   }, [isAdmin]);
@@ -60,8 +64,8 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
     if (!isAdmin) {
       return [
         { href: "/customers", label: "Pelanggan", icon: Users },
-        { href: "/visit-schedule", label: "Jadwal Kunjungan", icon: CalendarDays },
-        { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
+        { href: "/products", label: "Produk", icon: Package },
+        { href: "/customer-returns", label: "Retur", icon: RefreshCcw },
         { href: "/expenses", label: "Pengeluaran", icon: Wallet },
         { href: "/receivables", label: "Piutang", icon: TbCoin },
         { href: "/settings", label: "Pengaturan", icon: Settings },
@@ -70,8 +74,8 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
 
     return [
       { href: "/staff", label: "Staff", icon: UserCog },
-      { href: "/visit-schedule", label: "Jadwal Kunjungan", icon: CalendarDays },
-      { href: "/customer-returns", label: "Retur Pelanggan", icon: RefreshCcw },
+      { href: "/visit-schedule", label: "Jadwal", icon: CalendarDays },
+      { href: "/customer-returns", label: "Retur", icon: RefreshCcw },
       { href: "/expenses", label: "Pengeluaran", icon: Wallet },
       { href: "/receivables", label: "Piutang", icon: TbCoin },
       { href: "/promo", label: "Promo", icon: Megaphone },
@@ -129,13 +133,18 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
           <button
             onClick={() => setShowMore(!showMore)}
             className={cn(
-              "flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200",
+              "flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200 relative",
               showMore
                 ? "text-primary dark:text-primary-400"
                 : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
             )}
           >
-            <Menu className="w-5 h-5 mb-1" />
+            <div className="relative">
+              <Menu className="w-5 h-5 mb-1" />
+              {(((isAdmin && (pendingExpensesCount > 0 || pendingReturnsCount > 0 || pendingCheckInsCount > 0)) || pendingReceivablesCount > 0)) && (
+                <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
+              )}
+            </div>
             <span className={cn(
               "text-[9px] font-medium text-center leading-tight",
               showMore ? "text-primary dark:text-primary-400 font-semibold" : "text-slate-400 dark:text-slate-500"
@@ -150,7 +159,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
           showMore ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
         )}>
           <div className="overflow-hidden">
-            <div className="flex items-center justify-around py-3 px-1 flex-wrap gap-y-3 border-t border-slate-100 dark:border-slate-700">
+            <div className="grid grid-cols-5 gap-y-4 py-4 px-2 border-t border-slate-100 dark:border-slate-700 max-h-[50vh] overflow-y-auto scrollbar-hide">
               {moreLinks.map((link) => {
                 const Icon = link.icon;
                 const isActive = location === link.href;
@@ -161,7 +170,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                     <button
                       key={link.href}
                       onClick={handleLogout}
-                      className="flex flex-col items-center justify-center w-16 py-1 rounded-xl text-slate-400 dark:text-slate-500 hover:text-red-500 transition-colors"
+                      className="flex flex-col items-center justify-center w-full py-1 rounded-xl text-slate-400 dark:text-slate-500 hover:text-red-500 transition-colors"
                     >
                       <Icon className="w-5 h-5 mb-1" />
                       <span className="text-[9px] font-medium text-center leading-tight">{link.label}</span>
@@ -177,7 +186,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                         setShowMore(false);
                         onOpenProfile?.();
                       }}
-                      className="flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                      className="flex flex-col items-center justify-center w-full py-1 rounded-xl transition-all duration-200 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     >
                       <Icon className="w-5 h-5 mb-1" />
                       <span className="text-[9px] font-medium text-center leading-tight">{link.label}</span>
@@ -193,7 +202,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                       setLocation(link.href);
                     }}
                     className={cn(
-                      "flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all duration-200 relative",
+                      "flex flex-col items-center justify-center w-full py-1 rounded-xl transition-all duration-200 relative",
                       isActive
                         ? "text-primary dark:text-primary-400"
                         : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
@@ -205,6 +214,12 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
                         <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
                       )}
                       {link.href === "/customer-returns" && pendingReturnsCount > 0 && isAdmin && (
+                        <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
+                      )}
+                      {link.href === "/visit-schedule" && pendingCheckInsCount > 0 && isAdmin && (
+                        <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
+                      )}
+                      {link.href === "/receivables" && pendingReceivablesCount > 0 && (
                         <span className="absolute -top-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-red-500 ring-[1.5px] ring-white dark:ring-slate-800" />
                       )}
                     </div>
