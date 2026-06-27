@@ -724,7 +724,10 @@ function TransactionReceiptDialog({
     <Dialog open={!!trx} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md p-0 overflow-hidden bg-slate-50">
         {!trx ? (
-          <div className="p-8 text-center text-slate-500">Memuat detail struk...</div>
+          <div className="py-12 flex flex-col justify-center items-center gap-3 text-slate-500">
+            <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            <p className="text-xs font-medium">Memuat detail struk...</p>
+          </div>
         ) : (
           <div className="flex flex-col h-full max-h-[85vh]">
             <div className="p-4 border-b border-slate-200 bg-white flex flex-col justify-center items-center shrink-0">
@@ -1111,7 +1114,10 @@ export default function TransactionsPage() {
           {/* ── MOBILE & TABLET: Card List ── */}
           <div className="flex flex-col gap-3 lg:hidden">
             {isLoading ? (
-              <div className="text-center py-10 text-slate-500">Memuat...</div>
+              <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500">
+                <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                <p className="text-xs font-medium">Memuat...</p>
+              </div>
             ) : transactions?.length === 0 ? (
               <div className="text-center py-10 text-slate-500">Tidak ada transaksi ditemukan</div>
             ) : (
@@ -1213,7 +1219,12 @@ export default function TransactionsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">Memuat...</TableCell>
+                    <TableCell colSpan={6} className="py-12">
+                      <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
+                        <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        <p className="text-xs font-medium">Memuat...</p>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ) : transactions?.map(trx => {
                   const total = calculateTotal(trx);

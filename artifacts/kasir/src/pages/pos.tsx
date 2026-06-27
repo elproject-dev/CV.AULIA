@@ -863,7 +863,9 @@ export default function POSPage() {
         setCustomerId(undefined);
         setManualCustomerName("");
         setManualCustomerPhone("");
-        setManualCustomerPhone("");
+        setManualAddress("");
+        setManualDistrict("");
+        setManualCity("");
         setPaymentMethod("cash");
         setAmountPaidDisplay("");
         setAmountPaidStr("");
@@ -1578,13 +1580,13 @@ export default function POSPage() {
                       <span className="text-slate-700 dark:text-slate-300">{formatRupiah(lastTransaction?.amountPaid || lastTransaction?.amount_paid || 0)}</span>
                     </div>
                     <div className="flex justify-between text-xs font-bold text-amber-600 dark:text-amber-400">
-                      <span>Sisa Hutang</span>
+                      <span>Kekurangan Pembayaran</span>
                       <span>{formatRupiah(lastTransaction?.remaining_balance || 0)}</span>
                     </div>
                   </>
                 ) : lastTransaction?.payment_status === 'unpaid' ? (
                   <div className="flex justify-between text-xs font-bold text-amber-600 dark:text-amber-400 pt-2">
-                    <span>Sisa Hutang</span>
+                    <span>Kekurangan Pembayaran</span>
                     <span>{formatRupiah(lastTransaction?.remaining_balance || 0)}</span>
                   </div>
                 ) : (
@@ -1654,16 +1656,16 @@ export default function POSPage() {
               return uoms.map((uom: any, idx: number) => {
                 const unitPrice = uom.price ? Number(uom.price) : uomSelectorProduct.price * uom.conversion_factor;
                 const minQty = uom.min_qty || 1;
-                
+
                 const totalBeforeDiscount = unitPrice * minQty;
                 let totalDiscount = 0;
-                
+
                 if (uom.discount_type === 'amount') {
                   totalDiscount = Number(uom.discount_value) || 0;
                 } else if (uom.discount_type === 'percent') {
                   totalDiscount = totalBeforeDiscount * ((Number(uom.discount_value) || 0) / 100);
                 }
-                
+
                 const totalAfterDiscount = Math.max(0, totalBeforeDiscount - totalDiscount);
 
                 return (

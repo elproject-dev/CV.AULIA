@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useGetDashboardStats, useGetTopProducts, useGetRecentTransactions, useGetRevenueChart, useHealthCheck, useListTransactions, useGetCashierNames, useListOutlets, useListStaff, useAdvancedAnalytics } from "@workspace/api-client-react";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -178,6 +178,45 @@ export default function DashboardPage() {
   const { data: revenueChart } = useGetRevenueChart(filterParams);
   const { data: health } = useHealthCheck();
   const { data: advancedAnalytics } = useAdvancedAnalytics(filterParams);
+
+  // Calculate performance of each sales (cashier) from allTransactions
+  const salesPerformance = useMemo(() => {
+    if (!allTransactions) return [];
+
+    const cashierMap = new Map<string, { cashierName: string, transactionsCount: number, totalSales: number }>();
+
+    allTransactions.forEach((trx: any) => {
+      // Apply filters (outlet and date range) to match the dashboard view
+      if (outletFilter !== "all" && trx.outlet_id !== parseInt(outletFilter)) return;
+
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        const itemDate = new Date(trx.created_at);
+        if (itemDate < start) return;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        const itemDate = new Date(trx.created_at);
+        if (itemDate > end) return;
+      }
+
+      const cashier = trx.cashier_name || 'Tanpa Nama';
+      const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0);
+
+      if (!cashierMap.has(cashier)) {
+        cashierMap.set(cashier, { cashierName: cashier, transactionsCount: 0, totalSales: 0 });
+      }
+
+      const stats = cashierMap.get(cashier)!;
+      stats.transactionsCount += 1;
+      stats.totalSales += total;
+    });
+
+    return Array.from(cashierMap.values())
+      .sort((a, b) => b.totalSales - a.totalSales);
+  }, [allTransactions, outletFilter, startDate, endDate]);
 
   // Auto-scroll to peak hour when data loads
   useEffect(() => {
@@ -705,7 +744,7 @@ export default function DashboardPage() {
             <h2 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2 px-1">
               <Star className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500 fill-amber-500" /> Analisa Performa Bisnis
             </h2>
-            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
 
               {/* Product Analytics Deep Dive */}
               <Card className="shadow-lg border-0 bg-white dark:bg-slate-900">
@@ -862,6 +901,67 @@ export default function DashboardPage() {
                   ) : (
                     <div className="text-center py-6">
                       <p className="text-xs text-slate-400">Belum ada pelanggan sultan</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Sales Performance */}
+              <Card className="shadow-lg border-0 bg-white dark:bg-slate-900">
+                <CardHeader className="pb-3 px-4 pt-4">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-slate-700 dark:text-slate-200 text-sm sm:text-base font-medium flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-slate-400" /> Performa Sales
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 px-4 pb-4">
+                  {salesPerformance && salesPerformance.length > 0 ? (
+                    <div className="space-y-2 mt-2 overflow-y-auto max-h-[430px] pr-2 scrollbar-slim">
+                      {(() => {
+                        const maxSales = salesPerformance[0]?.totalSales || 1;
+
+                        return salesPerformance.map((sales: any, idx: number) => {
+                          const percentage = Math.max((sales.totalSales / maxSales) * 100, 2);
+
+                          return (
+                            <div key={sales.cashierName || idx} className="flex flex-col gap-2 p-2 sm:p-3 rounded-xl bg-white dark:bg-slate-800 border border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-100 dark:hover:border-slate-800 transition-all duration-200">
+                              <div className="flex items-center gap-3 w-full">
+                                {/* Sales Initial Icon */}
+                                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary flex items-center justify-center overflow-hidden shrink-0">
+                                  <span className="text-lg sm:text-xl font-medium text-primary-foreground">
+                                    {sales.cashierName?.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+
+                                {/* Sales Info */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{sales.cashierName}</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    {sales.transactionsCount} Transaksi
+                                  </p>
+                                </div>
+
+                                {/* Total Sales */}
+                                <div className="text-right shrink-0">
+                                  <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300">
+                                    {formatRupiah(sales.totalSales)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Progress bar line */}
+                              <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
+                                <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${percentage}%` }} />
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-xs text-slate-400">Belum ada data performa sales</p>
                     </div>
                   )}
                 </CardContent>

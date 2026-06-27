@@ -14,6 +14,7 @@ import { ADMIN_EMAIL } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { open as openShell } from "@tauri-apps/plugin-shell";
+import { formatInvoiceNumber, formatSimpleDate } from "@/lib/formatters";
 
 interface PromoTemplate {
   id: number;
@@ -24,8 +25,8 @@ interface PromoTemplate {
 const DEFAULT_TEMPLATES: PromoTemplate[] = [
   {
     id: -2,
-    name: "Template Member Baru",
-    content: "🎉 *PROMO MEMBER BARU* 🎉\n\nHalo @ 😊\n\n🎁 Ada promo spesial buat kamu!\n\n💰 Dapatkan *diskon Rp10.000*\nuntuk pembelanjaan berikutnya dengan menunjukkan pesan ini saat bertransaksi.\n\nJangan lewatkan kesempatan spesial ini\nnikmati pengalaman belanja yang lebih hemat di #.\n\n📍 Yuk mampir ke # sekarang!\n\n🙏 Hormat Kami,",
+    name: "Template Penagihan",
+    content: "🔔 *PEMBERITAHUAN PENAGIHAN* 🔔\n\nHalo @ 😊\n\nKami menginformasikan bahwa terdapat tagihan yang belum diselesaikan dengan detail berikut:\n- No. Transaksi: %\n- Tanggal Pemesanan: &\n- Jatuh Tempo: $\n\nMohon untuk segera melakukan pembayaran atau menghubungi kami untuk konfirmasi.\n\nJika Anda sudah melakukan pembayaran, silakan abaikan pesan ini atau kirimkan bukti pembayaran kepada kami.\n\nTerima kasih atas perhatian dan kerja samanya.\n\n🙏 Hormat Kami,\n#",
   },
 ];
 
@@ -187,13 +188,22 @@ export default function PromoPage() {
     }
   };
 
-  const formatMessage = (message: string, customerName: string) => {
+  const formatMessage = (
+    message: string, 
+    customerName: string, 
+    dueDate: string = "Tanggal Jatuh Tempo",
+    invoiceNumber: string = "Nomor Transaksi",
+    orderDate: string = "Tanggal Pemesanan"
+  ) => {
     const cleanName = (customerName || "").trim();
     const cleanStore = (storeName || "CV.AULIA USAHA").trim();
     
     return (message || "")
       .replace(/@/g, `*${cleanName}*`)
-      .replace(/#/g, `*${cleanStore}*`);
+      .replace(/#/g, `*${cleanStore}*`)
+      .replace(/\$/g, `*${dueDate}*`)
+      .replace(/%/g, `*${invoiceNumber}*`)
+      .replace(/&/g, `*${orderDate}*`);
   };
 
   const renderPreviewMessage = (message: string) => {
@@ -212,7 +222,37 @@ export default function PromoPage() {
       return;
     }
 
-    const message = formatMessage(customMessage, customer.name);
+    let dueDateStr = "-";
+    let invoiceNumberStr = "-";
+    let orderDateStr = "-";
+    
+    try {
+      const { data } = await supabase
+        .from("transactions")
+        .select("id, due_date, created_at")
+        .eq("customer_id", customer.id)
+        .not("due_date", "is", null)
+        .neq("payment_status", "paid")
+        .order("due_date", { ascending: true })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const trx = data[0];
+        if (trx.due_date) {
+          dueDateStr = formatSimpleDate(trx.due_date);
+        }
+        if (trx.id) {
+          invoiceNumberStr = formatInvoiceNumber(trx.id);
+        }
+        if (trx.created_at) {
+          orderDateStr = formatSimpleDate(trx.created_at);
+        }
+      }
+    } catch (e) {
+      console.error("Gagal mengambil info transaksi:", e);
+    }
+
+    const message = formatMessage(customMessage, customer.name, dueDateStr, invoiceNumberStr, orderDateStr);
     let phone = customer.phone.replace(/[^0-9]/g, "");
     if (phone.startsWith("0")) phone = "62" + phone.substring(1);
     else if (!phone.startsWith("62") && !phone.startsWith("+")) phone = "62" + phone;
@@ -406,6 +446,9 @@ export default function PromoPage() {
                     <div className="mt-2 space-y-1">
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">@</span> untuk menyisipkan nama pelanggan</p>
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">#</span> untuk menyisipkan nama toko</p>
+                      <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">%</span> untuk menyisipkan nomor transaksi</p>
+                      <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">&amp;</span> untuk menyisipkan tanggal pemesanan</p>
+                      <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">$</span> untuk menyisipkan tanggal jatuh tempo</p>
                     </div>
                   </div>
                 </div>

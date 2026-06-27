@@ -134,7 +134,7 @@ export default function ProductsPage() {
       totalStock += stock;
       if (stock <= 0) {
         outOfStock++;
-      } else if (stock <= 5) {
+      } else if (stock < 20) {
         lowStock++;
       }
     });
@@ -153,8 +153,8 @@ export default function ProductsPage() {
     return sortedProducts.filter((product: any) => {
       const stock = product.stock_quantity || 0;
       if (stockStatusFilter === 'out') return stock <= 0;
-      if (stockStatusFilter === 'low') return stock > 0 && stock <= 5;
-      if (stockStatusFilter === 'available') return stock > 5;
+      if (stockStatusFilter === 'low') return stock > 0 && stock < 20;
+      if (stockStatusFilter === 'available') return stock >= 20;
       return true;
     });
   }, [sortedProducts, stockStatusFilter]);
@@ -781,7 +781,10 @@ export default function ProductsPage() {
               {/* Mobile Card List */}
               <div className="flex flex-col gap-3 md:hidden">
                 {isLoading ? (
-                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500 dark:text-slate-400">
+                    <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-xs font-medium">Memuat...</p>
+                  </div>
                 ) : sortedProducts?.length === 0 ? (
                   <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data</div>
                 ) : (
@@ -818,7 +821,7 @@ export default function ProductsPage() {
                               <div className="font-bold text-primary text-sm">{formatRupiah(product.price)}</div>
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${(product.stock_quantity || 0) <= 0
                                 ? "bg-red-500 text-white"
-                                : (product.stock_quantity || 0) <= 5
+                                : (product.stock_quantity || 0) < 20
                                   ? "bg-amber-500 text-white"
                                   : "bg-blue-500 text-white"
                                 }`}>
@@ -864,7 +867,14 @@ export default function ProductsPage() {
                     </TableHeader>
                     <TableBody>
                       {isLoading ? (
-                        <TableRow><TableCell colSpan={isAdmin ? 8 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={isAdmin ? 8 : 6} className="py-12">
+                            <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
+                              <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                              <p className="text-xs font-medium">Memuat...</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       ) : sortedProducts?.length === 0 ? (
                         <TableRow><TableCell colSpan={isAdmin ? 8 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                       ) : (
@@ -888,7 +898,7 @@ export default function ProductsPage() {
                               <TableCell className="text-center whitespace-nowrap">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${(product.stock_quantity || 0) <= 0
                                   ? "bg-red-500 text-white"
-                                  : (product.stock_quantity || 0) <= 5
+                                  : (product.stock_quantity || 0) < 20
                                     ? "bg-amber-500 text-white"
                                     : "bg-blue-500 text-white"
                                   }`}>
@@ -1025,8 +1035,8 @@ export default function ProductsPage() {
                     <SelectContent>
                       <SelectItem value="all">Semua Stok</SelectItem>
                       <SelectItem value="out">Stok Habis (0)</SelectItem>
-                      <SelectItem value="low">Stok Menipis (1-5)</SelectItem>
-                      <SelectItem value="available">Tersedia (&gt;5)</SelectItem>
+                      <SelectItem value="low">Stok Menipis (1-19)</SelectItem>
+                      <SelectItem value="available">Tersedia (&gt;=20)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1035,7 +1045,10 @@ export default function ProductsPage() {
               {/* Mobile Stock Cards */}
               <div className="flex flex-col gap-3 md:hidden">
                 {isLoading ? (
-                  <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500 dark:text-slate-400">
+                    <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-xs font-medium">Memuat...</p>
+                  </div>
                 ) : filteredStockProducts.length === 0 ? (
                   <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data stok</div>
                 ) : (
@@ -1067,7 +1080,7 @@ export default function ProductsPage() {
                           <div className="absolute top-0 right-0">
                             {stock <= 0 ? (
                               <Badge variant="destructive" className="bg-red-500 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Habis</Badge>
-                            ) : stock <= 5 ? (
+                            ) : stock < 20 ? (
                               <Badge className="bg-amber-500 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Menipis</Badge>
                             ) : (
                               <Badge className="bg-green-500 text-white text-[10px] py-0.5 px-2 font-semibold border-0 shadow-none">Tersedia</Badge>
@@ -1113,7 +1126,14 @@ export default function ProductsPage() {
                     </TableHeader>
                     <TableBody>
                       {isLoading ? (
-                        <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={isAdmin ? 7 : 6} className="py-12">
+                            <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
+                              <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                              <p className="text-xs font-medium">Memuat...</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       ) : filteredStockProducts.length === 0 ? (
                         <TableRow><TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data stok yang cocok</TableCell></TableRow>
                       ) : (
@@ -1146,7 +1166,7 @@ export default function ProductsPage() {
                               <TableCell className="text-center">
                                 {stock <= 0 ? (
                                   <Badge variant="destructive" className="bg-red-500 hover:bg-red-600 text-white font-semibold">Habis</Badge>
-                                ) : stock <= 5 ? (
+                                ) : stock < 20 ? (
                                   <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-semibold">Menipis</Badge>
                                 ) : (
                                   <Badge className="bg-green-500 hover:bg-green-600 text-white font-semibold">Tersedia</Badge>
@@ -1205,7 +1225,10 @@ export default function ProductsPage() {
               {/* Mobile Discount Cards */}
               <div className="flex flex-col gap-3 md:hidden">
                 {isLoading ? (
-                  <div className="text-center py-10 text-slate-500">Memuat data produk...</div>
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500">
+                    <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-xs font-medium">Memuat data produk...</p>
+                  </div>
                 ) : sortedProducts?.length === 0 ? (
                   <div className="text-center py-10 text-slate-500">Tidak ada produk ditemukan.</div>
                 ) : (
@@ -1271,7 +1294,14 @@ export default function ProductsPage() {
                     </TableHeader>
                     <TableBody>
                       {isLoading ? (
-                        <TableRow><TableCell colSpan={4} className="text-center py-8">Memuat data produk...</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={4} className="py-12">
+                            <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
+                              <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                              <p className="text-xs font-medium">Memuat data produk...</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       ) : sortedProducts?.length === 0 ? (
                         <TableRow><TableCell colSpan={4} className="text-center py-8">Tidak ada produk ditemukan.</TableCell></TableRow>
                       ) : (
@@ -1785,7 +1815,7 @@ export default function ProductsPage() {
                   <label className="text-xs text-slate-500 block mb-1">Stok Gudang</label>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${(detailProduct.stock_quantity || 0) <= 0
                     ? "bg-red-500 text-white"
-                    : (detailProduct.stock_quantity || 0) <= 5
+                    : (detailProduct.stock_quantity || 0) < 20
                       ? "bg-amber-500 text-white"
                       : "bg-blue-500 text-white"
                     }`}>
@@ -2063,7 +2093,10 @@ function HistoryTabContent({ isAdmin }: { isAdmin: boolean }) {
       {/* Mobile History Cards */}
       <div className="flex flex-col gap-3 md:hidden">
         {isLoading ? (
-          <div className="text-center py-10 text-slate-500">Memuat riwayat...</div>
+          <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500">
+            <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            <p className="text-xs font-medium">Memuat riwayat...</p>
+          </div>
         ) : movements?.length === 0 ? (
           <div className="text-center py-10 text-slate-500">Belum ada riwayat mutasi.</div>
         ) : (
@@ -2122,7 +2155,14 @@ function HistoryTabContent({ isAdmin }: { isAdmin: boolean }) {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8">Memuat riwayat...</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
+                      <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                      <p className="text-xs font-medium">Memuat riwayat...</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : movements?.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center py-8">Belum ada riwayat mutasi.</TableCell></TableRow>
               ) : (

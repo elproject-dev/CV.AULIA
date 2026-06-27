@@ -252,6 +252,8 @@ export function formatReceipt(transaction: any): string {
     paymentStatus,
     remaining_balance,
     remainingBalance,
+    due_date,
+    dueDate,
   } = transaction || {};
 
   const displayCashierName = cashier_name || cashierName || 'Admin Kasir';
@@ -266,16 +268,12 @@ export function formatReceipt(transaction: any): string {
   receipt += ESC_POS.FONT_B; // Gunakan Font B secara global
   receipt += ESC_POS.ALIGN_CENTER;
 
-  // DISABLED: Header - Nama Toko (sudah ditampilkan di logo)
-  // receipt += `\n`;
-  // receipt += ESC_POS.DOUBLE_HEIGHT;
-  // receipt += `${storeName}\n`;
-  // receipt += ESC_POS.NORMAL_SIZE;
-
-  // DISABLED: Alamat toko (sudah ditampilkan di logo)
-  // if (storeAddress) {
-  //   receipt += `${storeAddress}\n`;
-  // }
+  // Tampilkan nama perusahaan dari pengaturan printer di bawah logo (besar, tanpa jarak kosong tambahan)
+  const bluetoothStoreName = localStorage.getItem('bluetoothStoreName') || 'CV.AULIA USAHA';
+  receipt += ESC_POS.DOUBLE_HEIGHT;
+  receipt += `${bluetoothStoreName}\n`;
+  receipt += ESC_POS.NORMAL_SIZE;
+  receipt += ESC_POS.FONT_B; // Gunakan Font B kembali
 
   receipt += `${DECO_SEPARATOR}\n`;
   receipt += ESC_POS.ALIGN_LEFT;
@@ -291,11 +289,11 @@ export function formatReceipt(transaction: any): string {
 
   const waktuStr = `${day} ${month} ${year} ,${hour}:${minute}`;
 
-  receipt += formatLine('No.ID', id ? formatInvoiceNumber(id) : '-', PAPER_WIDTH) + '\n';
+  receipt += formatLine('ID.Transaksi', id ? formatInvoiceNumber(id) : '-', PAPER_WIDTH) + '\n';
   receipt += formatLine('Waktu', waktuStr, PAPER_WIDTH) + '\n';
 
   receipt += formatLine('Pelanggan', customerName || '-', PAPER_WIDTH) + '\n';
-  receipt += formatLine('Kasir', displayCashierName, PAPER_WIDTH) + '\n';
+  receipt += formatLine('Sales', displayCashierName, PAPER_WIDTH) + '\n';
   receipt += `${SEPARATOR}\n`;
 
   // Daftar item: Qty Nama_Produk Harga Total (Posisi harga satuan fix/sejajar)
@@ -311,16 +309,17 @@ export function formatReceipt(transaction: any): string {
     
     const itemTotal = qty * price;
 
-    const qtyStr = `${qty}`;
+    const unit = item.unitName || item.unit_name || 'pcs';
+    const qtyStr = `${qty} ${unit}`;
     const priceStr = formatPrice(price);
     const totalStr = formatPrice(itemTotal);
 
     // Fixed widths agar kolom harga satuan sejajar
-    const QTY_WIDTH = 3;
-    const NAME_WIDTH = 19;
+    const QTY_WIDTH = 7;
+    const NAME_WIDTH = 14;
     const PRICE_WIDTH = 9;
 
-    const qtyPadded = qtyStr.padEnd(QTY_WIDTH, ' ');
+    const qtyPadded = qtyStr.substring(0, QTY_WIDTH).padEnd(QTY_WIDTH, ' ');
     
     let displayName = name;
     if (displayName.length > NAME_WIDTH) {
@@ -330,7 +329,7 @@ export function formatReceipt(transaction: any): string {
     
     const pricePadded = priceStr.padStart(PRICE_WIDTH, ' ');
 
-    const leftSide = `${qtyPadded}${namePadded} ${pricePadded}`;
+    const leftSide = `${qtyPadded} ${namePadded} ${pricePadded}`;
     receipt += formatLine(leftSide, totalStr, PAPER_WIDTH) + '\n';
   });
 
@@ -359,12 +358,28 @@ export function formatReceipt(transaction: any): string {
   // Info pembayaran
   const status = paymentStatus || payment_status;
   const balance = remainingBalance ?? remaining_balance ?? 0;
+  const activeDueDate = due_date || dueDate;
+
+  let tipePembayaran = 'Lunas';
+  if (status === 'partial') {
+    tipePembayaran = 'Cicilan';
+  } else if (status === 'unpaid') {
+    tipePembayaran = 'Tempo';
+  }
+
+  receipt += formatLine('Tipe Pembayaran', tipePembayaran, PAPER_WIDTH) + '\n';
 
   if (status === 'partial') {
     receipt += formatLine('Cicilan', formatPrice(amountPaid), PAPER_WIDTH) + '\n';
-    receipt += formatLine('Sisa Hutang', formatPrice(balance), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Kekurangan Pembayaran', formatPrice(balance), PAPER_WIDTH) + '\n';
+    if (activeDueDate) {
+      receipt += formatLine('Jatuh Tempo', formatReceiptSimpleDate(activeDueDate), PAPER_WIDTH) + '\n';
+    }
   } else if (status === 'unpaid') {
-    receipt += formatLine('Sisa Hutang', formatPrice(balance), PAPER_WIDTH) + '\n';
+    receipt += formatLine('Kekurangan Pembayaran', formatPrice(balance), PAPER_WIDTH) + '\n';
+    if (activeDueDate) {
+      receipt += formatLine('Jatuh Tempo', formatReceiptSimpleDate(activeDueDate), PAPER_WIDTH) + '\n';
+    }
   }
 
   receipt += formatLine('Metode Pembayaran', getPaymentMethodLabel(paymentMethod), PAPER_WIDTH) + '\n';
@@ -401,6 +416,22 @@ function formatPrice(price: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(price);
+}
+
+// Helper untuk format tanggal sederhana pada receipt
+function formatReceiptSimpleDate(dateStr: any): string {
+  try {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+    const d = String(date.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const m = months[date.getMonth()];
+    const y = date.getFullYear();
+    return `${d} ${m} ${y}`;
+  } catch (error) {
+    return '-';
+  }
 }
 
 // Helper untuk label metode pembayaran
@@ -453,8 +484,8 @@ export async function imageToEscPosBitmap(imagePath: string, width: number = 80)
         // Resize canvas untuk thermal printer resolution
         // Thermal printers typically use 8 dots per mm, reduce for better print quality
         const resizedCanvas = document.createElement('canvas');
-        resizedCanvas.width = 280; // Reduced from 384 for smaller logo
-        resizedCanvas.height = Math.round((280 / canvas.width) * canvas.height);
+        resizedCanvas.width = 200; // Reduced from 280 for a slightly smaller and cleaner logo
+        resizedCanvas.height = Math.round((200 / canvas.width) * canvas.height);
 
         const resizedCtx = resizedCanvas.getContext('2d');
         if (!resizedCtx) {

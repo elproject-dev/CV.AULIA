@@ -907,7 +907,10 @@ export default function ReceivablesPage() {
               </div>
 
               {isLoadingPending ? (
-                <div className="text-center py-12 text-slate-500">Memuat data...</div>
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
+                  <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                  <p className="text-xs font-medium">Memuat data...</p>
+                </div>
               ) : !pendingPayments || pendingPayments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-500">
                   <CheckCircle2 className="w-14 h-14 text-emerald-400 mb-4" />
@@ -1162,7 +1165,10 @@ export default function ReceivablesPage() {
               {/* Mobile Card List */}
               <div className="flex flex-col gap-3 md:hidden">
                 {isLoading ? (
-                  <div className="text-center py-10 text-slate-500">Memuat...</div>
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500">
+                    <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-xs font-medium">Memuat...</p>
+                  </div>
                 ) : filteredReceivables?.length === 0 ? (
                   <div className="text-center py-12 text-slate-500">
                     {activeTab === 'outstanding' ? (
@@ -1263,7 +1269,14 @@ export default function ReceivablesPage() {
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
-                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-slate-500">Memuat...</TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={9} className="py-12">
+                          <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
+                            <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                            <p className="text-xs font-medium">Memuat...</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ) : filteredReceivables?.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={9} className="text-center py-12">
@@ -1462,8 +1475,9 @@ export default function ReceivablesPage() {
             </DialogHeader>
 
             {isLoadingDetail ? (
-              <div className="py-8 flex justify-center items-center text-slate-500">
-                Memuat rincian...
+              <div className="py-12 flex flex-col justify-center items-center gap-3 text-slate-500">
+                <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                <p className="text-xs font-medium">Memuat rincian...</p>
               </div>
             ) : detailTransaction ? (
               <div className="space-y-4 py-4">

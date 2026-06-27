@@ -286,7 +286,10 @@ export default function CustomersPage() {
           {/* Mobile Card List */}
           <div className="flex flex-col gap-3 md:hidden">
             {isLoading ? (
-              <div className="text-center py-10 text-slate-500 dark:text-slate-400">Memuat...</div>
+              <div className="flex flex-col items-center justify-center py-10 gap-3 text-slate-500 dark:text-slate-400">
+                <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                <p className="text-xs font-medium">Memuat...</p>
+              </div>
             ) : filteredCustomers?.length === 0 ? (
               <div className="text-center py-10 text-slate-500 dark:text-slate-400">Tidak ada data</div>
             ) : (
@@ -356,7 +359,14 @@ export default function CustomersPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Memuat...</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={isAdmin ? 6 : 5} className="py-12">
+                      <div className="flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
+                        <div className="w-8 h-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        <p className="text-xs font-medium">Memuat...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ) : filteredCustomers?.length === 0 ? (
                   <TableRow><TableCell colSpan={isAdmin ? 6 : 5} className="text-center py-8 text-slate-500 dark:text-slate-400">Tidak ada data</TableCell></TableRow>
                 ) : (

@@ -87,6 +87,11 @@ export function Sidebar({ children, className }: SidebarProps) {
     };
   }, []);
 
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = "/login";
+  };
+
   const { data: outlets } = useListOutlets();
 
   useEffect(() => {
@@ -261,7 +266,7 @@ export function Sidebar({ children, className }: SidebarProps) {
             );
           })}
         </nav>
-        <div className="p-2 border-t border-sidebar-border space-y-2">
+        <div className="p-2 border-t border-sidebar-border space-y-2 flex flex-col items-center">
           <div className="flex items-center justify-center cursor-pointer transition-transform hover:scale-105" onClick={() => setIsProfileOpen(true)}>
             {user?.avatarUrl ? (
               <img src={user.avatarUrl} alt="Avatar" className="w-8 h-8 rounded-full object-cover border-2 border-primary/20 flex-shrink-0" />
@@ -271,6 +276,15 @@ export function Sidebar({ children, className }: SidebarProps) {
               </div>
             )}
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground w-10 h-10 rounded-md"
+            title="Keluar"
+          >
+            <LogOut className="w-5 h-5" />
+          </Button>
         </div>
       </aside>
 

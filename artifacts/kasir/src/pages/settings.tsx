@@ -524,6 +524,7 @@ export default function SettingsPage() {
                   onChange={(e) => setBluetoothStoreName(e.target.value)}
                   placeholder="Masukkan nama perusahaan khusus untuk struk Bluetooth"
                   className="h-10"
+                  disabled={!isAdmin}
                 />
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Nama ini akan dicantumkan di bagian atas struk thermal Bluetooth.
@@ -871,7 +872,7 @@ export default function SettingsPage() {
             </CollapsibleCard>
 
             {/* About System */}
-            <CollapsibleCard id="about" title="Tentang System" icon={Info} description="Informasi aplikasi dan pengembang" isOpen={openCard === 'about'} onToggle={toggleCard}>
+            <CollapsibleCard id="about" title="Tentang System" icon={Info} description="Informasi aplikasi" isOpen={openCard === 'about'} onToggle={toggleCard}>
               <div className="space-y-5">
                 {/* App Info */}
                 <div className="flex items-center gap-4 p-5 bg-gradient-to-r from-primary/10 to-primary/5 dark:bg-none dark:bg-black rounded-xl">
@@ -889,90 +890,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Developer Info */}
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300 uppercase tracking-wide">Informasi Pengembang</h4>
-
-                  <div className="space-y-3">
-                    {/* Developer */}
-                    <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
-                      <div className="w-10 h-10 bg-transparent flex items-center justify-center">
-                        <img src={`${import.meta.env.BASE_URL}hacker.png`} alt="Pengembang" className="w-full h-full object-contain" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Pengembang</p>
-                        <p className="font-medium text-slate-900 dark:text-white">EL Project Development</p>
-                      </div>
-                    </div>
-
-                    {/* Contact */}
-                    <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
-                      <div className="w-10 h-10 bg-transparent flex items-center justify-center">
-                        <img src={`${import.meta.env.BASE_URL}whatsapp.png`} alt="Kontak" className="w-full h-full object-contain" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Nomor Telepon</p>
-                        <p className="font-medium text-slate-900 dark:text-white">083867180887</p>
-                      </div>
-                      <a
-                        href="https://wa.me/6283867180887"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={async (e) => {
-                          const isTauri = !!(window as any).__TAURI_INTERNALS__;
-                          if (isTauri) {
-                            e.preventDefault();
-                            try {
-                              await openShell("https://wa.me/6283867180887");
-                            } catch (err) {
-                              console.error("Failed to open WhatsApp:", err);
-                              window.open("https://wa.me/6283867180887", "_blank");
-                            }
-                          }
-                        }}
-                        className="w-10 h-10 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 rounded-full flex items-center justify-center transition-colors"
-                        title="Hubungi via WhatsApp"
-                      >
-                        <ExternalLink className="w-5 h-5" />
-                      </a>
-                    </div>
-
-                    {/* Email */}
-                    <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-800/50 rounded-xl">
-                      <div className="w-10 h-10 bg-transparent flex items-center justify-center">
-                        <img src={`${import.meta.env.BASE_URL}email.png`} alt="Email" className="w-full h-full object-contain" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Email</p>
-                        <p className="font-medium text-slate-900 dark:text-white truncate">elproject.dev@gmail.com</p>
-                      </div>
-                      <a
-                        href="mailto:elproject.dev@gmail.com"
-                        onClick={async (e) => {
-                          const isTauri = !!(window as any).__TAURI_INTERNALS__;
-                          if (isTauri) {
-                            e.preventDefault();
-                            try {
-                              await openShell("mailto:elproject.dev@gmail.com");
-                            } catch (err) {
-                              console.error("Failed to open email:", err);
-                              window.open("mailto:elproject.dev@gmail.com");
-                            }
-                          }
-                        }}
-                        className="w-10 h-10 bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
-                        title="Kirim Email"
-                      >
-                        <ExternalLink className="w-5 h-5" />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Footer */}
                 <div className="text-center pt-4 border-t border-slate-100 dark:border-slate-700">
                   <p className="text-xs text-slate-400 dark:text-slate-500">
-                    &copy; {new Date().getFullYear()} EL Project Development. All rights reserved.
+                    &copy; {new Date().getFullYear()} CV.AULIA USAHA. All rights reserved.
                   </p>
                 </div>
               </div>

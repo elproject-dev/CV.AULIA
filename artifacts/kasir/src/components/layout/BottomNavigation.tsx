@@ -69,6 +69,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
         { href: "/expenses", label: "Pengeluaran", icon: Wallet },
         { href: "/receivables", label: "Piutang", icon: TbCoin },
         { href: "/settings", label: "Pengaturan", icon: Settings },
+        { href: "/logout", label: "Logout", icon: LogOut, isLogout: true },
       ];
     }
 
@@ -80,6 +81,7 @@ export function BottomNavigation({ onOpenProfile }: BottomNavigationProps) {
       { href: "/receivables", label: "Piutang", icon: TbCoin },
       { href: "/promo", label: "Promo", icon: Megaphone },
       { href: "/settings", label: "Pengaturan", icon: Settings },
+      { href: "/logout", label: "Logout", icon: LogOut, isLogout: true },
     ];
   }, [isAdmin]);
 
