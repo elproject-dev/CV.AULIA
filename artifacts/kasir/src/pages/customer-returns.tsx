@@ -26,7 +26,8 @@ import {
   Trash2,
   Banknote,
   TrendingDown,
-  Printer
+  Printer,
+  RefreshCcw
 } from "lucide-react";
 import {
   useListReturns,
@@ -847,7 +848,7 @@ export default function CustomerReturnsPage() {
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-            <PackageOpen className="w-6 h-6 text-primary" />
+            <RefreshCcw className="w-6 h-6 text-primary" />
             Laporan & Retur Penjualan
           </h1>
 

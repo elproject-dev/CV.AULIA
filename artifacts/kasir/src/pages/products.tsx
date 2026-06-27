@@ -172,7 +172,7 @@ export default function ProductsPage() {
     allowedOutlets: ["all"] as string[],
     imageUrl: "",
     isActive: true,
-    stockQuantity: "0"
+    stockQuantity: ""
   });
 
   // Handle price input with auto-formatting dots
@@ -195,7 +195,7 @@ export default function ProductsPage() {
         allowedOutlets: storedAllowedOutlets,
         imageUrl: storedImageUrl,
         isActive: product.isActive,
-        stockQuantity: product.stock_quantity?.toString() || "0"
+        stockQuantity: product.stock_quantity?.toString() || ""
       };
       setFormData(initialData);
       setOriginalData(initialData);
@@ -209,7 +209,7 @@ export default function ProductsPage() {
       // UOM logic moved to discount dialog
     } else {
       setEditingProduct(null);
-      setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "0" });
+      setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "" });
       setOriginalData(null);
       setHasChanges(false);
       setImagePreview("");
@@ -225,7 +225,7 @@ export default function ProductsPage() {
     setImagePreview("");
     setImageFile(null);
     setIsUploading(false);
-    setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "0" });
+    setFormData({ name: "", price: "", categoryId: "none", allowedOutlets: ["all"], imageUrl: "", isActive: true, stockQuantity: "" });
     setOriginalData(null);
     setHasChanges(false);
     setUomRows([]);
@@ -1433,10 +1433,17 @@ export default function ProductsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Stok Gudang Utama (pcs)</label>
               <Input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 placeholder="Masukkan jumlah stok awal"
                 value={formData.stockQuantity}
-                onChange={(e) => handleFormChange('stockQuantity', e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || /^\d+$/.test(val)) {
+                    handleFormChange('stockQuantity', val);
+                  }
+                }}
               />
             </div>
 
