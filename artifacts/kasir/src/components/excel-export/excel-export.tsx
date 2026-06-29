@@ -92,9 +92,8 @@ const DEFAULT_COL_WIDTHS: ExportColumn[] = [
   { header: "Total", key: "Total", width: 15 },
   { header: "Qty Retur", key: "Qty Retur", width: 10 },
   { header: "Nominal Retur", key: "Nominal Retur", width: 15 },
-  { header: "Total Akhir", key: "Total Akhir", width: 15 },
-  { header: "Kas Masuk", key: "Kas Masuk", width: 15 },
   { header: "Sisa Piutang", key: "Sisa Piutang", width: 15 },
+  { header: "Total Akhir", key: "Total Akhir", width: 15 },
   { header: "HPP", key: "HPP", width: 15 },
   { header: "Margin", key: "Margin", width: 15 },
   { header: "Pembayaran", key: "Pembayaran", width: 15 },
@@ -128,9 +127,8 @@ const RIGHT_ALIGNED_KEYS = new Set([
   "Harga",
   "Total",
   "Nominal Retur",
-  "Total Akhir",
-  "Kas Masuk",
   "Sisa Piutang",
+  "Total Akhir",
   "HPP",
   "Margin",
   "PPN",
@@ -140,7 +138,7 @@ const RIGHT_ALIGNED_KEYS = new Set([
 ]);
 
 // Columns that need thousand separator format (numbers only)
-const THOUSAND_FORMAT_KEYS = new Set(["Harga", "Total", "Nominal Retur", "Total Akhir", "Kas Masuk", "Sisa Piutang", "HPP", "Margin", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
+const THOUSAND_FORMAT_KEYS = new Set(["Harga", "Total", "Nominal Retur", "Sisa Piutang", "Total Akhir", "HPP", "Margin", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
 
 const HEADER_STYLE = {
   font: { bold: true, color: { rgb: "FFFFFF" } },
@@ -422,9 +420,8 @@ function transformTransactions(
           Total: formatExcelRupiah(subtotal),
           "Qty Retur": formatExcelCount(qtyReturn),
           "Nominal Retur": formatExcelRupiah(returnAmount),
-          "Total Akhir": formatExcelRupiah(netTotal),
-          "Kas Masuk": formatExcelRupiah(kasMasuk),
           "Sisa Piutang": formatExcelRupiah(sisaPiutang),
+          "Total Akhir": formatExcelRupiah(kasMasuk),
           HPP: formatExcelRupiah(hpp),
           Margin: formatExcelRupiah(margin),
           Pembayaran: pembayaran,
@@ -444,9 +441,8 @@ function transformTransactions(
         Total: "-",
         "Qty Retur": "-",
         "Nominal Retur": "-",
-        "Total Akhir": "-",
-        "Kas Masuk": "-",
         "Sisa Piutang": "-",
+        "Total Akhir": "-",
         HPP: "-",
         Margin: "-",
         Pembayaran: pembayaran,
@@ -545,8 +541,12 @@ export function mapApiTransactionsToExport(
 
       const netQty = Math.max(0, quantity - rData.qty);
       const hppPerUnit = hppMap.get(pId) || 0;
-      const itemHpp = netQty * hppPerUnit;
-      const itemMargin = itemNet - itemHpp;
+      
+      const fullItemHpp = netQty * hppPerUnit;
+      const fullItemMargin = itemNet - fullItemHpp;
+      
+      const itemHpp = fullItemHpp * paymentRatio;
+      const itemMargin = fullItemMargin * paymentRatio;
 
       totalHpp += itemHpp;
       totalMargin += itemMargin;

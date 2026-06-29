@@ -24,6 +24,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recha
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const authUserName = useAuthUserName();
   const [, setLocation] = useLocation();
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -142,6 +143,13 @@ export default function DashboardPage() {
     // Do not close popup automatically, let user click Apply to confirm reset
   };
 
+  // For non-admin, always force the cashier filter to their own name
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      setCashierFilter(authUserName);
+    }
+  }, [user, authUserName]);
+
   // Check if user is admin super
   const isAdminSuper = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
@@ -170,7 +178,12 @@ export default function DashboardPage() {
   // Bundle all filter parameters including date range
   const filterParams = { cashierFilter, outletFilter, startDate, endDate, memberProductOutletFilter, memberProductDayFilter, generalProductOutletFilter, generalProductDayFilter, hourlyOutletFilter, hourlyDayFilter, outletPerformanceDayFilter, topCustomersOutletFilter };
 
-  const { data: stats } = useGetDashboardStats(filterParams);
+  const { data: stats, isLoading, error } = useGetDashboardStats(filterParams);
+  
+  useEffect(() => {
+    console.log("[Dashboard UI] stats updated:", stats);
+  }, [stats]);
+
   // Get all transactions for Excel export (without outlet filter)
   const { data: allTransactions, isLoading: isLoadingTransactions } = useListTransactions({ limit: 10000, cashierFilter: "all", outletFilter: "all" });
 
@@ -343,8 +356,6 @@ export default function DashboardPage() {
     let totalMargin = 0;
     let hasData = false;
 
-    const trxMap = new Map<number, any>();
-
     (allTransactions as any[]).forEach((trx: any) => {
       // Apply date & outlet filters
       if (outletFilter !== "all" && trx.outlet_id !== parseInt(outletFilter)) return;
@@ -352,50 +363,57 @@ export default function DashboardPage() {
       const trxDate = new Date(trx.created_at);
       if (trxDate < start || trxDate > end) return;
 
-      trxMap.set(trx.id, trx);
-
       const items = trx.transaction_items || [];
+      let trxGrossMargin = 0;
+      let trxNetTotal = Number(trx.subtotal) || 0;
+
       items.forEach((item: any) => {
         const productId = item.product_id;
         const hpp = hppMap.get(productId);
         if (!hpp) return;
         const qty = Number(item.quantity) || 0;
         const sellPrice = Number(item.price) || 0;
-        totalMargin += (sellPrice - hpp) * qty;
+        trxGrossMargin += (sellPrice - hpp) * qty;
         hasData = true;
       });
-    });
 
-    // Subtract completed returns in this period
-    if (allReturns) {
-      (allReturns as any[]).forEach((ret: any) => {
-        if (ret.status !== 'completed') return;
+      // Process returns for this transaction
+      let trxReturnMargin = 0;
+      let trxReturnAmount = 0;
+      
+      if (allReturns) {
+        const trxReturns = (allReturns as any[]).filter(r => r.transaction_id === trx.id && r.status === 'completed');
+        trxReturns.forEach(ret => {
+          trxReturnAmount += Number(ret.total_refund) || 0;
+          
+          const retItems = ret.sales_return_items || [];
+          retItems.forEach((rItem: any) => {
+            const hpp = hppMap.get(rItem.product_id);
+            if (!hpp) return;
 
-        const retDate = new Date(ret.created_at);
-        if (retDate < start || retDate > end) return;
+            const uoms = rItem.products?.product_uoms || [];
+            const uom = uoms.find((u: any) => u.unit_name === rItem.unit_name);
+            const convFactor = uom ? uom.conversion_factor : 1;
+            const pcsQty = (Number(rItem.quantity) || 0) * convFactor;
 
-        const originalTrx = trxMap.get(ret.transaction_id);
-        if (!originalTrx) return;
-
-        const items = ret.sales_return_items || [];
-        items.forEach((item: any) => {
-          const productId = item.product_id;
-          const hpp = hppMap.get(productId);
-          if (!hpp) return;
-
-          const uoms = item.products?.product_uoms || [];
-          const uom = uoms.find((u: any) => u.unit_name === item.unit_name);
-          const convFactor = uom ? uom.conversion_factor : 1;
-          const pcsQty = (Number(item.quantity) || 0) * convFactor;
-
-          const returnedCost = pcsQty * hpp;
-          const returnedRevenue = Number(item.subtotal) || 0;
-          const returnedMargin = returnedRevenue - returnedCost;
-
-          totalMargin -= returnedMargin;
+            const returnedCost = pcsQty * hpp;
+            const returnedRevenue = Number(rItem.subtotal) || Number(rItem.refund_amount) || 0;
+            trxReturnMargin += (returnedRevenue - returnedCost);
+          });
         });
-      });
-    }
+      }
+
+      const trxNetMargin = trxGrossMargin - trxReturnMargin;
+      const finalTrxNetTotal = Math.max(0, trxNetTotal - trxReturnAmount);
+      
+      const trxRemaining = Math.max(0, Number(trx.remaining_balance ?? trx.remainingBalance) || 0);
+      const trxKasMasuk = Math.max(0, finalTrxNetTotal - trxRemaining);
+      const paymentRatio = finalTrxNetTotal > 0 ? trxKasMasuk / finalTrxNetTotal : 0;
+
+      const cashBasisMargin = trxNetMargin * paymentRatio;
+      
+      totalMargin += cashBasisMargin;
+    });
 
     return { margin: totalMargin, hasHpp: hasData };
   }, [isAdminSuper, allTransactions, allReturns, allProducts, outletFilter, startDate, endDate]);

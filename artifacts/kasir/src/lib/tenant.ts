@@ -117,7 +117,7 @@ export function withTenantOwner<T extends Record<string, unknown>>(payload: T, t
     return payload;
   }
 
-  return { ...payload, owner_id: ownerId };
+  return { owner_id: ownerId, ...payload };
 }
 
 /** Handle error dari query - jika kolom tidak ada, matikan tenant filter */

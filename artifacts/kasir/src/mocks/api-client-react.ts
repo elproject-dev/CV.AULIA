@@ -123,14 +123,11 @@ export const useGetDashboardStats = (params?: any) => {
       let paymentsQuery = applyTenantFilter(
         supabase
           .from('transaction_payments')
-          .select('payment_date, amount, transaction_id, cashier_name')
+          .select('payment_date, amount, transaction_id, cashier_name, status')
+          .eq('status', 'confirmed')
           .gte('payment_date', periodStartIso)
           .lt('payment_date', periodEndIso)
       );
-
-      if (params?.cashierFilter && params.cashierFilter !== 'all') {
-        paymentsQuery = paymentsQuery.ilike('cashier_name', params.cashierFilter);
-      }
 
       const { data: paymentsData, error: paymentsError } = await paymentsQuery;
 
@@ -140,26 +137,6 @@ export const useGetDashboardStats = (params?: any) => {
 
       const payments = paymentsData || [];
 
-      // Filter payments by outlet if specified
-      const paymentTxIds = [...new Set(payments.map((p: any) => p.transaction_id))];
-      let txsForPayments: any[] = [];
-      if (paymentTxIds.length > 0) {
-        const { data: txs } = await supabase
-          .from('transactions')
-          .select('id, outlet_id')
-          .in('id', paymentTxIds);
-        txsForPayments = txs || [];
-      }
-      const txOutletMap = new Map(txsForPayments.map((t: any) => [t.id, t.outlet_id]));
-
-      const filteredPayments = payments.filter((p: any) => {
-        if (params?.outletFilter && params.outletFilter !== 'all') {
-          const outletId = txOutletMap.get(p.transaction_id);
-          return outletId === parseInt(params.outletFilter);
-        }
-        return true;
-      });
-
       // Fetch completed returns in this period
       let returnsQuery = supabase
         .from('sales_returns')
@@ -168,17 +145,43 @@ export const useGetDashboardStats = (params?: any) => {
         .gte('created_at', periodStartIso)
         .lt('created_at', periodEndIso);
 
-      if (params?.cashierFilter && params.cashierFilter !== 'all') {
-        returnsQuery = returnsQuery.ilike('cashier_name', params.cashierFilter);
-      }
-
       const { data: returnsData, error: returnsError } = await returnsQuery;
       if (returnsError) throw returnsError;
 
-      const validTxIds = new Set((transactions || []).map((t: any) => t.id));
-      const filteredReturns = (returnsData || []).filter((ret: any) => {
+      // Filter payments and returns by transaction's outlet and cashier
+      const paymentTxIds = payments.map((p: any) => p.transaction_id);
+      const returnTxIds = (returnsData || []).map((r: any) => r.transaction_id);
+      const allNeededTxIds = [...new Set([...paymentTxIds, ...returnTxIds])].filter(Boolean);
+      
+      let txsForPaymentsAndReturns: any[] = [];
+      if (allNeededTxIds.length > 0) {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('id, outlet_id, cashier_name')
+          .in('id', allNeededTxIds);
+        txsForPaymentsAndReturns = txs || [];
+      }
+
+      const txMap = new Map(txsForPaymentsAndReturns.map((t: any) => [String(t.id), t]));
+
+      const filteredPayments = payments.filter((p: any) => {
+        const tx = txMap.get(String(p.transaction_id));
         if (params?.outletFilter && params.outletFilter !== 'all') {
-          return validTxIds.has(ret.transaction_id);
+          if (tx?.outlet_id !== parseInt(params.outletFilter)) return false;
+        }
+        if (params?.cashierFilter && params.cashierFilter !== 'all') {
+          if (tx?.cashier_name?.trim().toLowerCase() !== params.cashierFilter.trim().toLowerCase()) return false;
+        }
+        return true;
+      });
+
+      const filteredReturns = (returnsData || []).filter((ret: any) => {
+        const tx = txMap.get(String(ret.transaction_id));
+        if (params?.outletFilter && params.outletFilter !== 'all') {
+          if (tx?.outlet_id !== parseInt(params.outletFilter)) return false;
+        }
+        if (params?.cashierFilter && params.cashierFilter !== 'all') {
+          if (tx?.cashier_name?.toLowerCase() !== params.cashierFilter.toLowerCase()) return false;
         }
         return true;
       });
@@ -225,6 +228,15 @@ export const useGetDashboardStats = (params?: any) => {
         totalRefundToday;
       const transactionsPeriod = periodTransactions.length;
       const transactionsTodayCount = todayTransactions.length;
+
+      console.log("[DashboardStats] payments:", payments);
+      console.log("[DashboardStats] allNeededTxIds:", allNeededTxIds);
+      console.log("[DashboardStats] txMap:", txMap);
+      console.log("[DashboardStats] filteredPayments:", filteredPayments);
+      console.log("[DashboardStats] todayPayments:", todayPayments);
+      console.log("[DashboardStats] todayTransactions:", todayTransactions);
+      console.log("[DashboardStats] totalRevenueToday:", totalRevenueToday);
+
 
       setData({
         totalRevenue: totalRevenuePeriod,
@@ -609,39 +621,16 @@ export const useGetRevenueChart = (params?: any) => {
       let paymentsQuery = applyTenantFilter(
         supabase
           .from('transaction_payments')
-          .select('payment_date, amount, transaction_id, cashier_name')
+          .select('payment_date, amount, transaction_id, cashier_name, status')
+          .eq('status', 'confirmed')
           .gte('payment_date', chartStart.toISOString())
           .lte('payment_date', chartEnd.toISOString())
       );
-
-      if (params?.cashierFilter && params.cashierFilter !== 'all') {
-        paymentsQuery = paymentsQuery.ilike('cashier_name', params.cashierFilter);
-      }
 
       const { data: paymentsData, error: paymentsError } = await paymentsQuery;
       if (paymentsError) throw paymentsError;
 
       const payments = paymentsData || [];
-
-      // Filter payments by outlet if specified
-      const paymentTxIds = [...new Set(payments.map((p: any) => p.transaction_id))];
-      let txsForPayments: any[] = [];
-      if (paymentTxIds.length > 0) {
-        const { data: txs } = await supabase
-          .from('transactions')
-          .select('id, outlet_id')
-          .in('id', paymentTxIds);
-        txsForPayments = txs || [];
-      }
-      const txOutletMap = new Map(txsForPayments.map((t: any) => [t.id, t.outlet_id]));
-
-      const filteredPayments = payments.filter((p: any) => {
-        if (params?.outletFilter && params.outletFilter !== 'all') {
-          const outletId = txOutletMap.get(p.transaction_id);
-          return outletId === parseInt(params.outletFilter);
-        }
-        return true;
-      });
 
       const grouped = new Map<string, { date: string; revenue: number; transactions: number }>();
 
@@ -663,6 +652,44 @@ export const useGetRevenueChart = (params?: any) => {
         }
       });
 
+
+      // Fetch completed returns in chart period
+      let returnsQuery = supabase
+        .from('sales_returns')
+        .select('created_at, total_refund, transaction_id, cashier_name, status')
+        .eq('status', 'completed')
+        .gte('created_at', chartStart.toISOString())
+        .lte('created_at', chartEnd.toISOString());
+
+      const { data: returnsData } = await returnsQuery;
+
+      // Filter payments and returns by transaction's outlet and cashier
+      const paymentTxIds = payments.map((p: any) => p.transaction_id);
+      const returnTxIds = (returnsData || []).map((r: any) => r.transaction_id);
+      const allNeededTxIds = [...new Set([...paymentTxIds, ...returnTxIds])].filter(Boolean);
+      
+      let txsForPaymentsAndReturns: any[] = [];
+      if (allNeededTxIds.length > 0) {
+        const { data: txs } = await supabase
+          .from('transactions')
+          .select('id, outlet_id, cashier_name')
+          .in('id', allNeededTxIds);
+        txsForPaymentsAndReturns = txs || [];
+      }
+
+      const txMap = new Map(txsForPaymentsAndReturns.map((t: any) => [String(t.id), t]));
+
+      const filteredPayments = payments.filter((p: any) => {
+        const tx = txMap.get(String(p.transaction_id));
+        if (params?.outletFilter && params.outletFilter !== 'all') {
+          if (tx?.outlet_id !== parseInt(params.outletFilter)) return false;
+        }
+        if (params?.cashierFilter && params.cashierFilter !== 'all') {
+          if (tx?.cashier_name?.trim().toLowerCase() !== params.cashierFilter.trim().toLowerCase()) return false;
+        }
+        return true;
+      });
+
       filteredPayments.forEach((p: any) => {
         if (!p.payment_date) return;
         const key = getLocalDateKey(new Date(p.payment_date));
@@ -672,23 +699,13 @@ export const useGetRevenueChart = (params?: any) => {
         }
       });
 
-      // Fetch completed returns in chart period
-      let returnsQuery = supabase
-        .from('sales_returns')
-        .select('created_at, total_refund, transaction_id, cashier_name')
-        .eq('status', 'completed')
-        .gte('created_at', chartStart.toISOString())
-        .lte('created_at', chartEnd.toISOString());
-
-      if (params?.cashierFilter && params.cashierFilter !== 'all') {
-        returnsQuery = returnsQuery.ilike('cashier_name', params.cashierFilter);
-      }
-
-      const { data: returnsData } = await returnsQuery;
-      const validTxIds = new Set((transactions || []).map((t: any) => t.id));
       const filteredReturns = (returnsData || []).filter((ret: any) => {
+        const tx = txMap.get(String(ret.transaction_id));
         if (params?.outletFilter && params.outletFilter !== 'all') {
-          return validTxIds.has(ret.transaction_id);
+          if (tx?.outlet_id !== parseInt(params.outletFilter)) return false;
+        }
+        if (params?.cashierFilter && params.cashierFilter !== 'all') {
+          if (tx?.cashier_name?.toLowerCase() !== params.cashierFilter.toLowerCase()) return false;
         }
         return true;
       });
@@ -3405,6 +3422,13 @@ export const useCreateTransactionPayment = () => {
         const isAdmin = params.isAdmin === true;
         const paymentStatus = isAdmin ? 'confirmed' : 'pending';
 
+        // Fetch the original transaction to inherit its owner_id, so the salesperson can see the payment
+        const { data: originalTrx } = await supabase
+          .from('transactions')
+          .select('owner_id')
+          .eq('id', params.transactionId)
+          .single();
+
         const payload = {
           transaction_id: params.transactionId,
           amount: params.amount,
@@ -3414,6 +3438,7 @@ export const useCreateTransactionPayment = () => {
           payment_date: new Date().toISOString(),
           status: paymentStatus,
           ...(isAdmin ? { confirmed_by: params.cashierName, confirmed_at: new Date().toISOString() } : {}),
+          ...(originalTrx?.owner_id ? { owner_id: originalTrx.owner_id } : {})
         };
 
         const { data: payment, error: paymentError } = await supabase
