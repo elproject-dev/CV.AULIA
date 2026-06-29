@@ -23,6 +23,13 @@ interface TransactionItem {
   productName: string;
   price: number;
   quantity: number;
+  qtyReturn?: number;
+  returnAmount?: number;
+  netTotal?: number;
+  kasMasuk?: number;
+  sisaPiutang?: number;
+  hpp?: number;
+  margin?: number;
 }
 
 interface Transaction {
@@ -30,10 +37,21 @@ interface Transaction {
   createdAt: string;
   items: TransactionItem[];
   customerName?: string;
+  customerId?: string | number;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerDistrict?: string;
+  customerCity?: string;
   paymentMethod?: string;
   discount?: number;
   discountNote?: string;
   total: number;
+  totalReturn?: number;
+  netTotal?: number;
+  totalKasMasuk?: number;
+  totalSisaPiutang?: number;
+  totalHpp?: number;
+  totalMargin?: number;
   cashierName?: string;
   outletId?: number;
   tax?: number;
@@ -59,47 +77,70 @@ interface ExportOptions {
 
 // Default column widths for transaction export
 const DEFAULT_COL_WIDTHS: ExportColumn[] = [
-  { header: "Tanggal", key: "Tanggal", width: 12 },
-  { header: "Jam", key: "Jam", width: 8 },
-  { header: "No.Transaksi", key: "No.Transaksi", width: 15 },
-  { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 35 },
-  { header: "Penjualan Produk", key: "Penjualan Produk", width: 40 },
+  { header: "Tanggal", key: "Tanggal", width: 15 },
+  { header: "Jam", key: "Jam", width: 10 },
+  { header: "No.Transaksi", key: "No.Transaksi", width: 20 },
+  { header: "ID Pelanggan", key: "ID Pelanggan", width: 15 },
+  { header: "Nama Pelanggan", key: "Nama Pelanggan", width: 30 },
+  { header: "No. Telepon", key: "No. Telepon", width: 15 },
+  { header: "Alamat", key: "Alamat", width: 30 },
+  { header: "Kecamatan", key: "Kecamatan", width: 20 },
+  { header: "Kabupaten", key: "Kabupaten", width: 20 },
+  { header: "Nama Produk", key: "Nama Produk", width: 35 },
+  { header: "Qty", key: "Qty", width: 8 },
+  { header: "Harga", key: "Harga", width: 15 },
   { header: "Total", key: "Total", width: 15 },
-  { header: "Cicilan", key: "Cicilan", width: 15 },
-  { header: "Tempo Penuh", key: "Tempo Penuh", width: 15 },
-  { header: "Tagihan", key: "Tagihan", width: 15 },
-  { header: "Jatuh Tempo", key: "Jatuh Tempo", width: 15 },
-  { header: "Metode", key: "Metode", width: 10 },
+  { header: "Qty Retur", key: "Qty Retur", width: 10 },
+  { header: "Nominal Retur", key: "Nominal Retur", width: 15 },
+  { header: "Total Akhir", key: "Total Akhir", width: 15 },
+  { header: "Kas Masuk", key: "Kas Masuk", width: 15 },
+  { header: "Sisa Piutang", key: "Sisa Piutang", width: 15 },
+  { header: "HPP", key: "HPP", width: 15 },
+  { header: "Margin", key: "Margin", width: 15 },
+  { header: "Pembayaran", key: "Pembayaran", width: 15 },
+  { header: "Tipe Pembayaran", key: "Tipe Pembayaran", width: 15 },
   { header: "Salesman", key: "Salesman", width: 15 },
-  { header: "Status", key: "Status", width: 15 },
+  { header: "Period Month", key: "Period Month", width: 15 },
+  { header: "Period Year", key: "Period Year", width: 12 },
 ];
 
 const CENTER_ALIGNED_KEYS = new Set([
   "Tanggal",
   "Jam",
+  "Period Month",
+  "Period Year",
   "No.Transaksi",
-  "Status",
-  "Jatuh Tempo",
+  "ID Pelanggan",
+  "No. Telepon",
+  "Kecamatan",
+  "Kabupaten",
+  "Qty",
+  "Qty Retur",
   "Diskon",
   "No",
   "Poin",
   "Bergabung Sejak",
+  "Pembayaran",
+  "Tipe Pembayaran",
 ]);
 
 const RIGHT_ALIGNED_KEYS = new Set([
+  "Harga",
   "Total",
-  "Cicilan",
-  "Tempo Penuh",
-  "Tagihan",
+  "Nominal Retur",
+  "Total Akhir",
+  "Kas Masuk",
+  "Sisa Piutang",
+  "HPP",
+  "Margin",
   "PPN",
   "Grand Total",
-  "Metode",
   "Salesman",
   "Total Belanja",
 ]);
 
 // Columns that need thousand separator format (numbers only)
-const THOUSAND_FORMAT_KEYS = new Set(["Total", "Cicilan", "Tempo Penuh", "Tagihan", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
+const THOUSAND_FORMAT_KEYS = new Set(["Harga", "Total", "Nominal Retur", "Total Akhir", "Kas Masuk", "Sisa Piutang", "HPP", "Margin", "Diskon", "PPN", "Grand Total", "Total Belanja"]);
 
 const HEADER_STYLE = {
   font: { bold: true, color: { rgb: "FFFFFF" } },
@@ -146,6 +187,20 @@ function formatTimeForExcel(dateString: string | undefined): string {
   if (!dateString) return "-";
   const date = new Date(dateString);
   return date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+function getPeriodMonth(dateString: string | undefined): string {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("id-ID", { month: "long" }).format(date);
+}
+
+function getPeriodYear(dateString: string | undefined): string {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "-";
+  return String(date.getFullYear());
 }
 
 function formatExcelRupiah(value: number | undefined | null): number {
@@ -293,47 +348,6 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-function buildExportRow(
-  trx: Transaction,
-  branchName: string,
-  cashierDefault: string,
-  outletName?: string
-): Record<string, unknown> {
-  const transactionId = Number(trx.id);
-
-  // Format Penjualan Produk: "1x es teh, 1x es jeruk, 2x bakso"
-  const itemsList = trx.items || [];
-  const penjualanProduk = itemsList
-    .map(item => `${item.quantity}x ${item.productName}`)
-    .join(", ");
-
-  // Hitung Total (jumlah dari qty * harga per item)
-  const totalBelanja = itemsList.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.price) || 0), 0);
-
-  const statusStr = trx.paymentStatus === 'paid' ? 'Lunas' : (trx.paymentStatus === 'partial' ? 'Cicilan' : (trx.paymentStatus === 'unpaid' ? 'Belum Bayar' : '-'));
-  const remaining = Number(trx.remainingBalance) || 0;
-  let paid = totalBelanja - remaining;
-
-  const isPaid = trx.paymentStatus === 'paid';
-  const isUnpaid = trx.paymentStatus === 'unpaid';
-
-  return {
-    Tanggal: formatDateForExcel(trx.createdAt),
-    Jam: formatTimeForExcel(trx.createdAt),
-    "No.Transaksi": Number.isFinite(transactionId) ? formatInvoiceNumber(transactionId) : "-",
-    "Nama Pelanggan": trx.customerName || "Umum",
-    "Penjualan Produk": penjualanProduk || "-",
-    Total: formatExcelRupiah(totalBelanja),
-    Cicilan: isPaid || isUnpaid ? "-" : formatExcelRupiah(paid),
-    "Tempo Penuh": isUnpaid ? formatExcelRupiah(remaining) : "-",
-    Tagihan: formatExcelRupiah(remaining),
-    "Jatuh Tempo": trx.dueDate ? formatDateForExcel(trx.dueDate) : "-",
-    Metode: formatPaymentMethod(trx.paymentMethod),
-    Salesman: trx.cashierName || cashierDefault,
-    Status: statusStr,
-  };
-}
-
 // Transform transactions to exportable data
 interface Outlet {
   id: number;
@@ -364,12 +378,85 @@ function transformTransactions(
 
   transactions.forEach((trx, trxIndex) => {
     const stripe = trxIndex % 2;
-    // Get outlet name from outletId, fallback to actualBranchName
-    const outletName = trx.outletId ? outletMap.get(trx.outletId) || actualBranchName : actualBranchName;
+    const transactionId = Number(trx.id);
 
-    const row = buildExportRow(trx, actualBranchName, cashierDefault, outletName);
-    data.push(row);
-    rowStripes.push(stripe);
+    const baseRow = {
+      Tanggal: formatDateForExcel(trx.createdAt),
+      Jam: formatTimeForExcel(trx.createdAt),
+      "No.Transaksi": Number.isFinite(transactionId) ? formatInvoiceNumber(transactionId) : "-",
+      "ID Pelanggan": trx.customerId || "-",
+      "Nama Pelanggan": trx.customerName || "Umum",
+      "No. Telepon": trx.customerPhone || "-",
+      Alamat: trx.customerAddress || "-",
+      Kecamatan: trx.customerDistrict || "-",
+      Kabupaten: trx.customerCity || "-",
+    };
+
+    const salesman = trx.cashierName || cashierDefault;
+    const periodMonth = getPeriodMonth(trx.createdAt);
+    const periodYear = getPeriodYear(trx.createdAt);
+    const pembayaran = String(trx.paymentMethod || "-").toUpperCase();
+    const tipePembayaranRaw = String(trx.paymentStatus || "-");
+    const tipePembayaran = tipePembayaranRaw === 'paid' ? 'Lunas' : tipePembayaranRaw === 'partial' ? 'Cicilan' : tipePembayaranRaw === 'unpaid' ? 'Belum Lunas' : tipePembayaranRaw;
+
+    if (trx.items && trx.items.length > 0) {
+      trx.items.forEach((item) => {
+        const price = Number(item.price) || 0;
+        const qty = Number(item.quantity) || 0;
+        const subtotal = price * qty;
+
+        const qtyReturn = Number(item.qtyReturn) || 0;
+        const netTotal = Number(item.netTotal) ?? subtotal;
+        const kasMasuk = Number(item.kasMasuk) || 0;
+        const sisaPiutang = Number(item.sisaPiutang) || 0;
+        const hpp = Number(item.hpp) || 0;
+        const margin = Number(item.margin) || 0;
+
+        const returnAmount = Number(item.returnAmount) || 0;
+
+        data.push({
+          ...baseRow,
+          "Nama Produk": item.productName || "-",
+          Qty: formatExcelCount(qty),
+          Harga: formatExcelRupiah(price),
+          Total: formatExcelRupiah(subtotal),
+          "Qty Retur": formatExcelCount(qtyReturn),
+          "Nominal Retur": formatExcelRupiah(returnAmount),
+          "Total Akhir": formatExcelRupiah(netTotal),
+          "Kas Masuk": formatExcelRupiah(kasMasuk),
+          "Sisa Piutang": formatExcelRupiah(sisaPiutang),
+          HPP: formatExcelRupiah(hpp),
+          Margin: formatExcelRupiah(margin),
+          Pembayaran: pembayaran,
+          "Tipe Pembayaran": tipePembayaran,
+          Salesman: salesman,
+          "Period Month": periodMonth,
+          "Period Year": periodYear,
+        });
+        rowStripes.push(stripe);
+      });
+    } else {
+      data.push({
+        ...baseRow,
+        "Nama Produk": "-",
+        Qty: "-",
+        Harga: "-",
+        Total: "-",
+        "Qty Retur": "-",
+        "Nominal Retur": "-",
+        "Total Akhir": "-",
+        "Kas Masuk": "-",
+        "Sisa Piutang": "-",
+        HPP: "-",
+        Margin: "-",
+        Pembayaran: pembayaran,
+        "Tipe Pembayaran": tipePembayaran,
+        Salesman: salesman,
+        "Period Month": periodMonth,
+        "Period Year": periodYear,
+      });
+      rowStripes.push(stripe);
+    }
   });
 
   return { data, rowStripes };
@@ -377,30 +464,128 @@ function transformTransactions(
 
 // Map raw Supabase/API transactions to export format
 export function mapApiTransactionsToExport(
-  transactions: Record<string, unknown>[]
+  transactions: Record<string, unknown>[],
+  returnsData: Record<string, unknown>[] = [],
+  productsData: Record<string, unknown>[] = []
 ): Transaction[] {
+  const hppMap = new Map<string, number>();
+  productsData.forEach(p => {
+    hppMap.set(String(p.id), Number(p.hpp) || 0);
+  });
+
   return (transactions || []).map((trx) => {
     const subtotal = Number(trx.subtotal) || 0;
     const total = subtotal;
 
+    // Process returns for this transaction
+    const trxReturns = returnsData.filter(r => String(r.transaction_id) === String(trx.id) && r.status === 'completed');
+    let totalReturnAmount = 0;
+    const returnItemMap = new Map<string, { qty: number, amount: number }>();
+
+    trxReturns.forEach(ret => {
+      totalReturnAmount += Number(ret.total_refund) || 0;
+      const items = (ret.sales_return_items || []) as Record<string, unknown>[];
+      items.forEach(rItem => {
+        const pId = rItem.product_id ? String(rItem.product_id) : '';
+        const pName = rItem.product_name ? String(rItem.product_name) : '';
+        const key = pId || pName;
+
+        const uoms = (rItem.products as any)?.product_uoms || [];
+        const uom = uoms.find((u: any) => u.unit_name === rItem.unit_name);
+        const conversionFactor = uom ? Number(uom.conversion_factor) : 1;
+
+        const rQty = (Number(rItem.quantity) || 0) * conversionFactor;
+        const rAmt = Number(rItem.subtotal) || Number(rItem.refund_amount) || 0;
+
+        if (key) {
+          const current = returnItemMap.get(key) || { qty: 0, amount: 0 };
+          returnItemMap.set(key, {
+            qty: current.qty + rQty,
+            amount: current.amount + rAmt
+          });
+        }
+      });
+    });
+
+    const netTotal = Math.max(0, total - totalReturnAmount);
+
     const rawItems = (trx.transaction_items || trx.items || []) as Record<string, unknown>[];
-    const customer = trx.customers as { name?: string } | null | undefined;
+    const customer = trx.customers as {
+      name?: string,
+      id?: string | number,
+      customer_id_manual?: string,
+      phone?: string,
+      address?: string,
+      district?: string,
+      city?: string
+    } | null | undefined;
     const discountNote = String(trx.discount_note ?? trx.discountNote ?? "").trim() || undefined;
+
+    const trxRemaining = Math.max(0, Number(trx.remaining_balance ?? trx.remainingBalance) || 0);
+    const trxKasMasuk = Math.max(0, netTotal - trxRemaining);
+    const paymentRatio = netTotal > 0 ? trxKasMasuk / netTotal : 0;
+
+    let totalHpp = 0;
+    let totalMargin = 0;
+
+    const mappedItems = rawItems.map((item) => {
+      const pId = item.product_id ? String(item.product_id) : '';
+      const pName = String(item.product_name ?? item.productName ?? "-");
+      const key = pId || pName;
+      
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity) || 0;
+      const itemSubtotal = price * quantity;
+      
+      const rData = returnItemMap.get(key) || { qty: 0, amount: 0 };
+      const itemNet = Math.max(0, itemSubtotal - rData.amount);
+      
+      const itemKasMasuk = itemNet * paymentRatio;
+      const itemSisaPiutang = itemNet - itemKasMasuk;
+
+      const netQty = Math.max(0, quantity - rData.qty);
+      const hppPerUnit = hppMap.get(pId) || 0;
+      const itemHpp = netQty * hppPerUnit;
+      const itemMargin = itemNet - itemHpp;
+
+      totalHpp += itemHpp;
+      totalMargin += itemMargin;
+
+      return {
+        productName: pName,
+        price,
+        quantity,
+        qtyReturn: rData.qty,
+        returnAmount: rData.amount,
+        netTotal: itemNet,
+        kasMasuk: itemKasMasuk,
+        sisaPiutang: itemSisaPiutang,
+        hpp: itemHpp,
+        margin: itemMargin,
+      };
+    });
 
     return {
       id: String(trx.id ?? ""),
       createdAt: String(trx.created_at ?? trx.createdAt ?? ""),
       customerName: customer?.name || (trx.customerName as string | undefined) || "Umum",
+      customerId: customer?.customer_id_manual || (trx.customer_id_manual as string | undefined) || customer?.id || (trx.customer_id ?? trx.customerId) as string | number | undefined,
+      customerPhone: customer?.phone || (trx.customerPhone as string | undefined) || "-",
+      customerAddress: customer?.address || (trx.customerAddress as string | undefined) || "-",
+      customerDistrict: customer?.district || (trx.customerDistrict as string | undefined) || "-",
+      customerCity: customer?.city || (trx.customerCity as string | undefined) || "-",
       paymentMethod: String(trx.payment_method ?? trx.paymentMethod ?? ""),
-      items: rawItems.map((item) => ({
-        productName: String(item.product_name ?? item.productName ?? "-"),
-        price: Number(item.price) || 0,
-        quantity: Number(item.quantity) || 0,
-      })),
+      items: mappedItems,
       discount: 0,
       discountNote,
       tax: 0,
       total,
+      totalReturn: totalReturnAmount,
+      netTotal,
+      totalKasMasuk: trxKasMasuk,
+      totalSisaPiutang: trxRemaining,
+      totalHpp,
+      totalMargin,
       cashierName: (trx.cashier_name ?? trx.cashierName) as string | undefined,
       outletId: Number(trx.outlet_id ?? trx.outletId) || undefined,
       paymentStatus: trx.payment_status as string | undefined,
@@ -569,14 +754,25 @@ export function DownloadExcelDialog({
 
   const { data: filterStaffList } = useListStaff({ outletId: selectedOutlet });
 
+  // Filter out admin staff
+  const filteredStaffList = (filterStaffList || []).filter(
+    (s: any) => s.role?.toLowerCase() !== 'admin'
+  );
+
+  const adminNames = new Set(
+    (filterStaffList || [])
+      .filter((s: any) => s.role?.toLowerCase() === 'admin')
+      .map((s: any) => s.name)
+  );
+
   useEffect(() => {
-    if (selectedOutlet !== "all" && selectedCashier !== "all" && filterStaffList && filterStaffList.length > 0) {
-      const exists = filterStaffList.some((s: any) => s.name === selectedCashier);
+    if (selectedOutlet !== "all" && selectedCashier !== "all" && filteredStaffList.length > 0) {
+      const exists = filteredStaffList.some((s: any) => s.name === selectedCashier);
       if (!exists) {
         setSelectedCashier("all");
       }
     }
-  }, [selectedOutlet, filterStaffList]);
+  }, [selectedOutlet, filteredStaffList]);
 
   // Reset tanggal setiap kali pop-up dibuka atau ditutup
   useEffect(() => {
@@ -594,6 +790,13 @@ export function DownloadExcelDialog({
         .filter((name) => name && name.trim() !== "")
     )
   ).sort();
+
+  const filteredUniqueCashiers = uniqueCashiers.filter(
+    (cashier) =>
+      cashier.toLowerCase() !== "admin" &&
+      cashier !== "Admin Kasir" &&
+      !adminNames.has(cashier)
+  );
 
   const handleDownload = async (
     exportFn: () => Promise<void>,
@@ -819,14 +1022,14 @@ export function DownloadExcelDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua Sales</SelectItem>
-                {filterStaffList && filterStaffList.length > 0 ? (
-                  filterStaffList.map((staff: any) => (
+                {filteredStaffList && filteredStaffList.length > 0 ? (
+                  filteredStaffList.map((staff: any) => (
                     <SelectItem key={staff.email || staff.id} value={staff.name}>
                       {staff.name}
                     </SelectItem>
                   ))
                 ) : (
-                  uniqueCashiers.map((cashier) => (
+                  filteredUniqueCashiers.map((cashier) => (
                     <SelectItem key={cashier} value={cashier}>
                       {cashier}
                     </SelectItem>
@@ -887,7 +1090,7 @@ export function DownloadExcelDialog({
               </div>
             </div>
           </div>
-          
+
           <Button
             onClick={handleExportCustomDate}
             disabled={isDownloading || !startDate || !endDate}
@@ -903,7 +1106,7 @@ export function DownloadExcelDialog({
             start.setHours(0, 0, 0, 0);
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
-            
+
             if (start > end) {
               return (
                 <p className="text-xs text-red-500 font-medium text-center pt-2">

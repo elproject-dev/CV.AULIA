@@ -160,6 +160,38 @@ export const useGetDashboardStats = (params?: any) => {
         return true;
       });
 
+      // Fetch completed returns in this period
+      let returnsQuery = supabase
+        .from('sales_returns')
+        .select('created_at, total_refund, transaction_id, cashier_name, status')
+        .eq('status', 'completed')
+        .gte('created_at', periodStartIso)
+        .lt('created_at', periodEndIso);
+
+      if (params?.cashierFilter && params.cashierFilter !== 'all') {
+        returnsQuery = returnsQuery.ilike('cashier_name', params.cashierFilter);
+      }
+
+      const { data: returnsData, error: returnsError } = await returnsQuery;
+      if (returnsError) throw returnsError;
+
+      const validTxIds = new Set((transactions || []).map((t: any) => t.id));
+      const filteredReturns = (returnsData || []).filter((ret: any) => {
+        if (params?.outletFilter && params.outletFilter !== 'all') {
+          return validTxIds.has(ret.transaction_id);
+        }
+        return true;
+      });
+
+      const periodReturns = filteredReturns || [];
+      const todayReturns = periodReturns.filter((ret: any) => {
+        if (!ret.created_at) return false;
+        return getLocalDateKey(new Date(ret.created_at)) === todayKey;
+      });
+
+      const totalRefundPeriod = periodReturns.reduce((sum: number, ret: any) => sum + toNumber(ret.total_refund), 0);
+      const totalRefundToday = todayReturns.reduce((sum: number, ret: any) => sum + toNumber(ret.total_refund), 0);
+
       // Customers adalah data bersama - tidak pakai filter tenant
       const { count: customersCount, error: customersError } = await supabase
         .from('customers')
@@ -185,11 +217,14 @@ export const useGetDashboardStats = (params?: any) => {
       });
       const totalRevenuePeriod =
         periodTransactions.reduce((sum: number, transaction: any) => sum + toNumber(transaction.amount_paid), 0) +
-        filteredPayments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0);
+        filteredPayments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0) -
+        totalRefundPeriod;
       const totalRevenueToday =
         todayTransactions.reduce((sum: number, transaction: any) => sum + toNumber(transaction.amount_paid), 0) +
-        todayPayments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0);
+        todayPayments.reduce((sum: number, p: any) => sum + toNumber(p.amount), 0) -
+        totalRefundToday;
       const transactionsPeriod = periodTransactions.length;
+      const transactionsTodayCount = todayTransactions.length;
 
       setData({
         totalRevenue: totalRevenuePeriod,
@@ -198,7 +233,7 @@ export const useGetDashboardStats = (params?: any) => {
         totalCustomers: customersCount || 0,
         totalRevenueToday: isCustomDate ? totalRevenuePeriod : totalRevenueToday,
         totalRevenueMonth: totalRevenuePeriod,
-        transactionsToday: isCustomDate ? transactionsPeriod : todayTransactions.length,
+        transactionsToday: isCustomDate ? transactionsPeriod : transactionsTodayCount,
         transactionsMonth: transactionsPeriod,
         newCustomersThisMonth: newCustomersCount || 0,
         averageTransactionValue: transactionsPeriod > 0 ? totalRevenuePeriod / transactionsPeriod : 0,
@@ -309,6 +344,23 @@ export const useGetTopProducts = (params?: any) => {
         throw error;
       }
 
+      // Get completed returns for these transactions
+      const { data: returnsData } = await supabase
+        .from('sales_returns')
+        .select('id')
+        .in('transaction_id', transactionIds)
+        .eq('status', 'completed');
+      
+      const returnIds = (returnsData || []).map(r => r.id);
+      let returnItems: any[] = [];
+      if (returnIds.length > 0) {
+        const { data: riData } = await supabase
+          .from('sales_return_items')
+          .select('product_id, quantity, subtotal')
+          .in('return_id', returnIds);
+        returnItems = riData || [];
+      }
+
       const productIds = Array.from(new Set((items || []).map((item: any) => item.product_id).filter(Boolean)));
       const { data: productRows, error: productsError } = productIds.length > 0
         ? await supabase
@@ -336,6 +388,14 @@ export const useGetTopProducts = (params?: any) => {
         }
         grouped[item.product_id].totalSold += toNumber(item.quantity);
         grouped[item.product_id].totalRevenue += toNumber(item.subtotal);
+      });
+
+      returnItems.forEach((ri: any) => {
+        const existing = grouped[ri.product_id];
+        if (existing) {
+          existing.totalSold = Math.max(0, existing.totalSold - toNumber(ri.quantity));
+          existing.totalRevenue = Math.max(0, existing.totalRevenue - toNumber(ri.subtotal));
+        }
       });
 
       const topProducts = Object.values(grouped)
@@ -421,6 +481,20 @@ export const useGetRecentTransactions = (params?: any) => {
         throw error;
       }
 
+      const transactionIds = (transactions || []).map((t: any) => t.id);
+      let refundMap = new Map<number, number>();
+      if (transactionIds.length > 0) {
+        const { data: returnsData } = await supabase
+          .from('sales_returns')
+          .select('transaction_id, total_refund')
+          .in('transaction_id', transactionIds)
+          .eq('status', 'completed');
+        (returnsData || []).forEach((r: any) => {
+          const current = refundMap.get(r.transaction_id) || 0;
+          refundMap.set(r.transaction_id, current + toNumber(r.total_refund));
+        });
+      }
+
       // Fetch outlets for mapping
       const { data: outletsData } = await supabase.from('outlets').select('id, name');
       const outletMap = new Map((outletsData || []).map((o: any) => [o.id, o.name]));
@@ -428,7 +502,8 @@ export const useGetRecentTransactions = (params?: any) => {
       const pointsValue = parseInt(localStorage.getItem('pointsValue') || '1000');
       const formatted = (transactions || []).map((trx: any) => {
         const pointsDiscount = 0;
-        const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0) - pointsDiscount;
+        const refund = refundMap.get(trx.id) || 0;
+        const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0) - pointsDiscount - refund;
         return {
           id: trx.id,
           createdAt: trx.created_at,
@@ -594,6 +669,36 @@ export const useGetRevenueChart = (params?: any) => {
         const existing = grouped.get(key);
         if (existing) {
           existing.revenue += toNumber(p.amount);
+        }
+      });
+
+      // Fetch completed returns in chart period
+      let returnsQuery = supabase
+        .from('sales_returns')
+        .select('created_at, total_refund, transaction_id, cashier_name')
+        .eq('status', 'completed')
+        .gte('created_at', chartStart.toISOString())
+        .lte('created_at', chartEnd.toISOString());
+
+      if (params?.cashierFilter && params.cashierFilter !== 'all') {
+        returnsQuery = returnsQuery.ilike('cashier_name', params.cashierFilter);
+      }
+
+      const { data: returnsData } = await returnsQuery;
+      const validTxIds = new Set((transactions || []).map((t: any) => t.id));
+      const filteredReturns = (returnsData || []).filter((ret: any) => {
+        if (params?.outletFilter && params.outletFilter !== 'all') {
+          return validTxIds.has(ret.transaction_id);
+        }
+        return true;
+      });
+
+      filteredReturns.forEach((ret: any) => {
+        if (!ret.created_at) return;
+        const key = getLocalDateKey(new Date(ret.created_at));
+        const existing = grouped.get(key);
+        if (existing) {
+          existing.revenue -= toNumber(ret.total_refund);
         }
       });
 
@@ -1115,7 +1220,7 @@ export const useListTransactions = (params?: any) => {
       let query = applyTenantFilter(
         supabase
           .from('transactions')
-          .select('*, transaction_items(*), customers(name, phone, address, district, city), outlets(name, store_name, address, phone)')
+          .select('*, transaction_items(*), customers(name, phone, address, district, city, customer_id_manual), outlets(name, store_name, address, phone)')
           .order('created_at', { ascending: false })
       );
 
@@ -1430,6 +1535,11 @@ export const useUpdateProduct = () => {
           price: params.data.price,
           is_active: params.data.isActive === true
         };
+
+        // Save hpp if provided
+        if (params.data.hpp !== undefined && params.data.hpp !== null) {
+          payload.hpp = params.data.hpp > 0 ? params.data.hpp : null;
+        }
 
         if (params.data.categoryId && params.data.categoryId !== "none") {
           payload.category_id = parseInt(params.data.categoryId);

@@ -12,12 +12,10 @@ export function usePendingReturnsCount() {
     queryKey: ["pendingReturnsCount", user?.id],
     queryFn: async () => {
       if (!user || user.role !== "admin") return 0;
-      const query = applyTenantFilter(
-        supabase
+      const query = supabase
           .from("sales_returns")
           .select("id", { count: "exact", head: true })
-          .eq("status", "pending")
-      );
+          .eq("status", "pending");
       const { count, error } = await query;
       if (error || count === null) return 0;
       return count;

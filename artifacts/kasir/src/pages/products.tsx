@@ -121,6 +121,7 @@ export default function ProductsPage() {
   // Discount Modal State
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
   const [discountProduct, setDiscountProduct] = useState<any>(null);
+  const [discountHpp, setDiscountHpp] = useState<string>(""); // HPP input for discount dialog
 
   // Stock stats calculation from currently loaded products list
   const stockStats = useMemo(() => {
@@ -195,7 +196,7 @@ export default function ProductsPage() {
         allowedOutlets: storedAllowedOutlets,
         imageUrl: storedImageUrl,
         isActive: product.isActive,
-        stockQuantity: product.stock_quantity?.toString() || ""
+        stockQuantity: product.stock_quantity ? formatNumberWithDots(product.stock_quantity.toString()) : ""
       };
       setFormData(initialData);
       setOriginalData(initialData);
@@ -272,6 +273,8 @@ export default function ProductsPage() {
 
     setUomRows(groupedRows);
     setHasChanges(false);
+    // Load existing HPP from product data
+    setDiscountHpp(product.hpp ? formatNumberWithDots(Math.round(Number(product.hpp)).toString()) : '');
     setIsDiscountDialogOpen(true);
   };
 
@@ -279,10 +282,11 @@ export default function ProductsPage() {
     setIsDiscountDialogOpen(false);
     setDiscountProduct(null);
     setUomRows([]);
+    setDiscountHpp("");
     setHasChanges(false);
   };
 
-  const handleSaveDiscounts = () => {
+  const handleSaveDiscounts = async () => {
     if (!discountProduct) return;
 
     const uomsToSave: any[] = [
@@ -304,17 +308,41 @@ export default function ProductsPage() {
       });
     });
 
-    bulkSaveUoms.mutate({ productId: discountProduct.id, uoms: uomsToSave }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-        refetchProducts();
-        toast({ title: "Sukses", description: "Pengaturan satuan & diskon disimpan" });
-        handleCloseDiscountDialog();
-      },
-      onError: (error: any) => {
-        toast({ title: "Error", description: error?.message || "Gagal menyimpan pengaturan", variant: "destructive" });
-      }
-    });
+    const hppValue = parseNumberFromDots(discountHpp);
+
+    try {
+      // Save HPP to product record
+      await new Promise<void>((resolve, reject) => {
+        updateProduct.mutate({
+          id: discountProduct.id,
+          data: {
+            name: discountProduct.name,
+            price: discountProduct.price,
+            isActive: discountProduct.isActive ?? discountProduct.is_active ?? true,
+            allowedOutlets: discountProduct.allowed_outlets || ['all'],
+            hpp: hppValue > 0 ? hppValue : null,
+          }
+        }, {
+          onSuccess: () => resolve(),
+          onError: (err: any) => reject(err)
+        });
+      });
+
+      // Save UOMs
+      bulkSaveUoms.mutate({ productId: discountProduct.id, uoms: uomsToSave }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+          refetchProducts();
+          toast({ title: "Sukses", description: "Pengaturan HPP, satuan & diskon disimpan" });
+          handleCloseDiscountDialog();
+        },
+        onError: (error: any) => {
+          toast({ title: "Error", description: error?.message || "Gagal menyimpan pengaturan", variant: "destructive" });
+        }
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Gagal menyimpan HPP", variant: "destructive" });
+    }
   };
 
   const handleFormChange = (field: string, value: any) => {
@@ -412,7 +440,7 @@ export default function ProductsPage() {
         allowedOutlets: formData.allowedOutlets,
         imageUrl: finalImageUrl,
         isActive: formData.isActive,
-        stockQuantity: parseInt(formData.stockQuantity) || 0
+        stockQuantity: parseNumberFromDots(formData.stockQuantity || '0') || 0
       };
 
       // UOM logic moved to its own dialog
@@ -1435,14 +1463,11 @@ export default function ProductsPage() {
               <Input
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
                 placeholder="Masukkan jumlah stok awal"
                 value={formData.stockQuantity}
                 onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "" || /^\d+$/.test(val)) {
-                    handleFormChange('stockQuantity', val);
-                  }
+                  const formatted = formatNumberWithDots(e.target.value);
+                  handleFormChange('stockQuantity', formatted);
                 }}
               />
             </div>
@@ -1478,10 +1503,69 @@ export default function ProductsPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* HPP & Margin Section */}
+            {(() => {
+              const hargaJual = Number(discountProduct?.price) || 0;
+              const hppValue = parseNumberFromDots(discountHpp);
+              const margin = hargaJual > 0 && hppValue > 0
+                ? ((hargaJual - hppValue) / hargaJual) * 100
+                : null;
+              const marginNominal = hargaJual > 0 && hppValue > 0
+                ? hargaJual - hppValue
+                : null;
+              const isMarginNegative = margin !== null && margin < 0;
+
+              return (
+                <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-3 rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <span className="text-slate-500">💰</span>
+                    HPP &amp; Margin
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500">Harga Jual (pcs)</label>
+                      <div className="h-8 px-3 flex items-center text-sm bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-slate-600 dark:text-slate-400 font-medium">
+                        {hargaJual > 0 ? formatNumberWithDots(hargaJual.toString()) : '-'}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-slate-500">HPP / Modal (Rp)</label>
+                      <Input
+                        placeholder="Masukkan HPP"
+                        value={discountHpp}
+                        onChange={(e) => {
+                          setDiscountHpp(formatNumberWithDots(e.target.value));
+                          setHasChanges(true);
+                        }}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  {hppValue > 0 && hargaJual > 0 && (
+                    <div className={`p-2.5 rounded-md border text-xs flex flex-wrap gap-x-4 gap-y-1 ${
+                      isMarginNegative
+                        ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                        : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                    }`}>
+                      <span className={isMarginNegative ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}>
+                        Margin: <strong>{margin !== null ? margin.toFixed(2) : 0}%</strong>
+                      </span>
+                      <span className={isMarginNegative ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}>
+                        Laba: <strong>{marginNominal !== null ? formatNumberWithDots(Math.round(marginNominal).toString()) : '-'}</strong>
+                      </span>
+                      {isMarginNegative && (
+                        <span className="text-red-600 dark:text-red-400 font-semibold w-full">⚠️ HPP melebihi harga jual!</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="space-y-3 border border-slate-200 dark:border-slate-800 p-3 rounded-lg bg-slate-50/50 dark:bg-slate-900/50">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Ruler className="w-4 h-4 text-slate-500" />
-                Satuan Ukur & Diskon
+                Satuan Ukur &amp; Diskon
               </label>
               <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
                 Satuan dasar (pcs) otomatis ditambahkan.
@@ -1560,6 +1644,33 @@ export default function ProductsPage() {
                         </Button>
                       </div>
 
+                      {/* Margin Info per Satuan */}
+                      {(() => {
+                        const hppPcs = parseNumberFromDots(discountHpp);
+                        const convFactor = Number(row.conversion_factor) || 0;
+                        const hargaJualSatuan = parseNumberFromDots(row.price || '0');
+                        const hppSatuan = hppPcs * convFactor;
+                        const labelSatuan = row.unit_name || 'satuan';
+
+                        if (hppPcs <= 0 || convFactor <= 0 || hargaJualSatuan <= 0) return null;
+
+                        const laba = hargaJualSatuan - hppSatuan;
+                        const marginPct = (laba / hargaJualSatuan) * 100;
+                        const isNegative = laba < 0;
+
+                        return (
+                          <div className={`mt-1.5 px-2.5 py-1.5 rounded text-[10px] flex flex-wrap gap-x-3 gap-y-0.5 border ${
+                            isNegative
+                              ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
+                              : 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                          }`}>
+                            <span>HPP {labelSatuan}: <strong>{formatNumberWithDots(Math.round(hppSatuan).toString())}</strong></span>
+                            <span>Margin: <strong>{marginPct.toFixed(1)}%</strong></span>
+                            <span>Laba: <strong>{formatNumberWithDots(Math.round(laba).toString())}</strong></span>
+                            {isNegative && <span className="font-semibold w-full">⚠️ Harga jual di bawah modal!</span>}
+                          </div>
+                        );
+                      })()}
                       {/* Tiers List */}
                       {row.tiers && row.tiers.map((tier: any, tierIdx: number) => {
                         const unitPrice = parseNumberFromDots(row.price || "0");

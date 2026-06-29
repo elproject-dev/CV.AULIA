@@ -157,7 +157,7 @@ export default function ReceivablesPage() {
     }
 
     const getInvoiceContentHtml = (copyLabel: string) => {
-      let statusLabel = 'BELUM BAYAR';
+      let statusLabel = 'TEMPO PENUH';
       let badgeClass = 'badge-pending';
       if (trx.payment_status === 'paid') {
         statusLabel = 'LUNAS';
@@ -743,13 +743,13 @@ export default function ReceivablesPage() {
 
   const getStatusBadge = (status: string) => {
     if (status === 'partial') return <Badge className="bg-amber-500 hover:bg-amber-600">Cicilan</Badge>;
-    if (status === 'unpaid') return <Badge variant="destructive">Belum Bayar</Badge>;
+    if (status === 'unpaid') return <Badge variant="destructive">Tempo Penuh</Badge>;
     return <Badge className="bg-emerald-500 hover:bg-emerald-600">Lunas</Badge>;
   };
 
   const getStatusLabel = (status: string) => {
     if (status === 'partial') return 'Cicilan';
-    if (status === 'unpaid') return 'Belum Bayar';
+    if (status === 'unpaid') return 'Tempo Penuh';
     return 'Lunas';
   };
 
@@ -1125,7 +1125,7 @@ export default function ReceivablesPage() {
                               <SelectItem value="all">Semua Status</SelectItem>
                               <SelectItem value="paid">Lunas</SelectItem>
                               <SelectItem value="partial">Cicilan</SelectItem>
-                              <SelectItem value="unpaid">Belum Bayar</SelectItem>
+                              <SelectItem value="unpaid">Tempo Penuh</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1466,7 +1466,7 @@ export default function ReceivablesPage() {
 
         {/* Detail Modal */}
         <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto scrollbar-hide">
             <DialogHeader>
               <DialogTitle>Rincian Transaksi</DialogTitle>
               <DialogDescription>
@@ -1497,6 +1497,30 @@ export default function ReceivablesPage() {
                   <div className="text-right">
                     <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Jatuh Tempo</p>
                     <p className="font-medium text-slate-900 dark:text-white">{detailTransaction.due_date ? formatSimpleDate(detailTransaction.due_date) : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Tipe Pembayaran</p>
+                    <p className="font-medium text-slate-900 dark:text-white">
+                      {detailTransaction.payment_method === 'cash' ? 'Tunai' : detailTransaction.payment_method === 'transfer' ? 'Transfer' : detailTransaction.payment_method || '-'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Status Pembayaran</p>
+                    <p className="font-medium text-slate-900 dark:text-white">
+                      {detailTransaction.payment_status === 'paid' ? 'Lunas' : detailTransaction.payment_status === 'partial' ? 'Cicilan' : 'Tempo Penuh'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Sudah Dibayar</p>
+                    <p className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {formatRupiah(((detailTransaction.subtotal || 0) + (detailTransaction.tax || 0) - (detailTransaction.discount || 0)) - (detailTransaction.remaining_balance || 0))}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">Kekurangan Pembayaran</p>
+                    <p className="font-semibold text-red-600 dark:text-red-400">
+                      {formatRupiah(detailTransaction.remaining_balance || 0)}
+                    </p>
                   </div>
                 </div>
 
@@ -1663,7 +1687,7 @@ async function exportReceivablesToExcel(
         paid,
         r.cashier_name || '-',
         r.due_date ? formatSimpleDate(r.due_date) : '-',
-        r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Belum Bayar' : 'Lunas',
+        r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Tempo Penuh' : 'Lunas',
       ]);
       rowStripes.push(currentStripe);
     } else {
@@ -1681,7 +1705,7 @@ async function exportReceivablesToExcel(
             paid,
             r.cashier_name || '-',
             r.due_date ? formatSimpleDate(r.due_date) : '-',
-            r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Belum Bayar' : 'Lunas',
+            r.payment_status === 'partial' ? 'Cicilan' : r.payment_status === 'unpaid' ? 'Tempo Penuh' : 'Lunas',
           ]);
         } else {
           rows.push([
@@ -1957,7 +1981,7 @@ export function DownloadReceivablesExcelDialog({
                 <SelectItem value="all">Semua Status</SelectItem>
                 <SelectItem value="paid">Lunas</SelectItem>
                 <SelectItem value="partial">Cicilan</SelectItem>
-                <SelectItem value="unpaid">Belum Bayar</SelectItem>
+                <SelectItem value="unpaid">Tempo Penuh</SelectItem>
               </SelectContent>
             </Select>
           </div>
