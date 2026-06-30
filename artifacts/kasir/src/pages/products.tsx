@@ -1992,11 +1992,11 @@ export default function ProductsPage() {
                     pattern="[0-9]*"
                     placeholder="0"
                     className="bg-white dark:bg-slate-950"
-                    value={item.quantity === 0 ? "" : item.quantity}
+                    value={item.quantity === 0 ? "" : formatNumberWithDots(String(item.quantity))}
                     onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      const val = parseNumberFromDots(e.target.value);
                       const newItems = [...restockItems];
-                      newItems[index].quantity = parseInt(val) || 0;
+                      newItems[index].quantity = val;
                       setRestockItems(newItems);
                     }}
                   />
@@ -2084,10 +2084,10 @@ export default function ProductsPage() {
                 inputMode="numeric"
                 pattern="[0-9]*"
                 placeholder="0"
-                value={quickRestockQty === 0 ? "" : quickRestockQty}
+                value={quickRestockQty === 0 ? "" : formatNumberWithDots(String(quickRestockQty))}
                 onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9]/g, '');
-                  setQuickRestockQty(parseInt(val) || 0);
+                  const val = parseNumberFromDots(e.target.value);
+                  setQuickRestockQty(val);
                 }}
               />
               {quickRestockConversion > 1 && (

@@ -14,7 +14,7 @@ import { ADMIN_EMAIL } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { open as openShell } from "@tauri-apps/plugin-shell";
-import { formatInvoiceNumber, formatSimpleDate } from "@/lib/formatters";
+import { formatInvoiceNumber, formatSimpleDate, formatRupiah } from "@/lib/formatters";
 
 interface PromoTemplate {
   id: number;
@@ -24,9 +24,14 @@ interface PromoTemplate {
 
 const DEFAULT_TEMPLATES: PromoTemplate[] = [
   {
+    id: -1,
+    name: "Template Promo Spesial",
+    content: "Halo @ 😊\n\nKabar gembira dari #! 🎉\nKami sedang mengadakan PROMO SPESIAL minggu ini!\n\nYuk, segera order produk kami atau balas pesan ini untuk info penawaran terbaik khusus untuk Anda!\n\nTerima kasih sudah menjadi pelanggan setia kami. 🙏\n\nSalam hangat,\n#",
+  },
+  {
     id: -2,
     name: "Template Penagihan",
-    content: "🔔 *PEMBERITAHUAN PENAGIHAN* 🔔\n\nHalo @ 😊\n\nKami menginformasikan bahwa terdapat tagihan yang belum diselesaikan dengan detail berikut:\n- No. Transaksi: %\n- Tanggal Pemesanan: &\n- Jatuh Tempo: $\n\nMohon untuk segera melakukan pembayaran atau menghubungi kami untuk konfirmasi.\n\nJika Anda sudah melakukan pembayaran, silakan abaikan pesan ini atau kirimkan bukti pembayaran kepada kami.\n\nTerima kasih atas perhatian dan kerja samanya.\n\n🙏 Hormat Kami,\n#",
+    content: "🔔 *PEMBERITAHUAN PENAGIHAN* 🔔\n\nHalo @ 😊\n\nKami menginformasikan bahwa terdapat tagihan yang belum diselesaikan dengan detail berikut:\n\n- No. Transaksi: %\n- Tanggal Pemesanan: &\n- Total Tagihan: ^\n- Jatuh Tempo: $\n\nBerikut data pesanan saat ini adalah,\n~\n\nMohon untuk segera melakukan pembayaran atau menghubungi kami untuk konfirmasi.\n\nJika Anda sudah melakukan pembayaran, silakan abaikan pesan ini atau kirimkan bukti pembayaran kepada kami.\n\nTerima kasih atas perhatian dan kerja samanya.\n\n🙏 Hormat Kami,\n#",
   },
 ];
 
@@ -193,7 +198,9 @@ export default function PromoPage() {
     customerName: string, 
     dueDate: string = "Tanggal Jatuh Tempo",
     invoiceNumber: string = "Nomor Transaksi",
-    orderDate: string = "Tanggal Pemesanan"
+    orderDate: string = "Tanggal Pemesanan",
+    totalTagihan: string = "Total Tagihan",
+    productDetails: string = "Rincian Produk"
   ) => {
     const cleanName = (customerName || "").trim();
     const cleanStore = (storeName || "CV.AULIA USAHA").trim();
@@ -203,7 +210,9 @@ export default function PromoPage() {
       .replace(/#/g, `*${cleanStore}*`)
       .replace(/\$/g, `*${dueDate}*`)
       .replace(/%/g, `*${invoiceNumber}*`)
-      .replace(/&/g, `*${orderDate}*`);
+      .replace(/&/g, `*${orderDate}*`)
+      .replace(/\^/g, `*${totalTagihan}*`)
+      .replace(/~/g, productDetails);
   };
 
   const renderPreviewMessage = (message: string) => {
@@ -225,15 +234,17 @@ export default function PromoPage() {
     let dueDateStr = "-";
     let invoiceNumberStr = "-";
     let orderDateStr = "-";
+    let totalTagihanStr = "-";
+    let productDetailsStr = "-";
     
     try {
       const { data } = await supabase
         .from("transactions")
-        .select("id, due_date, created_at")
+        .select("id, due_date, created_at, remaining_balance, subtotal, tax, discount, transaction_items(product_name, quantity, price)")
         .eq("customer_id", customer.id)
         .not("due_date", "is", null)
         .neq("payment_status", "paid")
-        .order("due_date", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(1);
 
       if (data && data.length > 0) {
@@ -247,12 +258,23 @@ export default function PromoPage() {
         if (trx.created_at) {
           orderDateStr = formatSimpleDate(trx.created_at);
         }
+        if (trx.remaining_balance !== undefined && trx.remaining_balance !== null) {
+          totalTagihanStr = formatRupiah(trx.remaining_balance);
+        } else {
+          const total = (trx.subtotal || 0) + (trx.tax || 0) - (trx.discount || 0);
+          totalTagihanStr = formatRupiah(total);
+        }
+        if (trx.transaction_items && trx.transaction_items.length > 0) {
+          productDetailsStr = trx.transaction_items.map((item: any) => {
+            return `- ${item.product_name} (${item.quantity} x ${formatRupiah(item.price)})`;
+          }).join("\n");
+        }
       }
     } catch (e) {
       console.error("Gagal mengambil info transaksi:", e);
     }
 
-    const message = formatMessage(customMessage, customer.name, dueDateStr, invoiceNumberStr, orderDateStr);
+    const message = formatMessage(customMessage, customer.name, dueDateStr, invoiceNumberStr, orderDateStr, totalTagihanStr, productDetailsStr);
     let phone = customer.phone.replace(/[^0-9]/g, "");
     if (phone.startsWith("0")) phone = "62" + phone.substring(1);
     else if (!phone.startsWith("62") && !phone.startsWith("+")) phone = "62" + phone;
@@ -449,6 +471,8 @@ export default function PromoPage() {
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">%</span> untuk menyisipkan nomor transaksi</p>
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">&amp;</span> untuk menyisipkan tanggal pemesanan</p>
                       <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">$</span> untuk menyisipkan tanggal jatuh tempo</p>
+                      <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">^</span> untuk menyisipkan total tagihan</p>
+                      <p className="text-[10px] text-slate-400 italic">Ketik <span className="font-mono text-primary text-xs font-bold">~</span> untuk menyisipkan rincian produk</p>
                     </div>
                   </div>
                 </div>

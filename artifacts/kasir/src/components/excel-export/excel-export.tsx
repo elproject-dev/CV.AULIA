@@ -98,6 +98,7 @@ const DEFAULT_COL_WIDTHS: ExportColumn[] = [
   { header: "Margin", key: "Margin", width: 15 },
   { header: "Pembayaran", key: "Pembayaran", width: 15 },
   { header: "Tipe Pembayaran", key: "Tipe Pembayaran", width: 15 },
+  { header: "Jatuh Tempo", key: "Jatuh Tempo", width: 15 },
   { header: "Salesman", key: "Salesman", width: 15 },
   { header: "Period Month", key: "Period Month", width: 15 },
   { header: "Period Year", key: "Period Year", width: 12 },
@@ -121,6 +122,7 @@ const CENTER_ALIGNED_KEYS = new Set([
   "Bergabung Sejak",
   "Pembayaran",
   "Tipe Pembayaran",
+  "Jatuh Tempo",
 ]);
 
 const RIGHT_ALIGNED_KEYS = new Set([
@@ -163,6 +165,19 @@ function getColumnAlignment(colKey: string): "left" | "center" | "right" {
 }
 
 // Utility functions
+function formatJatuhTempo(dateString: string | undefined): string {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "-";
+  
+  const day = date.getDate();
+  const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  
+  return `${day} ${month} ${year}`;
+}
+
 function formatDateForFileName(date: Date): string {
   return date.toISOString().split("T")[0];
 }
@@ -356,7 +371,8 @@ function transformTransactions(
   transactions: Transaction[],
   branchName?: string,
   cashierDefault: string = "Admin Kasir",
-  outlets: Outlet[] = []
+  outlets: Outlet[] = [],
+  isAdmin: boolean = true
 ): { data: Record<string, unknown>[]; rowStripes: number[] } {
   const data: Record<string, unknown>[] = [];
   const rowStripes: number[] = [];
@@ -397,6 +413,11 @@ function transformTransactions(
     const tipePembayaranRaw = String(trx.paymentStatus || "-");
     const tipePembayaran = tipePembayaranRaw === 'paid' ? 'Lunas' : tipePembayaranRaw === 'partial' ? 'Cicilan' : tipePembayaranRaw === 'unpaid' ? 'Belum Lunas' : tipePembayaranRaw;
 
+    let jatuhTempoStr = "-";
+    if (tipePembayaranRaw === 'partial' || tipePembayaranRaw === 'unpaid') {
+      jatuhTempoStr = formatJatuhTempo(trx.dueDate);
+    }
+
     if (trx.items && trx.items.length > 0) {
       trx.items.forEach((item) => {
         const price = Number(item.price) || 0;
@@ -422,10 +443,13 @@ function transformTransactions(
           "Nominal Retur": formatExcelRupiah(returnAmount),
           "Sisa Piutang": formatExcelRupiah(sisaPiutang),
           "Total Akhir": formatExcelRupiah(kasMasuk),
-          HPP: formatExcelRupiah(hpp),
-          Margin: formatExcelRupiah(margin),
+          ...(isAdmin ? {
+            HPP: formatExcelRupiah(hpp),
+            Margin: formatExcelRupiah(margin),
+          } : {}),
           Pembayaran: pembayaran,
           "Tipe Pembayaran": tipePembayaran,
+          "Jatuh Tempo": jatuhTempoStr,
           Salesman: salesman,
           "Period Month": periodMonth,
           "Period Year": periodYear,
@@ -443,10 +467,13 @@ function transformTransactions(
         "Nominal Retur": "-",
         "Sisa Piutang": "-",
         "Total Akhir": "-",
-        HPP: "-",
-        Margin: "-",
+        ...(isAdmin ? {
+          HPP: "-",
+          Margin: "-",
+        } : {}),
         Pembayaran: pembayaran,
         "Tipe Pembayaran": tipePembayaran,
+        "Jatuh Tempo": jatuhTempoStr,
         Salesman: salesman,
         "Period Month": periodMonth,
         "Period Year": periodYear,
@@ -528,23 +555,23 @@ export function mapApiTransactionsToExport(
       const pId = item.product_id ? String(item.product_id) : '';
       const pName = String(item.product_name ?? item.productName ?? "-");
       const key = pId || pName;
-      
+
       const price = Number(item.price) || 0;
       const quantity = Number(item.quantity) || 0;
       const itemSubtotal = price * quantity;
-      
+
       const rData = returnItemMap.get(key) || { qty: 0, amount: 0 };
       const itemNet = Math.max(0, itemSubtotal - rData.amount);
-      
+
       const itemKasMasuk = itemNet * paymentRatio;
       const itemSisaPiutang = itemNet - itemKasMasuk;
 
       const netQty = Math.max(0, quantity - rData.qty);
       const hppPerUnit = hppMap.get(pId) || 0;
-      
+
       const fullItemHpp = netQty * hppPerUnit;
       const fullItemMargin = itemNet - fullItemHpp;
-      
+
       const itemHpp = fullItemHpp * paymentRatio;
       const itemMargin = fullItemMargin * paymentRatio;
 
@@ -638,7 +665,8 @@ function filterTransactionsByRange(
 export async function exportTodayTransactions(
   transactions: Transaction[],
   branchName?: string,
-  cashierDefault?: string
+  cashierDefault?: string,
+  isAdmin: boolean = true
 ): Promise<void> {
   const today = new Date();
   const todayTransactions = filterTodayTransactions(transactions);
@@ -647,7 +675,7 @@ export async function exportTodayTransactions(
     throw new Error("Tidak ada transaksi hari ini");
   }
 
-  const { data, rowStripes } = transformTransactions(todayTransactions, branchName, cashierDefault);
+  const { data, rowStripes } = transformTransactions(todayTransactions, branchName, cashierDefault, [], isAdmin);
   if (data.length === 0) {
     throw new Error("Tidak ada data untuk diekspor");
   }
@@ -665,7 +693,8 @@ export async function exportTodayTransactions(
 export async function exportThisMonthTransactions(
   transactions: Transaction[],
   branchName?: string,
-  cashierDefault?: string
+  cashierDefault?: string,
+  isAdmin: boolean = true
 ): Promise<void> {
   const now = new Date();
   const monthTransactions = filterThisMonthTransactions(transactions);
@@ -674,7 +703,7 @@ export async function exportThisMonthTransactions(
     throw new Error("Tidak ada transaksi bulan ini");
   }
 
-  const { data, rowStripes } = transformTransactions(monthTransactions, branchName, cashierDefault);
+  const { data, rowStripes } = transformTransactions(monthTransactions, branchName, cashierDefault, [], isAdmin);
   if (data.length === 0) {
     throw new Error("Tidak ada data untuk diekspor");
   }
@@ -695,7 +724,8 @@ export async function exportCustomRangeTransactions(
   startDate: Date,
   endDate: Date,
   branchName?: string,
-  cashierDefault?: string
+  cashierDefault?: string,
+  isAdmin: boolean = true
 ): Promise<void> {
   const rangeTransactions = filterTransactionsByRange(transactions, startDate, endDate);
 
@@ -703,7 +733,7 @@ export async function exportCustomRangeTransactions(
     throw new Error("Tidak ada transaksi dalam periode ini");
   }
 
-  const { data, rowStripes } = transformTransactions(rangeTransactions, branchName, cashierDefault);
+  const { data, rowStripes } = transformTransactions(rangeTransactions, branchName, cashierDefault, [], isAdmin);
   if (data.length === 0) {
     throw new Error("Tidak ada data untuk diekspor");
   }
@@ -863,7 +893,7 @@ export function DownloadExcelDialog({
 
     await handleDownload(
       async () => {
-        const { data, rowStripes } = transformTransactions(todayTransactions, branchName, cashierDefault, outlets);
+        const { data, rowStripes } = transformTransactions(todayTransactions, branchName, cashierDefault, outlets, isAdmin);
         await exportToExcel({
           title: "Laporan Hari Ini",
           sheetName: "Laporan Hari Ini",
@@ -895,7 +925,7 @@ export function DownloadExcelDialog({
 
     await handleDownload(
       async () => {
-        const { data, rowStripes } = transformTransactions(monthTransactions, branchName, cashierDefault, outlets);
+        const { data, rowStripes } = transformTransactions(monthTransactions, branchName, cashierDefault, outlets, isAdmin);
         const monthName = now.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
         await exportToExcel({
           title: "Laporan Bulan Ini",
@@ -927,7 +957,7 @@ export function DownloadExcelDialog({
     const now = new Date();
     await handleDownload(
       async () => {
-        const { data, rowStripes } = transformTransactions(pastTransactions, branchName, cashierDefault, outlets);
+        const { data, rowStripes } = transformTransactions(pastTransactions, branchName, cashierDefault, outlets, isAdmin);
         await exportToExcel({
           title: "Laporan Semua Transaksi",
           sheetName: "Semua Transaksi",
@@ -981,7 +1011,7 @@ export function DownloadExcelDialog({
 
     await handleDownload(
       async () => {
-        const { data, rowStripes } = transformTransactions(rangeTransactions, branchName, cashierDefault, outlets);
+        const { data, rowStripes } = transformTransactions(rangeTransactions, branchName, cashierDefault, outlets, isAdmin);
         const startStr = formatDateForFileName(start);
         const endStr = formatDateForFileName(end);
         await exportToExcel({

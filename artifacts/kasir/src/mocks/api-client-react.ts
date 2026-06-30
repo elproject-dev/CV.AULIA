@@ -152,7 +152,7 @@ export const useGetDashboardStats = (params?: any) => {
       const paymentTxIds = payments.map((p: any) => p.transaction_id);
       const returnTxIds = (returnsData || []).map((r: any) => r.transaction_id);
       const allNeededTxIds = [...new Set([...paymentTxIds, ...returnTxIds])].filter(Boolean);
-      
+
       let txsForPaymentsAndReturns: any[] = [];
       if (allNeededTxIds.length > 0) {
         const { data: txs } = await supabase
@@ -362,7 +362,7 @@ export const useGetTopProducts = (params?: any) => {
         .select('id')
         .in('transaction_id', transactionIds)
         .eq('status', 'completed');
-      
+
       const returnIds = (returnsData || []).map(r => r.id);
       let returnItems: any[] = [];
       if (returnIds.length > 0) {
@@ -667,7 +667,7 @@ export const useGetRevenueChart = (params?: any) => {
       const paymentTxIds = payments.map((p: any) => p.transaction_id);
       const returnTxIds = (returnsData || []).map((r: any) => r.transaction_id);
       const allNeededTxIds = [...new Set([...paymentTxIds, ...returnTxIds])].filter(Boolean);
-      
+
       let txsForPaymentsAndReturns: any[] = [];
       if (allNeededTxIds.length > 0) {
         const { data: txs } = await supabase
