@@ -2080,7 +2080,19 @@ export const useCreateTransaction = () => {
       setIsPending(true);
       try {
 
-        const selectedOutletId = localStorage.getItem('selectedOutletId');
+        const localOutletId = localStorage.getItem('selectedOutletId');
+        
+        // Gunakan outletId dari parameter jika ada secara eksplisit (termasuk jika nilainya null)
+        let finalOutletId = null;
+        if (params.data && 'outletId' in params.data) {
+           finalOutletId = params.data.outletId;
+        } else if (localOutletId && localOutletId !== "all") {
+           const parsed = parseInt(localOutletId);
+           if (!isNaN(parsed)) {
+             finalOutletId = parsed;
+           }
+        }
+
         const basePayload = {
           customer_id: params.data.customerId || null,
           cashier_name: params.data.cashierName,
@@ -2091,7 +2103,7 @@ export const useCreateTransaction = () => {
           amount_paid: params.data.amountPaid,
           change: params.data.change || 0,
           status: params.data.status || 'completed',
-          outlet_id: selectedOutletId ? parseInt(selectedOutletId) : null,
+          outlet_id: finalOutletId,
           created_at: new Date().toISOString(),
         };
         const extendedPayload = {

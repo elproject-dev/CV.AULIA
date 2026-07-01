@@ -89,11 +89,21 @@ export default function ReceivablesPage() {
   }, []);
 
   const handlePrintInvoice = (trx: any) => {
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const printWindow = iframe.contentWindow;
     if (!printWindow) {
+      document.body.removeChild(iframe);
       toast({
         title: "Gagal mencetak",
-        description: "Popup diblokir. Izinkan popup untuk mencetak.",
+        description: "Tidak dapat membuat frame cetak.",
         variant: "destructive"
       });
       return;
@@ -509,9 +519,13 @@ export default function ReceivablesPage() {
           window.onload = function() {
             setTimeout(function() {
               window.print();
-              window.close();
-            }, 300);
-          }
+            }, 500);
+          };
+          window.onafterprint = function() {
+            setTimeout(function() {
+              if (window.frameElement) window.frameElement.remove();
+            }, 500);
+          };
         </script>
       </body>
       </html>
